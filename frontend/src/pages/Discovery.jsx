@@ -4,23 +4,22 @@
 // isn't connected to the backend yet.
 // The styles for this page are in index.css, under "Discovery page".
 //
-// It's laid out the same way as the Feed page, so the two feel like one site:
-//   1. DiscoveryHeader   the dark box: big title, one sentence, and the search bar
-//   2. TypeTabs          a row of tabs: All, Internship, Co-op, Part-time, Full-time
-//   3. Two columns:
-//        ResultsSection  left:  the count, Sort, and the opportunity boxes
-//        SideColumn      right: My applications and Profile boost
+// Since the 2026-11 revamp it's laid out like a dashboard, one column:
+//   1. DiscoveryHeader   the title, one sentence, the "Examples" tag, and the search bar
+//   2. SummaryBoxes      three number boxes: open to you, due soon, on your tracker
+//   3. TypeTabs + Sort   tabs (All, Internship, Co-op, ...) with counts, and the Sort menu
+//   4. ResultsSection    the table: one row per opportunity (OpportunityRow)
+//   5. ProfileTip        a one-line tip under the table
 //
 // The search bar and the tabs both really work: the Discovery function at
 // the bottom remembers what you typed and which tab is picked (with
 // useState), and only shows the opportunities that match both.
 
 // useState lets the page remember a value and redraw itself when it changes.
-// useRef keeps a reference to something on the screen, so the code can
-// measure it. useLayoutEffect runs code right after React draws the page but
-// BEFORE you see it, so a measurement can be used without a flicker.
+// useRef keeps a reference to something on the screen (here: each row's pop-up,
+// so its buttons can open it).
 // useEffect runs code after the page is drawn (here: opening a pop-up).
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 // Link goes to another page of the site without reloading everything.
 // useSearchParams reads the extra info at the end of the address, like the
 // "?job=1" in "/discovery?job=1" (the Feed page links here that way).
@@ -35,7 +34,7 @@ import NavBar from "../components/NavBar.jsx";
 import { opportunities } from "../data/opportunities.js";
 // The helpers that add a job to (or take it off) the Application tracker.
 // See src/data/tracker.js.
-import { addToTracker, isOnTracker, removeFromTracker } from "../data/tracker.js";
+import { addToTracker, isOnTracker, loadTracker, removeFromTracker } from "../data/tracker.js";
 
 // The tabs across the page. "All" shows everything; the rest match the
 // "type" of each opportunity above.
@@ -117,27 +116,6 @@ function SearchIcon() {
   );
 }
 
-// A small calendar, in front of "Apply by".
-function CalendarIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      {/* the page of the calendar */}
-      <rect x="3" y="5" width="18" height="16" rx="2" />
-      {/* the line under the top, and the two rings at the top */}
-      <path d="M3 10h18M8 3v4M16 3v4" />
-    </svg>
-  );
-}
-
 // A bookmark, on the Save button. The CSS fills it in once it's saved.
 function BookmarkIcon() {
   return (
@@ -177,8 +155,9 @@ function ArrowIcon() {
 
 // ---------- Pieces of the page ----------
 
-// The top of the page: the big title, one sentence, and the search bar.
-// They sit inside a dark navy box at the top of the page.
+// The top of the page: the title, one sentence, the "Examples" tag, and the
+// search bar (the 2026-11 revamp: a calm title on the page, like a dashboard,
+// instead of the old dark navy box).
 // props.search is what's typed in the search bar right now, and
 // props.setSearch changes it. Discovery (at the bottom) remembers it, so the
 // list can use it to filter.
@@ -191,13 +170,16 @@ function DiscoveryHeader(props) {
   }
 
   return (
-    <header className="discovery-header">
-      {/* The page's one h1 (WCAG). The span colors the last words sky blue. */}
-      <h1 className="discovery-title">
-        Find a place to put your <span className="discovery-title-blue">skills to work.</span>
-      </h1>
-
-      <p className="discovery-subtitle">Internships, co-ops, and jobs matched to your ScoutSearch profile.</p>
+    <header className="discovery-head">
+      <div className="discovery-head-words">
+        {/* The page's one h1 (WCAG) */}
+        <h1 className="discovery-head-title">Opportunities</h1>
+        <p className="discovery-head-text">
+          Internships, co-ops, and jobs matched to your profile.{" "}
+          {/* The team's rule: anything made up is clearly labeled as an example */}
+          <span className="discovery-examples-tag">Examples</span>
+        </p>
+      </div>
 
       {/* role="search" tells screen readers this is the page's search (WCAG) */}
       <form className="discovery-search" role="search" onSubmit={handleSubmit}>
@@ -223,64 +205,74 @@ function DiscoveryHeader(props) {
   );
 }
 
-// The row of tabs (All, Internship, Co-op, ...). Same look as Feed's tabs.
+// The three summary boxes under the title: how many opportunities there are,
+// how many are due soon, and how many are on your tracker. Like the number
+// boxes at the top of a dashboard, so you see the big picture first.
+// props.dueSoon is the list of opportunities due in the next 14 days
+// (soonest first), and props.trackerCount is how many are on your tracker.
+function SummaryBoxes(props) {
+  // The first one due, for the note under the number ("First up: ...")
+  const first = props.dueSoon[0];
+
+  return (
+    // A list, so screen readers say "list, 3 items" (WCAG)
+    <ul className="discovery-summary" aria-label="Summary">
+      <li className="discovery-summary-box">
+        <span className="discovery-summary-label">Open to you</span>
+        <span className="discovery-summary-number">{opportunities.length}</span>
+        <span className="discovery-summary-note">Internships, co-ops, and jobs</span>
+      </li>
+      <li className="discovery-summary-box">
+        <span className="discovery-summary-label">Due in the next 2 weeks</span>
+        <span className="discovery-summary-number">{props.dueSoon.length}</span>
+        <span className="discovery-summary-note">
+          {/* "first ? (...) : (...)" means "if there's one due, name it; if not, say so" */}
+          {first
+            ? "First up: " + first.title + ", " + formatDate(first.deadline, { month: "short", day: "numeric" })
+            : "Nothing due soon"}
+        </span>
+      </li>
+      <li className="discovery-summary-box">
+        <span className="discovery-summary-label">On your tracker</span>
+        <span className="discovery-summary-number">{props.trackerCount}</span>
+        {/* A real link, so the whole idea "go see them" is one click away */}
+        <Link to="/applications" className="discovery-summary-link">
+          Open My applications
+          <ArrowIcon />
+        </Link>
+      </li>
+    </ul>
+  );
+}
+
+// The row of tabs (All, Internship, Co-op, ...), drawn as one gray strip
+// with the picked tab as a white pill (the revamp's "segmented" look). Each
+// tab shows how many opportunities it has.
 // props.picked is the tab that's on right now, and props.setPicked changes it.
-//
-// The blue line under the picked tab SLIDES to the new tab when you click
-// one, so you can see where you moved from and to. There's only one line,
-// and the code moves it under whichever tab is picked.
+// props.counts holds the number for each tab, like counts["Co-op"] = 3.
+// (Before the revamp, a blue line slid under the picked tab. The white pill
+// shows the same thing without needing to measure the page.)
 function TypeTabs(props) {
-  // References to the row of tabs and the blue line, so we can measure and move them
-  const rowRef = useRef(null);
-  const lineRef = useRef(null);
-
-  // Runs every time the picked tab changes (that's what [props.picked] at
-  // the end means), and before the page is shown.
-  useLayoutEffect(() => {
-    // Puts the blue line under the picked tab
-    function moveLine() {
-      // Find the picked tab's button inside the row
-      const pickedTab = rowRef.current.querySelector('[aria-pressed="true"]');
-      // offsetLeft = how far the tab is from the left of the row (in px)
-      // offsetWidth = how wide the tab is (in px)
-      // The line is 1px wide in the CSS, so scaleX(width) stretches it to the
-      // tab's width. Moving it with transform (instead of left and width) is
-      // what keeps the slide smooth.
-      lineRef.current.style.transform =
-        "translateX(" + pickedTab.offsetLeft + "px) scaleX(" + pickedTab.offsetWidth + ")";
-    }
-
-    moveLine();
-    // The tabs move when the window changes size (the space between them
-    // changes on phones), so move the line again then too
-    window.addEventListener("resize", moveLine);
-    // When the picked tab changes again (or you leave the page), stop
-    // listening to the old one, so they don't pile up
-    return () => window.removeEventListener("resize", moveLine);
-  }, [props.picked]);
-
   return (
     // role="group" + aria-label tells screen readers these buttons belong
     // together and what they're for (WCAG)
-    <div className="discovery-tabs" role="group" aria-label="Show opportunity type" ref={rowRef}>
+    <div className="discovery-tabs" role="group" aria-label="Show opportunity type">
       {/* One button per tab. .map() goes through the tabs list in order. */}
       {tabs.map((tab) => (
         <button
           key={tab}
           type="button"
-          // The picked tab also gets "discovery-tab-picked", which makes its words navy
+          // The picked tab also gets "discovery-tab-picked", which makes it the white pill
           className={tab === props.picked ? "discovery-tab discovery-tab-picked" : "discovery-tab"}
           // aria-pressed tells screen readers which tab is on (WCAG)
           aria-pressed={tab === props.picked}
           onClick={() => props.setPicked(tab)}
         >
           {tab}
+          {/* The number, a little quieter than the name */}
+          <span className="discovery-tab-count">{props.counts[tab]}</span>
         </button>
       ))}
-
-      {/* The sliding blue line. Decoration only: aria-pressed already tells
-          screen readers which tab is picked */}
-      <span className="discovery-tab-line" ref={lineRef} aria-hidden="true" />
     </div>
   );
 }
@@ -458,21 +450,38 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
   );
 }
 
-// One opportunity box.
+// True if a deadline is within the next "days" days (and not already past).
+// Used for the "Due soon" tag (7 days) and the summary box (14 days).
+// 1000 * 60 * 60 * 24 is the number of milliseconds in one day.
+function isDueWithin(deadline, days) {
+  const msLeft = new Date(deadline + "T23:59") - new Date();
+  return msLeft >= 0 && msLeft <= days * 1000 * 60 * 60 * 24;
+}
+
+// The colored tag for each kind of job. Each kind has its own color, and
+// the word is always written in it too, so it never relies on color alone (WCAG)
+const typeTagClass = {
+  Internship: "discovery-type-tag discovery-type-internship",
+  "Co-op": "discovery-type-tag discovery-type-coop",
+  "Part-time": "discovery-type-tag discovery-type-parttime",
+  "Full-time": "discovery-type-tag discovery-type-fulltime",
+};
+
+// One row of the table: one opportunity.
 // props.opportunity is one { } from the opportunities list.
 // props.isBest is true for the opportunity with the highest match.
-function OpportunityCard(props) {
+function OpportunityRow(props) {
   // A shorter name, so we can write opportunity.title instead of props.opportunity.title.
   const opportunity = props.opportunity;
 
-  // Each box remembers its own Save button (on/off), like Feed's Like button.
+  // Each row remembers its own Save button (on/off), like Feed's Like button.
   // The pop-up uses the same one, so saving in either place saves both.
   // It starts as "on" if this job is already on the Application tracker, so
   // a job you saved before still says "Saved" when you come back.
-  // (useState(() => ...) runs that check only once, when the box first appears.)
+  // (useState(() => ...) runs that check only once, when the row first appears.)
   const [saved, setSaved] = useState(() => isOnTracker(opportunity.id));
 
-  // Runs when Save is pressed, on the card or in the pop-up.
+  // Runs when Save is pressed, in the row or in the pop-up.
   // Saving puts the job in the tracker's "Saved" column; pressing again
   // ("Saved") takes it off the tracker.
   function toggleSave() {
@@ -483,11 +492,11 @@ function OpportunityCard(props) {
     }
     setSaved(!saved);
   }
-  // A reference to this box's pop-up, so "View opportunity" can open it
+  // A reference to this row's pop-up, so "View" can open it
   const dialogRef = useRef(null);
 
   // If the Feed page sent you here for THIS job ("/discovery?job=1"), open its
-  // pop-up as soon as the box is on the screen. props.openOnArrival is true
+  // pop-up as soon as the row is on the screen. props.openOnArrival is true
   // only for that job. After opening, props.onOpened clears the "?job=1", so
   // the pop-up doesn't open again by itself (for example after switching tabs).
   const openOnArrival = props.openOnArrival;
@@ -501,117 +510,115 @@ function OpportunityCard(props) {
     }
   }, [openOnArrival, onOpened]);
 
-  // The words under the buttons
-  let message = "";
-  if (saved) {
-    message = "Saved to My applications.";
-  }
-
   return (
-    <li className="discovery-opportunity">
-      {/* The blue strip across the top, like the "UPDATE" strip on Feed's
-          posts. The best match says so; the others show their type. */}
-      {/* The best match's strip gets one more class, which plays a quick
-          shine across it once when the page opens */}
-      <p className={props.isBest ? "discovery-strip discovery-strip-best" : "discovery-strip"}>
-        {props.isBest ? "Best match for you" : opportunity.type}
-      </p>
+    <tr className="discovery-row">
+      {/* Role: the square logo, the title, and the organization.
+          data-label is the column's name, shown above each piece on phones,
+          where the table turns into one small box per opportunity (index.css) */}
+      <td className="discovery-cell-role" data-label="Role">
+        <span className="discovery-role">
+          {/* The square logo (decoration: the name is in the words) */}
+          <span className="discovery-logo" aria-hidden="true">
+            {opportunity.initials}
+          </span>
+          <span className="discovery-role-words">
+            {/* The title opens the pop-up too, since it's what people click first.
+                aria-haspopup tells screen readers a pop-up will open (WCAG) */}
+            <button
+              type="button"
+              className="discovery-role-title"
+              aria-haspopup="dialog"
+              onClick={() => dialogRef.current.showModal()}
+            >
+              {opportunity.title}
+            </button>
+            <span className="discovery-role-org">
+              {opportunity.organization}
+              {/* The best match gets a small tag after the name */}
+              {props.isBest && <span className="discovery-best-tag">Best match</span>}
+            </span>
+          </span>
+        </span>
+      </td>
 
-      <div className="discovery-opportunity-body">
-        {/* Row 1, left: the square logo (decoration: the name is in the words) */}
-        <span className="discovery-logo" aria-hidden="true">
-          {opportunity.initials}
+      <td data-label="Type">
+        <span className={typeTagClass[opportunity.type]}>{opportunity.type}</span>
+      </td>
+
+      <td data-label="Location">{opportunity.place}</td>
+
+      <td data-label="Pay" className="discovery-cell-nowrap">
+        {opportunity.pay}
+      </td>
+
+      <td data-label="Apply by">
+        <span className="discovery-apply-by">
+          {/* <time> marks this as a date for computers, using the
+              year-month-day version in dateTime */}
+          <time dateTime={opportunity.deadline}>
+            {formatDate(opportunity.deadline, { month: "short", day: "numeric", year: "numeric" })}
+          </time>
+          {/* "Due soon" when it's within a week. Written out, not only a color (WCAG) */}
+          {isDueWithin(opportunity.deadline, 7) && <span className="discovery-due-tag">Due soon</span>}
+        </span>
+      </td>
+
+      <td data-label="Match">
+        <span className="discovery-match-cell">
+          {/* The bar is decoration: the number next to it says the same (WCAG).
+              --fill sets how much of the bar is colored in (see index.css) */}
+          <span className="discovery-match-bar" aria-hidden="true">
+            <span className="discovery-match-fill" style={{ "--fill": opportunity.match + "%" }} />
+          </span>
+          <span className="discovery-match-number">{opportunity.match}%</span>
+        </span>
+      </td>
+
+      <td className="discovery-cell-actions">
+        <span className="discovery-actions">
+          {/* Save: an on/off button. !saved flips true to false and false
+              to true. aria-pressed tells screen readers if it's on (WCAG).
+              aria-label says which opportunity, because every row has a
+              Save button. It starts with the visible word "Save" so
+              voice control still works (WCAG). */}
+          <button
+            type="button"
+            className="discovery-outline-button discovery-small-button"
+            aria-pressed={saved}
+            aria-label={"Save " + opportunity.title}
+            onClick={toggleSave}
+          >
+            <BookmarkIcon />
+            {saved ? "Saved" : "Save"}
+          </button>
+
+          {/* Opens this row's pop-up. showModal() is the <dialog>'s own
+              "open as a pop-up" command (WCAG: see OpportunityDialog above) */}
+          <button
+            type="button"
+            className="discovery-solid-button discovery-small-button"
+            aria-label={"View " + opportunity.title}
+            aria-haspopup="dialog"
+            onClick={() => dialogRef.current.showModal()}
+          >
+            View
+            <ArrowIcon />
+          </button>
         </span>
 
-        {/* Row 1, middle: title and facts */}
-        <div>
-          <h3 className="discovery-opportunity-title">{opportunity.title}</h3>
-          <p className="discovery-opportunity-facts">
-            {opportunity.organization} · {opportunity.place} · {opportunity.length}
-          </p>
-        </div>
+        {/* Hidden on screen. Screen readers hear it when Save is pressed (WCAG) */}
+        <span className="sr-only" role="status">
+          {saved ? "Saved to My applications." : ""}
+        </span>
 
-        {/* Row 1, right: the match number */}
-        <p className="discovery-match">
-          <span className="discovery-match-number">{opportunity.match}%</span>
-          <span className="discovery-match-label">match</span>
-        </p>
-
-        {/* Everything below goes under the title (the "wide" class, see index.css) */}
-        <p className="discovery-opportunity-description discovery-opportunity-wide">{opportunity.description}</p>
-
-        {/* The skill tags. .map() makes one <li> per tag, in order. */}
-        <ul className="discovery-tags discovery-opportunity-wide" aria-label="Skills">
-          {opportunity.tags.map((tag) => (
-            <li key={tag} className="discovery-tag">
-              {tag}
-            </li>
-          ))}
-        </ul>
-
-        {/* The bottom: "Apply by" on the left, buttons on the right */}
-        <div className="discovery-opportunity-footer discovery-opportunity-wide">
-          <div className="discovery-footer-row">
-            <p className="discovery-apply-by">
-              <CalendarIcon />
-              {/* <time> marks this as a date for computers, using the
-                  year-month-day version in dateTime */}
-              <span>
-                Apply by{" "}
-                <time dateTime={opportunity.deadline}>
-                  {formatDate(opportunity.deadline, { month: "short", day: "numeric" })}
-                </time>
-              </span>
-            </p>
-
-            <div className="discovery-actions">
-              {/* Save: an on/off button. !saved flips true to false and false
-                  to true. aria-pressed tells screen readers if it's on (WCAG).
-                  aria-label says which opportunity, because every box has a
-                  Save button. It starts with the visible word "Save" so
-                  voice control still works (WCAG). */}
-              <button
-                type="button"
-                className="discovery-outline-button"
-                aria-pressed={saved}
-                aria-label={"Save " + opportunity.title}
-                onClick={toggleSave}
-              >
-                <BookmarkIcon />
-                {saved ? "Saved" : "Save"}
-              </button>
-
-              {/* Opens this box's pop-up. showModal() is the <dialog>'s own
-                  "open as a pop-up" command. aria-haspopup tells screen
-                  readers a pop-up will open (WCAG). */}
-              <button
-                type="button"
-                className="discovery-solid-button"
-                aria-label={"View opportunity: " + opportunity.title}
-                aria-haspopup="dialog"
-                onClick={() => dialogRef.current.showModal()}
-              >
-                View opportunity
-                <ArrowIcon />
-              </button>
-            </div>
-          </div>
-
-          {/* Always on the page, empty until there's something to say.
-              role="status" reads it out when it changes (WCAG). */}
-          <p className="discovery-card-message" role="status">
-            {message}
-          </p>
-        </div>
-      </div>
-
-      {/* The pop-up. It's on the page all the time but hidden until it's opened. */}
-      <OpportunityDialog opportunity={opportunity} ref={dialogRef} saved={saved} toggleSave={toggleSave} />
-    </li>
+        {/* The pop-up. It's on the page all the time but hidden until it's opened. */}
+        <OpportunityDialog opportunity={opportunity} ref={dialogRef} saved={saved} toggleSave={toggleSave} />
+      </td>
+    </tr>
   );
 }
 
-// The left column: the count, Sort, and the list of opportunity boxes.
+// The list of opportunities: the count and Sort above, then the table.
 // props.shown is the opportunities that pass the search and tab, already sorted.
 function ResultsSection(props) {
   // "opportunity" for 1, "opportunities" for anything else.
@@ -626,31 +633,8 @@ function ResultsSection(props) {
         Opportunities
       </h2>
 
-      {/* The small row above the list: the count on the left, Sort on the right */}
-      <div className="discovery-results-top">
-        {/* role="status" reads the new count out when it changes (WCAG) */}
-        <p className="discovery-results-count" role="status">
-          {props.shown.length} {word}
-        </p>
-
-        {/* The Sort dropdown. value is what's chosen right now; onChange
-            runs when you pick another one. */}
-        <div className="discovery-sort">
-          <label htmlFor="discovery-sort-select">Sort by</label>
-          <select
-            id="discovery-sort-select"
-            className="discovery-sort-select"
-            value={props.sortBy}
-            onChange={(event) => props.setSortBy(event.target.value)}
-          >
-            <option value="match">Best match</option>
-            <option value="deadline">Deadline</option>
-          </select>
-        </div>
-      </div>
-
       {/* If nothing passes the search and tab, show a message and a way back.
-          Otherwise, show the list. "? :" picks one of the two. */}
+          Otherwise, show the table. "? :" picks one of the two. */}
       {props.shown.length === 0 ? (
         <div className="discovery-empty">
           <p className="discovery-empty-title">No opportunities match</p>
@@ -660,53 +644,63 @@ function ResultsSection(props) {
           </button>
         </div>
       ) : (
-        <ul className="discovery-opportunities">
-          {props.shown.map((opportunity) => (
-            <OpportunityCard
-              key={opportunity.id}
-              opportunity={opportunity}
-              isBest={opportunity.id === props.bestMatchId}
-              // true only for the job the Feed page linked to (see Discovery below)
-              openOnArrival={opportunity.id === props.openJobId}
-              onOpened={props.onOpened}
-            />
-          ))}
-        </ul>
+        // The white box around the table. On small screens the table can't
+        // fit, so it turns into one box per opportunity instead (index.css)
+        <div className="discovery-table-box">
+          <table className="discovery-table">
+            {/* The table's name, for screen readers (WCAG) */}
+            <caption className="sr-only">Opportunities, {props.sortBy === "match" ? "best match first" : "soonest deadline first"}</caption>
+            <thead>
+              <tr>
+                {/* scope="col" tells screen readers each one names a column (WCAG) */}
+                <th scope="col">Role</th>
+                <th scope="col">Type</th>
+                <th scope="col">Location</th>
+                <th scope="col">Pay</th>
+                <th scope="col">Apply by</th>
+                <th scope="col">Match</th>
+                {/* The buttons' column has no words on screen, but screen readers get a name */}
+                <th scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {props.shown.map((opportunity) => (
+                <OpportunityRow
+                  key={opportunity.id}
+                  opportunity={opportunity}
+                  isBest={opportunity.id === props.bestMatchId}
+                  // true only for the job the Feed page linked to (see Discovery below)
+                  openOnArrival={opportunity.id === props.openJobId}
+                  onOpened={props.onOpened}
+                />
+              ))}
+            </tbody>
+          </table>
+
+          {/* The bottom of the box: the count. role="status" reads the new
+              count out when it changes (WCAG) */}
+          <p className="discovery-results-count" role="status">
+            Showing {props.shown.length} {word}
+          </p>
+        </div>
       )}
     </section>
   );
 }
 
-// The right column: the blue My applications box, then Profile boost.
-function SideColumn() {
+// A small tip under the table (it used to be the "Profile boost" box in a
+// side column, which the revamp's full-width table doesn't have)
+function ProfileTip() {
   return (
-    // aside = a side column. aria-label names it for screen readers.
-    <aside className="discovery-side" aria-label="Your applications and profile">
-      {/* The blue box at the top, like Feed's date box. It goes to the
-          application tracker, which isn't built yet, so the link leads to an
-          empty page for now. */}
-      <Link to="/applications" className="discovery-tracker-link">
-        <span className="discovery-tracker-words">
-          <span className="discovery-tracker-title">My applications</span>
-          <span className="discovery-tracker-text">Track everything you've applied to</span>
-        </span>
+    <p className="discovery-tip">
+      Better matches: the more skills your profile shows, the more accurate your matches get.{" "}
+      <Link to="/editprofile" className="discovery-text-link">
+        Add a skill
         <ArrowIcon />
       </Link>
-
-      <section className="discovery-side-card" aria-labelledby="discovery-boost-title">
-        <h2 id="discovery-boost-title" className="discovery-side-title">
-          Profile boost
-        </h2>
-        <p className="discovery-side-text">
-          The more skills your profile shows, the more accurate your matches get. Add the ones you've used in class
-          or in a project.
-        </p>
-        <Link to="/editprofile" className="discovery-text-link">
-          Add a skill
-          <ArrowIcon />
-        </Link>
-      </section>
-    </aside>
+    </p>
   );
 }
 
@@ -736,6 +730,18 @@ function Discovery() {
   // The opportunity with the highest match: sort by match, take the first.
   const bestMatch = sortByMatch(opportunities)[0];
 
+  // How many opportunities each tab has, for the numbers on the tabs.
+  // For each tab name, count the opportunities of that type ("All" counts all).
+  const counts = {};
+  tabs.forEach((tab) => {
+    counts[tab] = tab === "All" ? opportunities.length : opportunities.filter((o) => o.type === tab).length;
+  });
+
+  // For the summary boxes: what's due in the next 2 weeks (soonest first),
+  // and how many jobs are on your tracker (saved in this browser).
+  const dueSoon = sortByDeadline(opportunities.filter((o) => isDueWithin(o.deadline, 14)));
+  const trackerCount = loadTracker().length;
+
   // Keep only the opportunities that pass BOTH tests:
   //   1. the tab: "All" is picked, or its type is the picked one ("||" means "or")
   //   2. the search: the typed words appear in it (see matchesSearch above)
@@ -755,25 +761,44 @@ function Discovery() {
 
   return (
     <>
-      <title>Discovery | ScoutSearch</title>
+      <title>Opportunities | ScoutSearch</title>
       <NavBar />
-      {/* Same grid as the Feed page: the header and tabs stretch across the
-          top, then the list on the left and the side column on the right */}
+      {/* One column, like a dashboard: the title and search, the summary
+          boxes, the tabs and Sort, then the table */}
       <main className="discovery-page">
         <DiscoveryHeader search={search} setSearch={setSearch} />
-        <TypeTabs picked={picked} setPicked={setPicked} />
+        <SummaryBoxes dueSoon={dueSoon} trackerCount={trackerCount} />
+
+        {/* The tabs on the left, Sort on the right */}
+        <div className="discovery-toolbar">
+          <TypeTabs picked={picked} setPicked={setPicked} counts={counts} />
+
+          {/* The Sort dropdown. value is what's chosen right now; onChange
+              runs when you pick another one. */}
+          <div className="discovery-sort">
+            <label htmlFor="discovery-sort-select">Sort by</label>
+            <select
+              id="discovery-sort-select"
+              className="discovery-sort-select"
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+            >
+              <option value="match">Best match</option>
+              <option value="deadline">Deadline</option>
+            </select>
+          </div>
+        </div>
 
         <ResultsSection
           shown={shown}
           bestMatchId={bestMatch.id}
           sortBy={sortBy}
-          setSortBy={setSortBy}
           showAll={showAll}
           openJobId={openJobId}
           onOpened={clearOpenJob}
         />
 
-        <SideColumn />
+        <ProfileTip />
       </main>
     </>
   );

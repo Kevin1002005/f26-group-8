@@ -1,23 +1,31 @@
-// Feed.jsx is the Feed page (yoursite.com/feed), the main page you see after logging in.
-// At the top: a big title and two tabs (For you and Following).
+// Feed.jsx is the Feed page (yoursite.com/feed): posts from students, and
+// new job listings that organizations share as posts.
+// At the top: the title and three tabs (For you, Following, Listings).
 // Under that, 2 columns: the post box and the posts on the left, and
-// today's date, opportunities, and people to know on the right.
+// what's due soon, opportunities, and people to know on the right.
+// (The 2026-11 revamp: a calm title instead of the big animated one, small
+// colored tags instead of the colored strips on posts, and listing posts.)
 // Everything on it is made-up sample data for now, because the site
 // doesn't have a backend (server and database) yet.
 // The styles for this page are in index.css, under "Feed page".
 
 // useState lets the page remember a value and redraw itself when it changes.
-// useEffect runs some code after the page shows up on screen.
 // useRef keeps a reference to something on the screen (here: the hidden
 // file picker), so the code can click it for you.
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import NavBar from "../components/NavBar.jsx";
 // Link makes a clickable link to another page of our site.
 import { Link } from "react-router";
-// The jobs in the "Opportunities for you" box (right column). They're the
-// same list as the Discovery page uses (src/data/opportunities.js), so
-// clicking one can open that exact job there.
+// The jobs, for the listing posts and the right column. They're the same list
+// as the Discovery page uses (src/data/opportunities.js), so clicking one can
+// open that exact job there.
 import { opportunities } from "../data/opportunities.js";
+// The Application tracker's list (src/data/tracker.js): Save on a listing post
+// adds the job to it, and "Due soon" reads it
+import { addToTracker, isOnTracker, loadTracker, removeFromTracker } from "../data/tracker.js";
+// Who is logged in (src/use-current-user.js), so your own posts and comments
+// show your name instead of the made-up example person
+import { useCurrentUser } from "../use-current-user.js";
 
 // ---------- Sample data ----------
 // These lists hold the made-up content shown on the page.
@@ -25,9 +33,9 @@ import { opportunities } from "../data/opportunities.js";
 // and each "name: value" is one piece of info about that item.
 // Later, this data would come from the backend instead.
 
-// The tabs under the title. "For you" shows every post, and
-// "Following" shows only posts from people you follow
-const tabs = ["For you", "Following"];
+// The tabs under the title. "For you" shows every post, "Following" shows
+// only posts from people you follow, and "Listings" shows only job listings
+const tabs = ["For you", "Following", "Listings"];
 
 // The posts.
 // Each post has: a unique number (id), who wrote it (author, initials, headline),
@@ -92,6 +100,38 @@ const posts = [
     likes: 64,
     comments: 12,
   },
+];
+
+// The listing posts: an organization sharing one of its jobs on the Feed.
+// jobId points at a job in src/data/opportunities.js, so the post shows that
+// job's details and "View listing" opens it on the Discovery page.
+// (Later, the backend sends these when an organization posts a job.)
+const listingPosts = [
+  {
+    id: "listing-5",
+    jobId: 5,
+    time: "2h",
+    following: true,
+    text: "We need a student to help keep our website up to date and build a sign-up page for spring classes. It fits around your class schedule.",
+  },
+  {
+    id: "listing-1",
+    jobId: 1,
+    time: "5h",
+    following: false,
+    text: "Our spring co-op is open. You'll build screens for a homework app used by middle and high school students.",
+  },
+];
+
+// Everything on the Feed, in the order it starts in: listing posts mixed in
+// with the student posts. "type" says which kind each one is, so Feed (at the
+// bottom) knows whether to draw a <Post> or a <ListingPost>.
+// The "..." copies all of a post's info and adds "type" to it.
+const feedItems = [
+  { ...listingPosts[0], type: "listing" },
+  { ...posts[0], type: "update" },
+  { ...listingPosts[1], type: "listing" },
+  ...posts.slice(1).map((post) => ({ ...post, type: "update" })),
 ];
 
 // The people in the "People to know" box (right column)
@@ -213,80 +253,24 @@ function EyeIcon() {
 // Each function below is a component: one piece of the page.
 // The Feed component at the bottom puts all the pieces together.
 
-// The big title at the top of the page
-// Splits a word into its letters, each in its own <span>, so the CSS can
-// move every letter by itself (a "split text" effect).
-// For example, splitLetters("See") gives <span>S</span><span>e</span><span>e</span>.
-// .split("") turns "See" into the list ["S", "e", "e"].
-// The key is the letter's place in the word (0, 1, 2...), which is fine here
-// because the words never change
-function splitLetters(word) {
-  return word.split("").map((letter, place) => (
-    <span key={place} className="feed-title-letter">
-      {letter}
-    </span>
-  ));
-}
-
-// The letters rise in one after another the first time you open the Feed,
-// and a wave runs through them when the mouse is over the title
-// (see "Feed: motion" in index.css).
+// The title at the top of the page. Since the 2026-11 revamp it's a calm
+// heading like the Opportunities page's, instead of the big animated one
 function FeedHeader() {
-  // "playIntro" is true only the first time you see the Feed in this browser tab.
-  // sessionStorage is a small notebook the browser keeps until you close the tab.
-  // If it already says "feed-title-played", the animation already played, so skip it.
-  // try/catch: in some private windows the notebook is turned off, and reading it
-  // causes an error. If that happens, just skip the animation
-  const [playIntro] = useState(() => {
-    try {
-      return sessionStorage.getItem("feed-title-played") === null;
-    } catch {
-      return false;
-    }
-  });
-
-  // After the title shows up, write in the notebook that it played,
-  // so it doesn't play again when you come back to the Feed
-  useEffect(() => {
-    try {
-      sessionStorage.setItem("feed-title-played", "yes");
-    } catch {
-      // The notebook is turned off. Nothing to do
-    }
-  }, []);
-
   return (
-    <header className="feed-header">
-      {/* The page's one <h1> (WCAG).
-          While playIntro is true, it also gets the "feed-title-intro" class,
-          which is what turns the first-visit animation on */}
-      <h1 className={playIntro ? "feed-title feed-title-intro" : "feed-title"}>
-        {/* Screen readers read this hidden copy of the title as one normal
-            sentence. Without it, they could read the split-up letters one
-            at a time, like "S, e, e" (WCAG) */}
-        <span className="sr-only">See what people are making.</span>
-        {/* The title you SEE: every word split into letters.
-            aria-hidden="true" hides it from screen readers, since they read
-            the hidden copy above instead */}
-        <span aria-hidden="true">
-          <span className="feed-title-word">{splitLetters("See")}</span>{" "}
-          <span className="feed-title-word">{splitLetters("what")}</span>{" "}
-          <span className="feed-title-word">{splitLetters("people")}</span>{" "}
-          <span className="feed-title-word">{splitLetters("are")}</span>{" "}
-          {/* The last word is blue */}
-          <span className="feed-title-word feed-title-blue">
-            {splitLetters("making.")}
-          </span>
-        </span>
-      </h1>
-      <p className="feed-subtitle">
-        Fresh work, honest progress, and opportunities picked for your path.
+    <header className="feed-head">
+      {/* The page's one <h1> (WCAG) */}
+      <h1 className="feed-head-title">Feed</h1>
+      <p className="feed-head-text">
+        Updates from students, and new listings from organizations.{" "}
+        {/* The team's rule: anything made up is clearly labeled as an example */}
+        <span className="feed-examples-tag">Examples</span>
       </p>
     </header>
   );
 }
 
-// The row of tabs (For you and Following).
+// The row of tabs (For you, Following, and Listings): one gray strip with
+// the picked tab as a white pill, the same as the Opportunities page.
 // "props.picked" is the tab that's on right now, and "props.setPicked"
 // changes it. They live in Feed (below), because Feed needs to know
 // the picked tab to choose which posts to show
@@ -300,7 +284,7 @@ function FeedTabs(props) {
         <button
           key={tab}
           // While this tab is the picked one, it also gets the
-          // "feed-tab-picked" class, which adds the blue line under it
+          // "feed-tab-picked" class, which makes it the white pill
           className={
             tab === props.picked ? "feed-tab feed-tab-picked" : "feed-tab"
           }
@@ -321,6 +305,12 @@ function FeedTabs(props) {
 // as your own post at the top of the feed.
 // props.onPost is a function from Feed (below): the box calls it with the new post.
 function PostComposer(props) {
+  // Who is logged in, so the post shows YOUR name and initials.
+  // (Before, every post from this box said "Roemer Mallari", the example person.)
+  // If the name isn't known (for example the email form isn't connected), it says "You"
+  const me = useCurrentUser();
+  const myName = me.name || me.email || "You";
+  const myInitials = me.initials || "You";
   // What's typed in the box. Starts empty.
   const [text, setText] = useState("");
   // The chosen photo, as a web address the browser made for it (or null if none)
@@ -372,9 +362,9 @@ function PostComposer(props) {
     props.onPost({
       // Date.now() is the time in milliseconds, so every post gets a different id
       id: Date.now(),
-      author: "Roemer Mallari",
-      initials: "RMV",
-      headline: "Computer Science & Business Administration @ Northeastern University",
+      author: myName,
+      initials: myInitials,
+      headline: "Student",
       time: "Just now",
       kind: "Update",
       color: "blue",
@@ -382,7 +372,7 @@ function PostComposer(props) {
       text: words,
       photo: photo,
       // If no description was written, use a plain one so the photo still has alt text (WCAG)
-      photoAlt: photoAlt.trim() || "Photo shared by Roemer Mallari",
+      photoAlt: photoAlt.trim() || "Photo shared by " + myName,
       following: false,
       likes: 0,
       comments: 0,
@@ -400,7 +390,7 @@ function PostComposer(props) {
       {/* Top row: your circle next to the typing box */}
       <div className="feed-composer-top">
         <div className="feed-post-avatar" aria-hidden="true">
-          RMV
+          {myInitials}
         </div>
         {/* The label tells screen readers what this box is for (WCAG).
             htmlFor="feed-composer" connects it to the input with id="feed-composer".
@@ -476,6 +466,8 @@ function PostComposer(props) {
 // "props" holds the info passed in by Feed below. For example,
 // <Post author="David Ripalda" /> makes props.author equal "David Ripalda".
 function Post(props) {
+  // Who is logged in, so the comments YOU write show your name
+  const me = useCurrentUser();
   // "liked" remembers whether you clicked Like on this post. It starts as false.
   // Each post gets its own "liked", so liking one post doesn't like the others.
   const [liked, setLiked] = useState(false);
@@ -549,15 +541,10 @@ function Post(props) {
     // <article> means "one post that makes sense on its own" (screen readers
     // can jump from post to post). id="post-1" lets a shared link jump straight to it
     <article className="feed-post" id={"post-" + props.id}>
-      {/* The colored strip across the top, like "Build log".
-          The color comes from props.color, so "blue" gives the class
-          "feed-post-strip-blue" (see index.css) */}
-      <p className={"feed-post-strip feed-post-strip-" + props.color}>
-        {props.kind}
-      </p>
-      {/* Everything under the strip */}
+      {/* Everything in the post */}
       <div className="feed-post-body">
-        {/* Who posted it: the circle, then the name with school and time under it */}
+        {/* Who posted it: the circle, then the name with school and time
+            under it, then the kind of post as a small tag on the right */}
         <div className="feed-post-header">
           {/* Hidden from screen readers, because the name is right next to it */}
           <div className="feed-post-avatar" aria-hidden="true">
@@ -572,6 +559,14 @@ function Post(props) {
               {props.time}
             </p>
           </div>
+          {/* The kind of post ("Update", "Big news") as a small colored tag.
+              (It used to be a colored strip across the top of the post.)
+              "Big news" posts have color "dark" in the data and get the purple
+              tag; the others get the blue one. The word is always there, so the
+              color is never the only clue (WCAG) */}
+          <span className={props.color === "dark" ? "feed-kind-tag feed-kind-tag-purple" : "feed-kind-tag feed-kind-tag-blue"}>
+            {props.kind}
+          </span>
         </div>
         {/* The post's title. An <h2>, because each post is one part of the page.
             Posts you write in the post box have no title, so it's only shown
@@ -654,11 +649,11 @@ function Post(props) {
                 {myComments.map((comment) => (
                   <li key={comment.id} className="feed-comment">
                     <div className="feed-comment-avatar" aria-hidden="true">
-                      RMV
+                      {me.initials || "You"}
                     </div>
                     <div className="feed-comment-bubble">
                       <p className="feed-comment-author">
-                        Roemer Mallari
+                        {me.name || me.email || "You"}
                         <span className="feed-comment-time"> · Just now</span>
                       </p>
                       <p className="feed-comment-text">{comment.text}</p>
@@ -694,29 +689,154 @@ function Post(props) {
   );
 }
 
-// The sky blue box with today's date (top of the right column).
-// It's just for looks: a friendly "here's today" at the top of the page
-function TodayCard() {
-  // new Date() is the date and time right now, on the visitor's computer
-  const today = new Date();
-  // toLocaleDateString turns it into words, like "Saturday" and "October 24"
-  const weekday = today.toLocaleDateString("en-US", { weekday: "long" });
-  const monthAndDay = today.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-  });
+// Turns a date like "2026-11-20" into "Nov 20".
+// ("T00:00" = midnight, so the date doesn't slip back a day in some time zones)
+function shortDate(date) {
+  return new Date(date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// True if a deadline is in the next "days" days (and not already past).
+// 1000 * 60 * 60 * 24 is the number of milliseconds in one day.
+function isDueWithin(deadline, days) {
+  const msLeft = new Date(deadline + "T23:59") - new Date();
+  return msLeft >= 0 && msLeft <= days * 1000 * 60 * 60 * 24;
+}
+
+// The colored tag for each kind of job (the same colors as the Opportunities page)
+const jobTagClass = {
+  Internship: "feed-kind-tag feed-kind-tag-purple",
+  "Co-op": "feed-kind-tag feed-kind-tag-blue",
+  "Part-time": "feed-kind-tag feed-kind-tag-green",
+  "Full-time": "feed-kind-tag feed-kind-tag-amber",
+};
+
+// One listing post: an organization sharing one of its jobs.
+// props.post is one { } from the listingPosts list above.
+function ListingPost(props) {
+  // The job this post is about, found by its id in the opportunities list.
+  // .find() gives back the first job whose id matches
+  const job = opportunities.find((item) => item.id === props.post.jobId);
+
+  // Save, the same on/off as the Opportunities page: it adds the job to (or
+  // takes it off) the Application tracker. It starts "on" if it's already there
+  const [saved, setSaved] = useState(() => isOnTracker(job.id));
+
+  function toggleSave() {
+    if (saved) {
+      removeFromTracker(job.id);
+    } else {
+      addToTracker(job.id);
+    }
+    setSaved(!saved);
+  }
+
   return (
-    <div className="feed-today">
-      {/* <time> marks it as a date. dateTime gives computers the exact date,
-          like "2026-10-24" (the first 10 letters of toISOString) */}
-      <time
-        className="feed-today-words"
-        dateTime={today.toISOString().slice(0, 10)}
-      >
-        <span className="feed-today-weekday">{weekday}</span>
-        <span className="feed-today-date">{monthAndDay}</span>
-      </time>
-    </div>
+    // <article>: one post. id lets a link jump straight to it
+    <article className="feed-post" id={"post-" + props.post.id}>
+      <div className="feed-post-body">
+        {/* Who posted it: the organization's square, its name, and when */}
+        <div className="feed-post-header">
+          {/* A square (not a circle), so organizations look different from
+              people. Hidden from screen readers: the name is right next to it */}
+          <div className="feed-listing-logo" aria-hidden="true">
+            {job.initials}
+          </div>
+          <div className="feed-post-who">
+            <p className="feed-post-author">{job.organization}</p>
+            <p className="feed-post-headline">
+              Posted a listing
+              <span aria-hidden="true"> · </span>
+              {props.post.time}
+            </p>
+          </div>
+          <span className="feed-kind-tag feed-kind-tag-amber">New listing</span>
+        </div>
+
+        {/* What the organization wrote */}
+        <p className="feed-post-text">{props.post.text}</p>
+
+        {/* The job itself, in a light box inside the post */}
+        <div className="feed-listing-job">
+          <div className="feed-listing-top">
+            {/* An <h2>, like the other posts' titles */}
+            <h2 className="feed-listing-title">{job.title}</h2>
+            <span className="feed-listing-match">{job.match}% match</span>
+          </div>
+          {/* The job's facts as small tags */}
+          <ul className="feed-listing-facts" aria-label="Details">
+            <li className={jobTagClass[job.type]}>{job.type}</li>
+            <li className="feed-fact-tag">{job.place}</li>
+            <li className="feed-fact-tag">{job.pay}</li>
+            <li className="feed-fact-tag">Apply by {shortDate(job.deadline)}</li>
+            {/* "Due soon" when the deadline is within a week (written out, not only a color) */}
+            {isDueWithin(job.deadline, 7) && <li className="feed-kind-tag feed-kind-tag-amber">Due soon</li>}
+          </ul>
+          <div className="feed-listing-actions">
+            {/* Save: on/off. aria-pressed tells screen readers if it's on, and
+                aria-label says which job (every listing has a Save) (WCAG) */}
+            <button
+              type="button"
+              className="feed-listing-save"
+              aria-pressed={saved}
+              aria-label={"Save " + job.title}
+              onClick={toggleSave}
+            >
+              {saved ? "Saved" : "Save"}
+            </button>
+            {/* Opens the job's pop-up on the Opportunities page ("?job=1") */}
+            <Link to={"/discovery?job=" + job.id} className="feed-listing-view">
+              View listing
+              <span aria-hidden="true"> →</span>
+            </Link>
+          </div>
+          {/* Hidden on screen. Screen readers hear it when Save is pressed (WCAG) */}
+          <p className="sr-only" role="status">
+            {saved ? "Saved to My applications." : ""}
+          </p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+// The "Due soon" box (top of the right column): the jobs on YOUR tracker
+// whose deadline is in the next 2 weeks, soonest first.
+// (It used to be a box with today's date, which was only for looks.)
+function DueSoonCard() {
+  // The tracker's list is [{ id, stage }, ...]. For each one, find its job,
+  // keep the ones due in the next 14 days, and sort them soonest first
+  const due = loadTracker()
+    .map((item) => opportunities.find((job) => job.id === item.id))
+    .filter((job) => job && isDueWithin(job.deadline, 14))
+    .sort((a, b) => a.deadline.localeCompare(b.deadline));
+
+  return (
+    <section className="feed-side-card" aria-labelledby="feed-due-title">
+      <h2 id="feed-due-title" className="feed-side-title">
+        Due soon
+      </h2>
+      {/* "A ? B : C": the list if anything is due, otherwise a short note */}
+      {due.length > 0 ? (
+        <ul className="feed-due-list">
+          {due.map((job) => (
+            <li key={job.id} className="feed-due-item">
+              <Link to={"/discovery?job=" + job.id} className="feed-due-link">
+                {job.title}
+              </Link>
+              <span className="feed-due-when">
+                {job.organization} · Apply by {shortDate(job.deadline)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="feed-due-empty">Nothing on your tracker is due in the next 2 weeks.</p>
+      )}
+      <Link to="/applications" className="feed-side-more">
+        My applications
+        <span aria-hidden="true">→</span>
+      </Link>
+    </section>
   );
 }
 
@@ -828,25 +948,29 @@ function PeopleToKnow() {
 function Feed() {
   // "picked" remembers which tab is on. It starts on "For you".
   const [picked, setPicked] = useState("For you");
-  // Every post on the page. It starts as the sample posts, and grows when you
-  // post something. (New posts are only kept until the page is refreshed,
-  // because there's no backend to save them yet.)
-  const [allPosts, setAllPosts] = useState(posts);
+  // Everything on the page: the listing posts and student posts (feedItems,
+  // near the top), plus the ones you post. (New posts are only kept until the
+  // page is refreshed, because there's no backend to save them yet.)
+  const [allPosts, setAllPosts] = useState(feedItems);
 
   // Runs when the post box sends a new post: puts it at the top of the list.
-  // [newPost, ...allPosts] makes a new list: the new post, then all the old ones
+  // [newPost, ...allPosts] makes a new list: the new post, then all the old ones.
+  // type: "update" marks it as a normal post (see feedItems)
   function addPost(newPost) {
-    setAllPosts([newPost, ...allPosts]);
-    // Your own post shows on "For you", so switch there if you were on "Following"
+    setAllPosts([{ ...newPost, type: "update" }, ...allPosts]);
+    // Your own post shows on "For you", so switch there if you were on another tab
     setPicked("For you");
   }
 
   // Picks which posts to show, based on the tab.
-  // "For you" shows every post. On "Following", .filter() goes through the
-  // posts and keeps only the ones where "following" is true
+  // "For you" shows every post. .filter() goes through the posts and keeps
+  // only the ones that pass: "following" is true (Following), or it's a
+  // listing post (Listings)
   let shownPosts = allPosts;
   if (picked === "Following") {
     shownPosts = allPosts.filter((post) => post.following);
+  } else if (picked === "Listings") {
+    shownPosts = allPosts.filter((post) => post.type === "listing");
   }
 
   return (
@@ -873,7 +997,10 @@ function Feed() {
             // Makes one <Post> for each post that passed the filter above.
             // Each line like author={post.author} passes one piece of info
             // into the Post component, where it becomes props.author
-            shownPosts.map((post) => (
+            // A listing post gets its own piece (ListingPost); the rest are normal posts
+            shownPosts.map((post) => post.type === "listing" ? (
+              <ListingPost key={post.id} post={post} />
+            ) : (
               <Post
                 key={post.id}
                 id={post.id}
@@ -893,14 +1020,14 @@ function Feed() {
             ))
           ) : (
             <p className="feed-empty">
-              No posts from people you follow yet.
+              Nothing here yet.
             </p>
           )}
         </section>
 
-        {/* Right column: today's date, then suggestions */}
+        {/* Right column: what's due soon, then suggestions */}
         <aside className="feed-right">
-          <TodayCard />
+          <DueSoonCard />
           <OpportunityRadar />
           <PeopleToKnow />
         </aside>

@@ -459,8 +459,10 @@ function About() {
                 straight past the top bar to the page's content (WCAG) */}
             <a className="about-skip-link" href="#main">Skip to main content</a>
 
-            {/* The bar at the top of the page */}
-            <header className="about-bar">
+            {/* The bar at the top of the page. "about-bar-band" makes it navy, the
+                same as the band behind the first screen (Log in and Sign up use
+                the same bar without it, so theirs stays light) */}
+            <header className="about-bar about-bar-band">
                 <div className="about-inner about-bar-row">
                     {/* The logo. Clicking it goes back to the top of the page */}
                     <a className="about-logo" href="#main">

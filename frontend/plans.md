@@ -451,6 +451,9 @@ into backend/plans.md, which stays their file)
              in the fields the word rules miss, writes a short plain-language summary, and flags
              likely scams (asks for money or personal details up front). Its output still goes
              through the B16 review queue; it never publishes anything by itself
+    B19      before launch: limit how often one visitor can call the login and writing
+             routes (e.g. express-rate-limit, a new package, so a team decision). Today any
+             one person can send thousands of requests a second (see the stress test above)
     Note: the backend still mounts its routes at /auth (app.ts), but the Vite proxy only sends
     /api to port 3000. Until S4 moves them under /api, every api() call from the site gets a 404.
 
@@ -501,6 +504,23 @@ Done outside this plan (2026-11-14)
     - Deploying (Kevin): frontend/vercel.json sends every address to index.html, so
       refreshing on /discovery doesn't 404 on Vercel. When the backend is hosted, add an
       /api rewrite to it above that line (see the deploy checklist in the PR / team notes).
+    - UI revamp, Stripe-inspired (Kevin, 2026-11-14; Discovery, Feed, and the tracker are
+      Roemer's pages, so he reviews those parts): new light/dark colors, Inter on every page,
+      white boxes on soft shadows and pill buttons ("Revamp: shared look" in index.css), the
+      top bar's current page underlined (NavLink), a navy band on About, Discovery as a
+      dashboard (summary boxes + table, which turns into boxes on phones, and the "Examples"
+      tag), the Feed with listing posts + a Listings tab + "Due soon", and the tracker's
+      board look. Old unused CSS was removed. DESIGN.md still describes the October look.
+    - Error pages (Kevin): pages/NotFound.jsx for unknown addresses, and
+      components/ErrorBoundary.jsx around every page, so a crash or a page that can't
+      download shows "Something went wrong" with Try again, never a blank page.
+    - Audit + stress test (2026-11-14, production build on this machine):
+      accessibility checks on 13 pages: 0 issues; contrast AA on 432 texts in light and dark;
+      LCP under 2 s on every page even on a simulated slow phone, layout shift under 0.05;
+      ~170 KB per first visit. 100% of ~650,000 test requests answered (frontend ~4,700
+      pages/s, backend 12,000-22,000 req/s on routes without the database). Messages now
+      waits longer between checks while the backend is failing (5s -> 10s -> ... 1 min).
+      Not tested: anything that talks to Supabase (it would hit the real project).
 
 
 Order

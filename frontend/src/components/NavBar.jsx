@@ -43,8 +43,12 @@ function NavBar() {
           <span className="feed-nav-long-word">Opportunities</span>
           <span className="feed-nav-short-word">Jobs</span>
         </Link>
-        <Link to="/network">Network</Link>
-        <Link to="/messages">Messages</Link>
+        {/* Network and Messages used to be here. They're hidden for now:
+            Network only has made-up people, and Messages can't load until the
+            backend has its routes (see frontend/plans.md, B13). The pages still
+            exist at /network and /messages. When they work, put these back:
+              <Link to="/network">Network</Link>
+              <Link to="/messages">Messages</Link> */}
         {/* Switches Light / Dark / System. On phones this row moves under the
             logo, so it's still in the top bar, never hidden */}
         <ThemeToggle />

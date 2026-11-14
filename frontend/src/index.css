@@ -2845,7 +2845,7 @@ html:has(.about-site) {
   align-items: center;    /* lines them up in the middle, top-to-bottom */
 }
 
-/* The links in the top bar (Home, Network, Messages) */
+/* The links in the top bar (Home, Opportunities) */
 .feed-nav-right a {
   color: var(--muted);    /* blue */
   padding: 10px;          /* space around the words, so they're easier to click */
@@ -2948,7 +2948,7 @@ html:has(.about-site) {
   }
 
   .feed-nav-right a {
-    padding: 10px 5px;    /* less space on the sides of each link, so all 4 fit */
+    padding: 10px 5px;    /* less space on the sides of each link, so they all fit */
     font-size: 15px;      /* a touch smaller, so your circle fits on the same row */
   }
 }

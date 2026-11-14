@@ -405,6 +405,10 @@ Done outside this plan (2026-11-14)
       "What I'm looking for" card does that job) were removed. The account menu is now
       View profile, Edit profile, Settings, Log out. A top-bar search, if wanted later,
       should send you to Discovery's search rather than be a second box.
+    - Network and Messages are hidden from the top bar (NavBar.jsx) until they work:
+      Network is all made-up people, and Messages waits on B13. Their pages and routes are
+      untouched (still behind the login guard); the two <Link> lines to put back are in a
+      comment in NavBar.jsx. The top bar is now Home, Opportunities, theme, your circle.
 
 
 Order

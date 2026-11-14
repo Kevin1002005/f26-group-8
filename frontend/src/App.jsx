@@ -20,6 +20,7 @@ import About from "./pages/About.jsx";
 // (lazy() needs the page file to use "export default", which all of ours do.)
 const Login = lazy(() => import("./pages/Login.jsx"));
 const Signup = lazy(() => import("./pages/Signup.jsx"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword.jsx"));
 const Feed = lazy(() => import("./pages/Feed.jsx"));
 const Profile = lazy(() => import("./pages/Profile.jsx"));
 const EditProfile = lazy(() => import("./pages/EditProfile.jsx"));
@@ -45,6 +46,10 @@ function App() {
         <Route path="/login" element={<Login />} />
         {/* yoursite.com/signup shows the Signup page */}
         <Route path="/signup" element={<Signup />} />
+        {/* yoursite.com/reset-password is where the "reset your password" email
+            link lands. It's out here (not inside RequireLogin) because people
+            who forgot their password aren't logged in */}
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* Every page inside here needs you to be logged in. A Route with no
             "path" doesn't change the web address; it just puts RequireLogin in

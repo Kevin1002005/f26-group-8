@@ -61,7 +61,7 @@ function NavBar() {
             logo, so it's still in the top bar, never hidden */}
         <ThemeToggle />
 {/* Your circle. Clicking it opens a dropdown with View profile,
-            Edit profile, Settings, and Log out */}
+            Edit profile, Settings, About ScoutSearch, and Log out */}
         <AccountMenu />
       </div>
     </nav>

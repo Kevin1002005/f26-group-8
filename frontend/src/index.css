@@ -3227,6 +3227,9 @@ html:has(.about-site) {
 .account-menu-name {
   font-weight: 700;       /* thick text */
   color: var(--text);     /* deep navy */
+  overflow-wrap: anywhere; /* it's your real name or email now, and a long email
+                              has no spaces, so let it break onto a second line
+                              instead of spilling out of the box */
 }
 
 /* One item in the dropdown (Edit profile, Settings, ...).
@@ -6428,6 +6431,68 @@ html:has(.about-site) {
   margin-bottom: 20px;       /* space before the group under it */
   text-decoration: none;     /* no underline, like the other pill buttons (the
                                 "Underline links" setting still adds one) */
+}
+
+/* Account tab: the "Change password" form. Not as wide as the whole box,
+   because password boxes don't need to be long */
+.settings-password-form {
+  max-width: 360px;
+}
+
+/* The words above each box ("New password", ...) */
+.settings-field-label {
+  display: block;            /* on its own line, above its box */
+  margin-bottom: 4px;        /* small space between the label and its box */
+  font-weight: 700;          /* thick text */
+  color: var(--text);        /* deep navy (13.3:1 on the box; 12.1:1 in dark) */
+}
+
+/* The boxes you type into, like the Sign up page's boxes */
+.settings-input {
+  display: block;                    /* each box on its own line */
+  width: 100%;                       /* as wide as the form */
+  margin-bottom: 12px;               /* space before the next label */
+  padding: 8px 12px;                 /* space between the text and the box's edge */
+  font-family: inherit;              /* boxes don't copy the page's font on their own */
+  font-size: 16px;                   /* 16px also stops phones from zooming in */
+  color: var(--text);                /* deep navy (13.3:1; 12.1:1 in dark) */
+  background-color: var(--card);     /* the same off-white as the box around it */
+  border: 1px solid var(--border);   /* blue line (4.1:1; 4.0:1 in dark; borders need 3:1, WCAG) */
+  border-radius: 8px;                /* rounded corners */
+}
+
+/* Darker blue outline when you click into or Tab to a box (WCAG) */
+.settings-input:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* A box with a problem gets a thicker red line, so it doesn't rely on color alone (WCAG) */
+.settings-input[aria-invalid="true"] {
+  border-color: var(--signup-error);
+  border-width: 2px;
+}
+
+/* The red reason under a box ("Use at least 8 characters."). It takes no
+   room while it's empty */
+.settings-field-error {
+  font-size: 14px;
+  font-weight: 700;              /* thick, so it doesn't rely on color alone (WCAG) */
+  color: var(--signup-error);    /* deep red (7.2:1 on the box; 7.7:1 in dark) */
+}
+
+/* Once it has words in it, it sits close under its box */
+.settings-field-error:not(:empty) {
+  margin-top: -8px;      /* pulls it up, closer to its box (the box has 12px below it) */
+  margin-bottom: 12px;   /* space before the next label or button */
+}
+
+/* The Save button's row: the button and the "Your password is changed" message */
+.settings-password-actions {
+  display: flex;               /* side by side */
+  flex-wrap: wrap;             /* onto 2 lines on small screens */
+  align-items: center;         /* lined up in the middle */
+  gap: 12px;                   /* space between them */
 }
 
 /* Phones and narrow windows: the tabs move into a row above the box.

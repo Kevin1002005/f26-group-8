@@ -52,7 +52,9 @@ How to work a task (for teammates and for Claude)
 
 
 Decisions needed (from the Phase Two Plan doc; tasks that wait on one say so)
-    [ ] D1. Email and password boxes: A remove, B Supabase email login (proposed), C keep custom login
+    [x] D1. Email and password boxes: A remove, B Supabase email login (proposed), C keep custom login
+            Decided 2026-11-14 (Kevin): B. Supabase stores the accounts; Google is the other way in.
+            Built as F9. The backend's own /auth/signup and /auth/login are no longer used (S5)
     [ ] D2. The permissions table (Access Roles doc + the new rows in the Phase Two doc)
     [ ] D3. Does ScoutCoach's AI fit the $0 budget? (blocks F16 and B10 only)
     [ ] D4. Owners for the new pages (F1-F6). Roemer took F2 and F4; F1, F5, F6 still need one
@@ -312,9 +314,17 @@ Frontend tasks
           working with no change. If it has to wait for the session, it needs a loading state
           so it doesn't send logged-in people to /login for a split second.
 
-    [ ] F9 - Email login through Supabase              files: frontend/src/pages/Login.jsx,
+    [x] F9 - Email login through Supabase              files: frontend/src/pages/Login.jsx,
                                                               frontend/src/pages/Signup.jsx
         needs: D1 = B, and B5.
+        Done 2026-11-14 (Kevin): Log in uses signInWithPassword; Sign up uses signUp (name saved
+        as user_metadata.full_name, the same key Google uses) and shows "Check your email";
+        Forgot password sends a real email; new pages/ResetPassword.jsx at /reset-password
+        (outside RequireLogin) saves the new password with updateUser. Passwords: 8+ characters.
+        Tested with fake Supabase answers only. Still to do in the Supabase dashboard (B5):
+        Email provider on and "Confirm email" on (both are Supabase's defaults; check them),
+        and the production URL in Redirect URLs. Then try a real sign up with your own email.
+        Supabase's built-in email sender only sends a few emails an hour (B12 before launch).
         - Log in form: supabase.auth.signInWithPassword({ email, password }).
         - Sign up: supabase.auth.signUp({ email, password, options: { data: { display_name } } })
           and a "Check your email to confirm" screen (reuse the Forgot password screen's look).
@@ -416,6 +426,21 @@ Done outside this plan (2026-11-14)
       The Feed is hidden from the top bar the same way as Network (Feed.jsx unchanged; the
       line to put back is in NavBar.jsx). "My applications" (/applications) is in the top
       bar. The top bar is now: logo, Opportunities, My applications, theme, your circle.
+    - Your real name in the top bar (Kevin): src/use-current-user.js reads the Supabase login
+      (name from Google or from Sign up, else the email) and AccountMenu shows it, instead of
+      the made-up "Roemer Mallari". This is the start of F8's hook; F8 makes it ask
+      /api/auth/me instead. Profile and Feed still show the example person (Roemer's pages).
+    - Passwords, both cases (Kevin):
+      logged in -> Settings -> Account -> Change password (new + confirm, supabase.auth.updateUser;
+      Google users can add a password this way). Logged out -> Log in -> "Forgot your password?"
+      emails a link to that account's address -> /reset-password. Optional, for Anthony:
+      Supabase's "Secure password change" setting makes Change password need a recent login;
+      the form already handles that answer ("log out, log back in, and try again").
+    - "About ScoutSearch" in the account menu goes back to the About page from inside the app;
+      About's Home button goes back to Opportunities.
+    - Deploying (Kevin): frontend/vercel.json sends every address to index.html, so
+      refreshing on /discovery doesn't 404 on Vercel. When the backend is hosted, add an
+      /api rewrite to it above that line (see the deploy checklist in the PR / team notes).
 
 
 Order

@@ -1,6 +1,6 @@
 // AccountMenu.jsx is your circle in the top bar, and the dropdown that opens
 // when you click it. The dropdown has links to your profile, Edit profile,
-// Settings, and Log out.
+// Settings, About ScoutSearch, and Log out.
 // NavBar.jsx uses it, so it shows up on every page that has the top bar.
 // The styles are in index.css, under "Top bar: account menu".
 //
@@ -15,8 +15,29 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 // markLoggedOut forgets that you're logged in (login-status.js)
 import { markLoggedOut } from "../login-status.js";
+// useCurrentUser says who is logged in: name, initials, email (use-current-user.js)
+import { useCurrentUser } from "../use-current-user.js";
+
+// A simple outline of a person, for the circle when we don't know your name
+// (for example, if you used the email form, which isn't connected yet).
+// "currentColor" makes it the circle's text color (white).
+// aria-hidden: it's decoration, the button's aria-label names it (WCAG)
+function PersonIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </svg>
+  );
+}
 
 function AccountMenu() {
+  // Who is logged in. Before, this was always the made-up "Roemer Mallari"
+  const me = useCurrentUser();
+  // The name at the top of the dropdown: your name, or your email if Google
+  // didn't send a name, or "Your account" if we don't know either
+  const shownName = me.name || me.email || "Your account";
+
   // "open" is true while the dropdown is showing. It starts closed (false)
   const [open, setOpen] = useState(false);
 
@@ -81,7 +102,7 @@ function AccountMenu() {
           ("!open" means "the opposite of open").
           aria-expanded tells screen readers if the dropdown is open, and
           aria-controls says which part of the page it opens (WCAG).
-          aria-label gives it a name, because "RMV" alone doesn't say what it does */}
+          aria-label gives it a name, because initials like "KL" alone don't say what it does */}
       <button
         type="button"
         ref={buttonRef}
@@ -91,16 +112,17 @@ function AccountMenu() {
         aria-label="Account menu"
         onClick={() => setOpen(!open)}
       >
-        RMV
+        {/* Your initials, or the person outline if we don't know your name */}
+        {me.initials || <PersonIcon />}
       </button>
 
       {/* "open && (...)" means "only draw the dropdown while it's open" */}
       {open && (
         <div id="account-menu-list" className="account-menu-list">
-          {/* Your name and a link to your profile.
-              It's always the same made-up person for now */}
+          {/* Your name and a link to your profile. (The Profile page itself
+              still shows the made-up example person until it's connected) */}
           <div className="account-menu-header">
-            <p className="account-menu-name">Roemer Mallari</p>
+            <p className="account-menu-name">{shownName}</p>
             <Link to="/profile" className="account-menu-item account-menu-profile-link" onClick={closeMenu}>
               View profile
             </Link>
@@ -121,6 +143,14 @@ function AccountMenu() {
             <li>
               <Link to="/settings" className="account-menu-item" onClick={closeMenu}>
                 Settings
+              </Link>
+            </li>
+            {/* Back to the About page (the site's front page). The logo goes to
+                Opportunities, your home page, so this is the way to About from
+                inside the app. On About, the Home button brings you back */}
+            <li>
+              <Link to="/about" className="account-menu-item" onClick={closeMenu}>
+                About ScoutSearch
               </Link>
             </li>
           </ul>

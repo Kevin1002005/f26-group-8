@@ -96,9 +96,6 @@
   --tag-purple-bg: #ece8fb; --tag-purple-text: #4b3aa8;  /* internships, big news (7.1:1) */
   --tag-green-bg: #d9f4e6;  --tag-green-text: #0b6b3a;   /* part-time, submitted (5.7:1) */
   --tag-amber-bg: #fdf1d6;  --tag-amber-text: #7d4a00;   /* full-time, "Due soon", new listings (6.6:1) */
-  --discovery-highlight: #9fd0f5; /* Discovery page: sky-blue words and outlines on the dark top box
-                                     (about 9:1 on it in light mode, 12:1 in dark mode). Dark mode
-                                     doesn't set its own, so it uses this one too */
   --tracker-sent: #1f8a4c;        /* Application tracker: the green "Submitted" dot (4.3:1 on boxes;
                                      dots need 3:1, WCAG). The site has no other green */
   --signup-error: #9b1c1c;        /* red error messages under the boxes (8.6:1 on boxes) */
@@ -7411,27 +7408,11 @@ html:has(.about-site) {
   }
 }
 
-/* ----- The pop-up (kept from before the revamp; it already floated) ----- */
-
-/* The row of skill tags */
-.discovery-tags {
-  display: flex;
-  flex-wrap: wrap;                       /* tags wrap onto a new line if they don't fit */
-  gap: 8px;                              /* space between tags */
-}
-
-/* One skill tag */
-.discovery-tag {
-  padding: 4px 12px;                     /* space inside: top/bottom, left/right */
-  border-radius: 999px;                  /* pill shape */
-  background-color: var(--soft);         /* very light blue */
-  font-size: 13px;
-  color: var(--muted);                   /* blue words */
-}
-
-/* ---------- Discovery page: the "View opportunity" pop-up ----------
-   A <dialog>: the browser's own pop-up. The browser shows it in the middle
-   of the screen, above everything else, when the code calls showModal(). */
+/* ----- The "View opportunity" pop-up ----- */
+/* A <dialog>: the browser's own pop-up. The browser shows it in the middle
+   of the screen, above everything else, when the code calls showModal().
+   Since the revamp it's a plain white box: the title at the top, the quick
+   facts in one row, then the details, with Save and Apply at the bottom. */
 
 /* Stops the page behind from scrolling while a pop-up is open.
    ":has(dialog[open])" means "the page, while it has an open pop-up" */
@@ -7440,18 +7421,25 @@ html:has(.discovery-dialog[open]) {
 }
 
 /* The pop-up box. It has no padding of its own (so a click on it, and not on
-   something inside it, means the dark area around it was clicked) */
+   something inside it, means the dark area around it was clicked).
+   It sits inside a table cell in Discovery.jsx, which lines its words up on
+   the right and keeps them on one line, so the first three lines below put
+   the pop-up's words back to normal. Without them, every line was pushed to
+   the right and long sentences ran off the side */
 .discovery-dialog {
-  width: min(680px, calc(100vw - 32px));  /* 680px wide, or the screen minus 16px each side on phones */
+  text-align: left;                       /* words start on the left */
+  white-space: normal;                    /* long sentences wrap onto the next line */
+  font-size: 15px;                        /* not the table's smaller size */
+  width: min(640px, calc(100vw - 32px));  /* 640px wide, or the screen minus 16px each side on phones */
   max-height: calc(100dvh - 48px);        /* never taller than the screen (dvh = the real phone screen height) */
   margin: auto;                           /* centered on the screen */
   padding: 0;
-  border: none;
-  border-radius: 16px;                    /* same corners as the boxes on the page */
-  background-color: var(--card);          /* the light box color */
+  border: 1px solid var(--line);          /* a very light edge */
+  border-radius: var(--radius-box);       /* the same corners as the boxes on the page */
+  background-color: var(--card);          /* white (light) / navy box (dark) */
   color: var(--text);                     /* navy words */
-  overflow: hidden;                       /* keeps the dark top inside the rounded corners */
-  box-shadow: 0 24px 64px -24px color-mix(in srgb, var(--shadow-color) 50%, transparent); /* a soft shadow, so it floats */
+  overflow: hidden;                       /* keeps everything inside the rounded corners */
+  box-shadow: var(--shadow-lift);         /* the deep shadow, so it floats */
 }
 
 /* While it's open: top, middle, and bottom stacked, and only the middle scrolls.
@@ -7461,68 +7449,84 @@ html:has(.discovery-dialog[open]) {
   flex-direction: column;
 }
 
-/* The dark see-through layer behind the pop-up that dims the page.
+/* The see-through layer behind the pop-up that dims the page.
    (::backdrop is drawn by the browser; it can't always read our color
-   variables, so the navy is written out: the same as --shadow-color) */
+   variables, so the navy is written out: the same as --strong-fill) */
 .discovery-dialog::backdrop {
-  background-color: rgb(15 42 68 / 0.55);
+  background-color: rgb(11 34 64 / 0.45);
 }
 
-/* The dark band at the top: logo | title | close button */
+/* The top: logo | title, who and where, tags | close button */
 .discovery-dialog-top {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto; /* logo | words get the rest | X */
   align-items: start;
-  gap: 16px;
-  padding: 24px 24px 22px 28px;           /* space inside: top, right, bottom, left */
-  background-color: var(--strong-fill);   /* the same dark navy as the page's top box */
-  color: var(--on-primary);               /* white words (12.9:1, WCAG) */
+  gap: 14px;
+  padding: 22px 18px 18px 24px;           /* space inside: top, right, bottom, left */
+  border-bottom: 1px solid var(--line);   /* a thin line under it */
 }
 
-/* "Co-op" above the title */
-.discovery-dialog-type {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--discovery-highlight);      /* sky blue (9:1 on the navy, WCAG) */
+/* The title and the lines under it */
+.discovery-dialog-heading-words {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;                           /* long titles wrap instead of pushing the X off */
 }
 
-/* The job title in the pop-up */
+/* The job title */
 .discovery-dialog-title {
-  margin-top: 2px;
-  font-size: 24px;
-  font-weight: 800;                       /* extra bold */
-  line-height: 1.2;
-  letter-spacing: -0.01em;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--text);                     /* navy (15.5:1 / 14.2:1) */
 }
 
 /* "Brightloop Learning · Remote" */
 .discovery-dialog-facts {
+  font-size: 14px;
+  color: var(--muted);                    /* gray-blue (7.8:1 / 9.1:1) */
+}
+
+/* The kind-of-job tag and the match, in one row */
+.discovery-dialog-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   margin-top: 4px;
-  font-size: 15px;
-  color: color-mix(in srgb, var(--on-primary) 82%, transparent); /* soft white (about 10:1) */
+}
+
+/* "92% match" */
+.discovery-dialog-match {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary-text);             /* blue (5.9:1 / 8:1) */
 }
 
 /* The X button in the top right */
 .discovery-dialog-close {
   display: grid;
   place-items: center;                    /* centers the X */
-  width: 44px;                            /* easy to tap */
-  height: 44px;
+  width: 40px;                            /* easy to tap */
+  height: 40px;
   border-radius: 999px;                   /* a circle */
-  color: var(--on-primary);               /* white X */
+  color: var(--subtle);                   /* a quiet gray-blue X */
   cursor: pointer;
 }
 
-/* A see-through white circle behind the X when the mouse is over it */
+/* A light circle behind the X when the mouse is over it */
 @media (hover: hover) and (pointer: fine) {
   .discovery-dialog-close:hover {
-    background-color: color-mix(in srgb, var(--on-primary) 12%, transparent);
+    background-color: var(--soft);
+    color: var(--text);
   }
 }
 
-/* Keyboard outline for the X, sky blue so it shows on the navy (WCAG) */
+/* Keyboard outline for the X (WCAG) */
 .discovery-dialog-close:focus-visible {
-  outline: 2px solid var(--discovery-highlight);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -7530,76 +7534,82 @@ html:has(.discovery-dialog[open]) {
 .discovery-dialog-body {
   flex: 1;                                /* takes the space between the top and bottom */
   overflow-y: auto;                       /* scrolls up and down when needed */
-  padding: 24px 28px 28px;                /* space inside */
+  padding: 18px 24px 24px;                /* space inside */
   overscroll-behavior: contain;           /* scrolling to the end doesn't start scrolling the page */
 }
 
-/* The quick facts: small boxes in a grid (Pay, When, Hours, Apply by).
-   4 in a row on big screens, 2 by 2 on phones */
+/* The quick facts in one row (Pay, When, Hours, Apply by): small label,
+   value under it. 4 across on big screens, 2 by 2 on phones */
 .discovery-dialog-facts-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr)); /* 4 equal columns */
-  gap: 10px;
+  gap: 12px 16px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);   /* a thin line under the facts */
 }
 
-/* "92% match" in the dark band, in sky blue so it stands out */
-.discovery-dialog-match {
-  font-weight: 700;                       /* bold */
-  color: var(--discovery-highlight);      /* sky blue (9:1 on the navy, WCAG) */
-}
-
-/* One fact box */
-.discovery-dialog-facts-grid > div {
-  padding: 12px 14px;
-  border-radius: 12px;
-  background-color: var(--soft);          /* very light blue */
-}
-
-/* The label in a fact box ("Pay") */
+/* The label ("Pay") */
 .discovery-dialog-facts-grid dt {
-  font-size: 13px;
-  color: var(--subtle);                   /* soft blue (WCAG) */
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--subtle);                   /* 5.8:1 / 7.3:1 */
 }
 
-/* The value in a fact box ("$27–30/hr") */
+/* The value ("$27–30/hr") */
 .discovery-dialog-facts-grid dd {
   margin-top: 2px;
-  font-size: 15px;
-  font-weight: 700;                       /* bold */
+  font-size: 14.5px;
+  font-weight: 600;
   color: var(--text);                     /* navy */
 }
 
-/* Section titles in the pop-up ("About the role", "What you'll do", ...) */
+/* Section titles ("About the role", "What you'll do", ...) */
 .discovery-dialog-heading {
-  margin: 24px 0 8px;                     /* more space above than below, so it belongs to what follows */
-  font-size: 17px;
-  font-weight: 700;                       /* bold */
+  margin: 20px 0 6px;                     /* more space above than below, so it belongs to what follows */
+  font-size: 14px;
+  font-weight: 700;
   color: var(--text);                     /* navy */
 }
 
-/* Paragraphs in the pop-up */
+/* Paragraphs */
 .discovery-dialog-text {
   max-width: 65ch;                        /* lines no longer than about 65 letters */
-  font-size: 16px;
   line-height: 1.6;                       /* comfy space between lines */
-  color: var(--muted);                    /* blue paragraph color (8.9:1, WCAG) */
+  color: var(--muted);                    /* gray-blue (7.8:1 / 9.1:1) */
 }
 
-/* The bullet lists ("What you'll do", "What they're looking for") */
+/* The bullet lists ("What you'll do", "What you need") */
 .discovery-dialog-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;                               /* space between items */
-  padding-left: 20px;                     /* room for the bullets */
+  gap: 4px;                               /* space between items */
+  max-width: 65ch;
+  padding-left: 18px;                     /* room for the bullets */
   list-style: disc;                       /* round bullets (Tailwind turns them off by default) */
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--muted);                    /* blue paragraph color */
+  line-height: 1.55;
+  color: var(--muted);
 }
 
-/* The bullets themselves, in the main blue */
+/* The bullets themselves: quiet, so the words lead */
 .discovery-dialog-list li::marker {
-  color: var(--primary);
+  color: var(--subtle);
+}
+
+/* The skill tags */
+.discovery-tags {
+  display: flex;
+  flex-wrap: wrap;                        /* tags wrap onto a new line if they don't fit */
+  gap: 6px;
+}
+
+/* One skill tag */
+.discovery-tag {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);      /* pill shape */
+  background-color: var(--soft);          /* light gray-blue */
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);                    /* 7:1 / 6.9:1 on it */
 }
 
 /* The bottom: a message on the left, Save and Apply on the right. It stays
@@ -7610,7 +7620,7 @@ html:has(.discovery-dialog[open]) {
   justify-content: space-between;         /* message left, buttons right */
   flex-wrap: wrap;                        /* the buttons drop under the message on small phones */
   gap: 12px;
-  padding: 16px 28px;                     /* space inside */
+  padding: 14px 24px;                     /* space inside */
   border-top: 1px solid var(--line);      /* a thin line above it */
 }
 
@@ -7620,23 +7630,27 @@ html:has(.discovery-dialog[open]) {
   color: var(--muted);
 }
 
-/* Phones: less space inside, and Save and Apply share their row evenly */
+/* Phones: less space inside, and the facts 2 by 2 */
 @media (max-width: 480px) {
   .discovery-dialog-top {
-    padding: 18px 12px 18px 18px;
+    padding: 18px 12px 16px 18px;
     gap: 12px;
   }
+
   .discovery-dialog-title {
-    font-size: 20px;
+    font-size: 18px;
   }
+
   .discovery-dialog-body {
-    padding: 18px;
+    padding: 16px 18px 20px;
   }
+
   .discovery-dialog-facts-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)); /* 2 by 2 */
   }
+
   .discovery-dialog-bottom {
-    padding: 14px 18px;
+    padding: 12px 18px;
   }
 }
 

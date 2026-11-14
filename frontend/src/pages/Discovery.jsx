@@ -340,18 +340,22 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
       aria-labelledby={titleId}
       onClick={closeIfOutside}
     >
-      {/* The dark band at the top, like the dark box on the page */}
+      {/* The top: the square logo, the title with who and where under it,
+          then the kind of job and the match as small tags, and the X */}
       <div className="discovery-dialog-top">
         <span className="discovery-logo" aria-hidden="true">
           {opportunity.initials}
         </span>
-        <div>
-          <p className="discovery-dialog-type">{opportunity.type}</p>
+        <div className="discovery-dialog-heading-words">
           <h2 id={titleId} className="discovery-dialog-title">
             {opportunity.title}
           </h2>
           <p className="discovery-dialog-facts">
-            {opportunity.organization} · {opportunity.place} ·{" "}
+            {opportunity.organization} · {opportunity.place}
+          </p>
+          <p className="discovery-dialog-tags">
+            {/* The same colored tag as the table (typeTagClass, further down) */}
+            <span className={typeTagClass[opportunity.type]}>{opportunity.type}</span>
             <span className="discovery-dialog-match">{opportunity.match}% match</span>
           </p>
         </div>
@@ -366,7 +370,7 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
 
       {/* The middle part scrolls if the details are longer than the screen */}
       <div className="discovery-dialog-body">
-        {/* The 4 quick facts, as a list of labels and values (dl = description list) */}
+        {/* The 4 quick facts in one row, as labels and values (dl = description list) */}
         <dl className="discovery-dialog-facts-grid">
           <div>
             <dt>Pay</dt>
@@ -402,7 +406,7 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
           ))}
         </ul>
 
-        <h3 className="discovery-dialog-heading">What they're looking for</h3>
+        <h3 className="discovery-dialog-heading">What you need</h3>
         <ul className="discovery-dialog-list">
           {opportunity.requirements.map((item) => (
             <li key={item}>{item}</li>

@@ -58,7 +58,8 @@ Decisions needed (from the Phase Two Plan doc; tasks that wait on one say so)
     [ ] D4. Owners for the new pages (F1-F6). Roemer took F2 and F4; F1, F5, F6 still need one
     [ ] D5. Jake's template: confirm the MIT license in jakegut/resume, keep its copyright notice
     [ ] D6. Top bar: which new pages get a top-bar link vs. a link in the account menu (see F7).
-            Half done: Opportunities (/discovery) is in the top bar. The account menu part is open
+            Done for now (2026-11-14): top bar = Opportunities, My applications. Feed, Network,
+            Messages are hidden until they're real. New pages go in the account menu first
     [ ] D7. Can guests browse Discovery? PRODUCT.md says guests browse jobs and sign up to apply,
             but /discovery is behind the login guard right now (RequireLogin in App.jsx).
             If yes: move its <Route> out of the RequireLogin group, and give Discovery a guest
@@ -290,8 +291,9 @@ Frontend tasks
         needs: D6, and a heads-up to Roemer (NavBar styles are in the Feed section).
         Done: the top bar has Opportunities (-> /discovery; phones show "Jobs"). The account
         menu's "Profile picture" (a dead end) is now "Edit profile" (2026-11-14).
-        Left: "My applications" in the account menu (today only Discovery links to the tracker);
-        the About page's guest link, after D7.
+        Also done (2026-11-14): "My applications" is in the top bar (not the account menu),
+        and the logo goes to /discovery.
+        Left: the About page's guest link, after D7.
         Proposed: top bar = Home, Opportunities, Network, Messages (+ your circle). Account menu
         gains My applications, ScoutCoach, Events, Resume help. Re-check the 375px two-row top
         bar after adding a link: it must still fit on one row under the name.
@@ -408,7 +410,12 @@ Done outside this plan (2026-11-14)
     - Network and Messages are hidden from the top bar (NavBar.jsx) until they work:
       Network is all made-up people, and Messages waits on B13. Their pages and routes are
       untouched (still behind the login guard); the two <Link> lines to put back are in a
-      comment in NavBar.jsx. The top bar is now Home, Opportunities, theme, your circle.
+      comment in NavBar.jsx.
+    - Opportunities (/discovery) is the home page now (Kevin; tell Roemer): Log in, Sign up,
+      the Google login, the About page's Home button, and the top bar's logo all go there.
+      The Feed is hidden from the top bar the same way as Network (Feed.jsx unchanged; the
+      line to put back is in NavBar.jsx). "My applications" (/applications) is in the top
+      bar. The top bar is now: logo, Opportunities, My applications, theme, your circle.
 
 
 Order

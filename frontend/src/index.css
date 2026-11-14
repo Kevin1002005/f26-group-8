@@ -2845,7 +2845,7 @@ html:has(.about-site) {
   align-items: center;    /* lines them up in the middle, top-to-bottom */
 }
 
-/* The links in the top bar (Home, Opportunities) */
+/* The links in the top bar (Opportunities, My applications) */
 .feed-nav-right a {
   color: var(--muted);    /* blue */
   padding: 10px;          /* space around the words, so they're easier to click */

@@ -65,7 +65,7 @@ function Login() {
     // It starts as {} (nothing wrong yet). An empty message '' means that box is fine
     const [errors, setErrors] = useState({});
 
-    // navigate('/feed') // Sends the user to the Feed page after Logging in
+    // navigate('/discovery') // Sends the user to Opportunities (the home page) after logging in
     const navigate = useNavigate();
 
     // What's typed in the Email box. The Log in form and the reset form share
@@ -123,15 +123,16 @@ function Login() {
     // THIS page with a one-time code in the address bar (?code=...).
     // Importing supabase.js above is enough for Supabase to see that code and
     // swap it for a real login. getSession() waits for that swap to finish,
-    // then tells us if someone is logged in. If they are, go to the feed.
-    // (This also sends people who are already logged in straight to the feed.)
+    // then tells us if someone is logged in. If they are, go to Opportunities
+    // (/discovery), the home page.
+    // (This also sends people who are already logged in straight there.)
     useEffect(() => {
         // supabase is null when .env.local is missing (see supabase.js), so skip this
         if (!supabase) return;
         supabase.auth.getSession().then(({ data }) => {
             if (data.session) {
                 markLoggedIn();
-                navigate('/feed');
+                navigate('/discovery');
             }
         });
     }, [navigate]);
@@ -193,8 +194,8 @@ function Login() {
         // Remember that you're logged in, so the About page shows your
         // circle and a Home button instead of "Log in" and "Sign up"
         markLoggedIn();
-        // Navigate to the feed page after successful login
-        navigate('/feed');
+        // Go to Opportunities, the home page, after logging in
+        navigate('/discovery');
     }
 
     // Runs when the reset form is submitted (the "Send reset link" button is

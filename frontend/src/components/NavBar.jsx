@@ -26,15 +26,20 @@ function NavBar() {
           but it didn't search anything, and on Discovery it sat right above
           Discovery's own search box (the one that works), so it was taken out */}
       <div className="feed-nav-left">
-        {/* The logo. Clicking it goes to the About page. Since you're
-            logged in, its top bar shows a Home button and your circle there */}
-        <Link to="/about" className="feed-nav-logo">
+        {/* The logo. Clicking it goes to your home page, Opportunities. Every
+            page with this bar is a logged-in page, so it used to be odd that
+            the logo sent you back to the About page, which is for new visitors */}
+        <Link to="/discovery" className="feed-nav-logo">
           <SiteLogo />
         </Link>
       </div>
       {/* Right side: links to other pages, the sun/moon button, then your circle */}
       <div className="feed-nav-right">
-        <Link to="/feed">Home</Link>
+        {/* "Home" (the Feed) used to be first. Opportunities is the home page
+            now, since finding jobs is what the site is for, so the Feed is
+            hidden for now like Network and Messages below. The page still
+            exists at /feed. To show it again, put this back:
+              <Link to="/feed">Feed</Link> */}
         {/* The Discovery page: internships, co-ops, and jobs.
             "Opportunities" is too long for the phone top bar, so phones show
             "Jobs" instead (index.css swaps them). aria-label makes screen
@@ -43,6 +48,9 @@ function NavBar() {
           <span className="feed-nav-long-word">Opportunities</span>
           <span className="feed-nav-short-word">Jobs</span>
         </Link>
+        {/* The Application tracker: the jobs you saved or applied to.
+            Before, the only way there was a box on the Discovery page */}
+        <Link to="/applications">My applications</Link>
         {/* Network and Messages used to be here. They're hidden for now:
             Network only has made-up people, and Messages can't load until the
             backend has its routes (see frontend/plans.md, B13). The pages still

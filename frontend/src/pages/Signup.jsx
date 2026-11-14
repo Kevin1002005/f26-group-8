@@ -84,7 +84,7 @@ function Signup() {
     // if the person leaves the page during it
     const waitTimer = useRef(null);
 
-    // navigate('/feed') // Sends the user to the feed page after signing in
+    // navigate('/discovery') // Sends the user to Opportunities (the home page) after signing up
     const navigate = useNavigate();
 
     // Runs after the page is redrawn because "step" changed. Without this,
@@ -118,7 +118,7 @@ function Signup() {
         // This leaves our site and goes to Google's sign-in page.
         // redirectTo is where Google sends you back afterward. It's the Log in
         // page on purpose: that page finishes logging you in and then goes
-        // to the feed (see the useEffect in Login.jsx).
+        // to Opportunities, the home page (see the useEffect in Login.jsx).
         // window.location.origin is the start of our address (http://localhost:5173)
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
@@ -217,8 +217,8 @@ function Signup() {
         // Signing up also logs you in, so the About page shows your
         // circle and a Home button instead of "Log in" and "Sign up"
         markLoggedIn();
-        // Navigate to the feed page after successful signup
-        navigate('/Feed');
+        // Go to Opportunities, the home page, after signing up
+        navigate('/discovery');
     }
 
     return (

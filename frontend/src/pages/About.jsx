@@ -488,9 +488,10 @@ function About() {
                         <ThemeToggle />
                         {loggedIn ? (
                             <>
-                                {/* Logged in: a Home button back to the Feed, and your
-                                    circle with the dropdown (components/AccountMenu.jsx) */}
-                                <Link to="/feed" className="about-button">Home</Link>
+                                {/* Logged in: a Home button back to your home page
+                                    (Opportunities), and your circle with the
+                                    dropdown (components/AccountMenu.jsx) */}
+                                <Link to="/discovery" className="about-button">Home</Link>
                                 <AccountMenu />
                             </>
                         ) : (

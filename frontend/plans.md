@@ -69,6 +69,11 @@ Decisions needed (from the Phase Two Plan doc; tasks that wait on one say so)
     [ ] D8. Tracker columns: the built tracker has 3 (saved, preparing, submitted); the contract's
             Application.status has 5 (saved, applied, interviewing, offer, not-selected).
             Pick one and change the other before B7 builds the applications table
+    [ ] D9. Outside listings (added 2026-11-14, see F17-F19 and B14-B18): which sources first
+            (proposed: Greenhouse, Lever, and Ashby job boards for a hand-picked list of 20-50
+            companies, plus USAJOBS), who keeps that company list, and whether every listing
+            marked for high schoolers needs an admin's OK before students see it (proposed: yes).
+            Using AI to clean listings (B18) is a cost decision, so it waits on D3
 
 
 Shared contract (frontend <-> backend), proposed. Change it here first, then in code.
@@ -82,6 +87,8 @@ Shared contract (frontend <-> backend), proposed. Change it here first, then in 
     PATCH  /api/jobs/:id                     (owner, staff)      -> { job }
     POST   /api/jobs/:id/close               (owner, staff)      -> { job }
     DELETE /api/jobs/:id                     (admin)             -> 204
+    GET    /api/admin/listings?status=pending (admin)            -> { jobs: [Job] }   (B16, F19)
+    PATCH  /api/admin/listings/:id           (admin)             body { status: 'published' | 'rejected' } -> { job }
     GET    /api/applications                 (student, own)      -> { applications: [Application] }
     POST   /api/applications                 (student)           -> 201 { application }
     PATCH  /api/applications/:id             (student, own)      -> { application }
@@ -102,6 +109,10 @@ Shared contract (frontend <-> backend), proposed. Change it here first, then in 
                    level: 'high-school' | 'college' | 'both', location, setting: 'remote' | 'hybrid' | 'on-site',
                    paid: boolean, pay_text, deadline (YYYY-MM-DD), description, requirements,
                    apply_url (optional), posted_by, is_posted, created_at }
+                   Added for outside listings (B14-B16): source ('scoutsearch' for jobs posted
+                   here, else e.g. 'greenhouse', 'lever', 'ashby', 'usajobs'), source_url,
+                   external_id, fetched_at, status: 'pending' | 'published' | 'rejected' | 'expired'.
+                   Students only ever see 'published'. apply_url is the original posting.
     Application  { id, student_id, job_id (null for a job found on another site), title, organization,
                    status: 'saved' | 'applied' | 'interviewing' | 'offer' | 'not-selected',
                    deadline, notes, updated_at }
@@ -373,6 +384,34 @@ Frontend tasks
           Use this. Never adds experience the student didn't write.
         - Before first use, a short note says what gets sent and to whom.
 
+    Outside listings (planned 2026-11-14; needs D9, and B14-B16 on the backend)
+        The idea: pull jobs from sources that publish them on purpose (company job-board APIs,
+        USAJOBS, later job-search APIs), never by scraping sites like LinkedIn, Indeed, or
+        Handshake (their rules forbid it). AI is only for cleaning up listings, later (B18).
+
+    [ ] F17 - Where a listing came from               files: Discovery.jsx, index.css ("Discovery page")
+        needs: B6, B15. (Roemer's page: he does it, or OKs it.)
+        - A small "via Greenhouse" style label on each outside listing (text, not color alone).
+        - "Apply on company site" opens apply_url in a new tab, and the button says it leaves
+          ScoutSearch (an arrow icon plus aria-label "Apply on company site, opens a new tab").
+        - Show our own short summary, not the source's full description (copyright), with a
+          "See the full posting" link.
+
+    [ ] F18 - Listings on the Feed                    files: Feed.jsx, index.css ("Feed page")
+        needs: B6, B16. (Roemer's page.) The mockup's "B · Feed" screen shows the look.
+        - Newly published jobs show up as "New listing" posts with the job card inside
+          (Save + View listing), mixed in with student updates.
+        - A "Listings" tab next to "For you" and "Following".
+
+    [ ] F19 - Review page for admins                  files: frontend/src/pages/ReviewListings.jsx (new),
+                                                              index.css ("Review listings page"), App.jsx
+        needs: D2, B3, B4, B16. Route /admin/listings, inside RequireLogin, admins only (the
+        backend checks the role too; hiding the page is never the protection).
+        - A list of pending listings: title, organization, source, why it's pending ("marked
+          for high schoolers", "new source", or a flag from B18), and a link to the original.
+        - Approve and Reject buttons (PATCH /api/admin/listings/:id), with a role="status" line
+          ("Approved. 4 left to review.").
+
 
 Backend tasks this plan needs (proposed; Anthony and Jayden move the ones they agree to
 into backend/plans.md, which stays their file)
@@ -393,6 +432,25 @@ into backend/plans.md, which stays their file)
     B12      before launch: a free email sender for Supabase (its built-in one is for testing)
     B13      conversations + messages tables + RLS + the 3 Messages routes in the Shared
              contract (Messages.jsx already calls them)                    unblocks Messages
+    Outside listings (added 2026-11-14; the same tasks are proposed at the end of
+    backend/plans.md as O1-O5, for Anthony and Jayden to keep, change, or drop):
+    B14 = O1 sources table + a nightly fetch (free: a Supabase scheduled function or a GitHub
+             Actions schedule). Phase 1 sources: Greenhouse, Lever, Ashby job boards for the
+             company list in D9, plus USAJOBS (free API key). Save what comes back as-is in a
+             raw_listings table                                            needs B6
+    B15 = O2 turn raw listings into our Job shape (+ source fields), sort them with simple word
+             rules (intern / co-op / research, high school, paid, remote / hybrid / on-site),
+             merge duplicates (same organization + title + location), and mark listings
+             'expired' when they leave the source or pass their deadline   blocks F17
+    B16 = O3 review queue: new sources and anything marked for high schoolers start as
+             'pending'; the two /api/admin/listings routes (admin only, B4) blocks F18, F19
+    B17 = O4 phase 2: Adzuna and The Muse job-search APIs (free plans, credit them as their
+             terms say), and reading the standard schema.org JobPosting data some career pages
+             include (respect robots.txt). Check each source's terms before using it
+    B18 = O5 phase 3, only after D3 says yes to the cost: AI cleanup in a nightly batch. Fills
+             in the fields the word rules miss, writes a short plain-language summary, and flags
+             likely scams (asks for money or personal details up front). Its output still goes
+             through the B16 review queue; it never publishes anything by itself
     Note: the backend still mounts its routes at /auth (app.ts), but the Vite proxy only sends
     /api to port 3000. Until S4 moves them under /api, every api() call from the site gets a 404.
 
@@ -423,9 +481,10 @@ Done outside this plan (2026-11-14)
       comment in NavBar.jsx.
     - Opportunities (/discovery) is the home page now (Kevin; tell Roemer): Log in, Sign up,
       the Google login, and the About page's Home button all go there.
-      The Feed is hidden from the top bar the same way as Network (Feed.jsx unchanged; the
-      line to put back is in NavBar.jsx). "My applications" (/applications) is in the top
-      bar. The top bar is now: logo, Opportunities, My applications, theme, your circle.
+      "My applications" (/applications) is in the top bar. The Feed was hidden for a while,
+      then put back (Kevin, 2026-11-14): the team needs it, because job listings will be
+      shared as posts on the Feed. The top bar is now: logo, Feed, Opportunities,
+      My applications, theme, your circle.
     - Your real name in the top bar (Kevin): src/use-current-user.js reads the Supabase login
       (name from Google or from Sign up, else the email) and AccountMenu shows it, instead of
       the made-up "Roemer Mallari". This is the start of F8's hook; F8 makes it ask
@@ -450,6 +509,8 @@ Order
              | decide D7, D8 (and whether F3 is needed)   |  backend: J1, S4, D1, then B13
     Next:    F7 (after D6), F8 (after J1 + S4 + B3), F9 (after D1 + B5)
     Then:    F10 + F11 (B6)  ->  F12 + F13 (B7)  ->  F14 (B9), F15 (B8)  ->  F16 (D3 + B10)
+    Outside listings: D9  ->  B6  ->  B14 + B15 + B16 (phase 1, $0)  ->  F17, F18, F19
+             ->  B17 (phase 2, $0)  ->  B18 (phase 3, only if D3 approves the cost)
     Advice for the mentor demo: Discovery + tracker already work with sample data. Next,
     finish the F2/F4 follow-ups (high school jobs, the Examples tag, add-your-own on the
     tracker) and F6, before starting F5.

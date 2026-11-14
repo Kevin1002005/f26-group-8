@@ -156,3 +156,63 @@ SSO login (planned 2026-10-19) - replaces username/password with Supabase Auth
             the login (useEffect + getSession) and goes to /feed
         [ ] Vite proxy for /api (NOT /auth), Bearer header on backend calls (after S4)
         [ ] put Supabase values in frontend/.env.local (after S1c)
+
+Outside listings - PROPOSED (Kevin, 2026-11-14). Not agreed yet: Anthony and Jayden, keep,
+change, or drop any of this. Nothing above this line was changed.
+    Goal: real listings from outside ScoutSearch, pulled from sources that publish jobs on
+    purpose (company job-board APIs, USAJOBS), on a schedule. NOT scraping: LinkedIn, Indeed,
+    and Handshake forbid it, and it breaks whenever a site changes. AI only cleans listings
+    up, later, and only if the team agrees to the cost (frontend/plans.md D3).
+    Full context, and the frontend tasks that wait on these (F17-F19): frontend/plans.md,
+    "Outside listings" and D9. These are the same tasks as B14-B18 there.
+    $0 budget: phases 1 and 2 use only free sources and free scheduling.
+
+    Shared contract additions (also in frontend/plans.md):
+        Job gains: source ('scoutsearch' | 'greenhouse' | 'lever' | 'ashby' | 'usajobs' | ...),
+                   source_url, external_id, fetched_at,
+                   status: 'pending' | 'published' | 'rejected' | 'expired'
+        Students only ever get status 'published'. apply_url = the original posting.
+        GET   /api/admin/listings?status=pending   (admin)  -> { jobs: [Job] }
+        PATCH /api/admin/listings/:id              (admin)  body { status } -> { job }
+
+    [ ] Task O1 - sources + nightly fetch             files: backend/sql/listings.sql (new),
+                                                             backend/src/ingest/ (new)
+        needs: the jobs table (frontend/plans.md B6)
+        O1a. sources table: id, kind ('greenhouse' | 'lever' | 'ashby' | 'usajobs'), company
+             slug or search terms, enabled, last_fetched_at. RLS on, no student access.
+        O1b. raw_listings table: source_id, external_id, the JSON exactly as received,
+             fetched_at. Keeping the raw copy means a bug in O2 can be fixed and re-run
+             without fetching again.
+        O1c. one small fetcher per kind. Greenhouse, Lever, and Ashby each have a public,
+             read-only list of one company's jobs; USAJOBS needs a free API key (secrets.env).
+             Check each one's current terms first.
+        O1d. run once a night for free: a Supabase scheduled function (pg_cron + an Edge
+             Function) or a GitHub Actions schedule. Log how many listings each source gave.
+
+    [ ] Task O2 - clean up, sort, merge, expire       files: backend/src/ingest/ (new)
+        O2a. turn each raw listing into our Job shape, with the source fields above.
+        O2b. sort with simple word rules: type (intern / co-op / research), level (high school
+             / college), paid, setting (remote / hybrid / on-site). Unsure -> leave it empty.
+        O2c. merge duplicates: same organization + title + location = one job.
+        O2d. status 'expired' when a listing disappears from its source or its deadline passes.
+        O2e. keep our own short summary, not the source's full description (copyright).
+
+    [ ] Task O3 - review queue for admins             files: backend/src/ (a listings router), app.ts
+        needs: roles (frontend/plans.md B3, B4)
+        O3a. listings from a new source, or marked for high schoolers, start 'pending'.
+        O3b. the two /api/admin/listings routes above, behind authenticateToken + requireRole('admin').
+        O3c. usual style: { data, error }, console.error the real reason, generic message.
+
+    [ ] Task O4 - more sources (phase 2)              files: backend/src/ingest/
+        O4a. Adzuna and The Muse job-search APIs (free plans; credit them the way their terms say).
+        O4b. career pages that include the standard schema.org JobPosting data (the format
+             Google's job search reads): read that data, not the page's HTML. Respect robots.txt.
+
+    [ ] Task O5 - AI cleanup (phase 3)                files: backend/src/ingest/
+        needs: D3 (the team agrees to the cost; it is not free on any AI service)
+        O5a. a nightly batch: fill in fields O2's rules missed, write a 2-sentence summary in
+             plain language, flag likely scams (asks for money or personal details up front).
+        O5b. the answer must come back as JSON in our Job shape; anything that doesn't fit is
+             dropped, not guessed.
+        O5c. it never publishes: everything still goes through O3's review queue.
+        O5d. try it on 20-50 real listings first and compare with what a person would say.

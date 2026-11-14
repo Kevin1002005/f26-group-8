@@ -36,11 +36,10 @@ function NavBar() {
       </div>
       {/* Right side: links to other pages, the sun/moon button, then your circle */}
       <div className="feed-nav-right">
-        {/* "Home" (the Feed) used to be first. Opportunities is the home page
-            now, since finding jobs is what the site is for, so the Feed is
-            hidden for now like Network and Messages below. The page still
-            exists at /feed. To show it again, put this back:
-              <Link to="/feed">Feed</Link> */}
+        {/* The Feed: posts from students, and job listings posted there.
+            (It was hidden for a while, but the team needs it: listings will
+            be shared as posts on the Feed.) */}
+        <Link to="/feed">Feed</Link>
         {/* The Discovery page: internships, co-ops, and jobs.
             "Opportunities" is too long for the phone top bar, so phones show
             "Jobs" instead (index.css swaps them). aria-label makes screen

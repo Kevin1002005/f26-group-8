@@ -8,6 +8,9 @@ import { Routes, Route, Navigate } from "react-router";
 // lazy: waits to download a page's code until someone opens that page.
 // Suspense: what to show during the split second that download takes.
 import { lazy, Suspense } from "react";
+// RequireLogin sends logged-out visitors to the Log in page (components/RequireLogin.jsx).
+// It's tiny, so it loads right away like About.
+import RequireLogin from "./components/RequireLogin.jsx";
 // Each page lives in its own file inside the pages folder.
 // The About page loads right away, because it's the first page everyone sees.
 import About from "./pages/About.jsx";
@@ -42,22 +45,33 @@ function App() {
         <Route path="/login" element={<Login />} />
         {/* yoursite.com/signup shows the Signup page */}
         <Route path="/signup" element={<Signup />} />
-        {/* yoursite.com/feed shows the Feed page */}
-        <Route path="/feed" element={<Feed />} />
-        {/* yoursite.com/profile shows the Profile page */}
-        <Route path="/profile" element={<Profile />} />
-        {/* yoursite.com/editprofile shows the EditProfile page */}
-        <Route path="/editprofile" element={<EditProfile />} />
-        {/* yoursite.com/network shows the Network page */}
-        <Route path="/network" element={<Network />} />
-        {/* yoursite.com/messages shows the Messages page */}
-        <Route path="/messages" element={<Messages />} />
-        {/* yoursite.com/discovery shows the Discovery page */}
-        <Route path="/discovery" element={<Discovery />} />
-        {/* yoursite.com/applications shows the Application tracker page */}
-        <Route path="/applications" element={<ApplicationTracker />} />
-        {/* yoursite.com/settings shows the Settings page */}
-        <Route path="/settings" element={<Settings />} />
+
+        {/* Every page inside here needs you to be logged in. A Route with no
+            "path" doesn't change the web address; it just puts RequireLogin in
+            front of all the pages inside it. Logged out? It sends you to /login */}
+        <Route element={<RequireLogin />}>
+          {/* yoursite.com/feed shows the Feed page */}
+          <Route path="/feed" element={<Feed />} />
+          {/* yoursite.com/profile shows the Profile page */}
+          <Route path="/profile" element={<Profile />} />
+          {/* yoursite.com/editprofile shows the EditProfile page */}
+          <Route path="/editprofile" element={<EditProfile />} />
+          {/* yoursite.com/network shows the Network page */}
+          <Route path="/network" element={<Network />} />
+          {/* yoursite.com/messages shows the Messages page */}
+          <Route path="/messages" element={<Messages />} />
+          {/* yoursite.com/discovery shows the Discovery page */}
+          <Route path="/discovery" element={<Discovery />} />
+          {/* yoursite.com/applications shows the Application tracker page */}
+          <Route path="/applications" element={<ApplicationTracker />} />
+          {/* yoursite.com/settings shows the Settings page */}
+          <Route path="/settings" element={<Settings />} />
+        </Route>
+
+        {/* "*" matches any address that isn't listed above (like a typo, /feeed).
+            Without it, those addresses showed a blank page. "replace" keeps the
+            wrong address out of the Back button's history */}
+        <Route path="*" element={<Navigate to="/about" replace />} />
       </Routes>
     </Suspense>
   );

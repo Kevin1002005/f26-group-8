@@ -1,7 +1,7 @@
 // Settings.jsx is the Settings page (yoursite.com/settings).
 // You get here from the dropdown under your circle in the top bar.
 // It has a column of tabs on the left. Clicking one shows its box on the right:
-//   Account          your name, email, and profile picture (coming soon)
+//   Account          a link to Edit profile (email and password come later)
 //   Preferences      the kinds of jobs you want to see (coming soon)
 //   Appearance       light or dark, the site's colors, and heading style
 //   Privacy & data   who can see your profile and what's on it
@@ -17,7 +17,8 @@
 import { useRef, useState } from 'react';
 // useLocation tells the page what the web address is, including the "#..." at the end.
 // useNavigate lets the page change the web address.
-import { useLocation, useNavigate } from 'react-router';
+// Link makes a clickable link to another page of our site (the Account tab's "Edit profile").
+import { Link, useLocation, useNavigate } from 'react-router';
 // NavBar is the bar across the top of the page (components/NavBar.jsx).
 import NavBar from '../components/NavBar.jsx';
 // The code that saves the choices and puts them into effect (settings.js)
@@ -222,16 +223,21 @@ function Settings() {
                             className="settings-panel"
                         >
                             <h2 className="settings-panel-title">Account</h2>
-                            <p className="settings-text">Change your name, email, and password here. Coming soon.</p>
+                            {/* This tab used to only say "Coming soon", so the dropdown's
+                                link here was a dead end. Now it sends you to the page
+                                where you really can change those things */}
+                            <p className="settings-text">Your name, school, bio, and resume are part of your profile.</p>
+                            {/* A Link, not a button, because it goes to another page.
+                                It borrows the pill look of the Reset buttons */}
+                            <Link to="/editprofile" className="settings-button settings-edit-profile-link">
+                                Edit profile
+                            </Link>
 
                             <div className="settings-group">
-                                <h3 className="settings-legend">Profile picture</h3>
-                                <div className="settings-picture-row">
-                                    {/* Your current circle. It's decoration, because the
-                                        text next to it explains it (WCAG) */}
-                                    <div className="feed-post-avatar" aria-hidden="true">RMV</div>
-                                    <p className="settings-text">Uploading a new picture is coming soon. For now, your initials are shown.</p>
-                                </div>
+                                <h3 className="settings-legend">Email and password</h3>
+                                {/* Says plainly what isn't ready, the same way the
+                                    Privacy tab's buttons do */}
+                                <p className="settings-text">Changing your email or password will work once the site is connected to the backend.</p>
                             </div>
                         </section>
 

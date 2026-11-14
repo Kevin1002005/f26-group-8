@@ -57,7 +57,7 @@ function NavBar() {
             logo, so it's still in the top bar, never hidden */}
         <ThemeToggle />
 {/* Your circle. Clicking it opens a dropdown with View profile,
-            Settings, Preferences, Profile picture, and Log out */}
+            Settings, Preferences, Edit profile, and Log out */}
         <AccountMenu />
       </div>
     </nav>

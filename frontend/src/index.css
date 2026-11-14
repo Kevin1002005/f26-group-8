@@ -3224,7 +3224,7 @@ html:has(.about-site) {
   top: calc(100% + 8px);            /* 8px below the bottom of the circle */
   right: 0;                         /* right edges lined up */
   z-index: 20;                      /* above the top bar (10) and the posts */
-  min-width: 240px;                 /* wide enough for "Profile picture" */
+  min-width: 240px;                 /* wide enough for the longest item and the name */
   padding: 6px;                     /* space inside the box, around the items */
   background-color: var(--card);    /* off-white (--card) */
   border: 1px solid var(--line);    /* thin light blue line around it */
@@ -6440,16 +6440,13 @@ html:has(.about-site) {
   color: var(--muted);   /* blue (8.3:1 on the box) */
 }
 
-/* Account tab: your circle next to the text */
-.settings-picture-row {
-  display: flex;          /* puts them side by side */
-  align-items: center;    /* lines them up in the middle, top-to-bottom */
-  gap: 16px;              /* space between them */
-}
-
-/* The text next to the circle doesn't need the usual space below */
-.settings-picture-row .settings-text {
-  margin-bottom: 0;
+/* Account tab: the "Edit profile" link. It's a link (it goes to another page),
+   but it borrows .settings-button's pill look so it's easy to spot */
+.settings-edit-profile-link {
+  display: inline-block;     /* lets the top and bottom padding take up room, like a button */
+  margin-bottom: 20px;       /* space before the group under it */
+  text-decoration: none;     /* no underline, like the other pill buttons (the
+                                "Underline links" setting still adds one) */
 }
 
 /* Phones and narrow windows: the tabs move into a row above the box.

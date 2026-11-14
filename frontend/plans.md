@@ -400,6 +400,11 @@ Done outside this plan (2026-11-14)
     - Unknown addresses (/feeed) go to About, through a path="*" route at the end of App.jsx.
     - Settings -> Account: its "Coming soon" text is replaced by an Edit profile button, and
       a note that email and password changes need the backend.
+    - Fewer dead ends: the top bar's search box (it didn't search, and Discovery has a real
+      one) and Settings' Preferences tab + its account-menu link ("Coming soon"; Profile's
+      "What I'm looking for" card does that job) were removed. The account menu is now
+      View profile, Edit profile, Settings, Log out. A top-bar search, if wanted later,
+      should send you to Discovery's search rather than be a second box.
 
 
 Order

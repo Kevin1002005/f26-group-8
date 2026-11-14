@@ -1,6 +1,6 @@
 // AccountMenu.jsx is your circle in the top bar, and the dropdown that opens
-// when you click it. The dropdown has links to your profile, Settings,
-// Preferences, Edit profile, and Log out.
+// when you click it. The dropdown has links to your profile, Edit profile,
+// Settings, and Log out.
 // NavBar.jsx uses it, so it shows up on every page that has the top bar.
 // The styles are in index.css, under "Top bar: account menu".
 //
@@ -107,23 +107,20 @@ function AccountMenu() {
           </div>
 
           {/* The items. It's a list (<ul>), so screen readers say how many there are */}
+          {/* Edit profile sits first, right under "View profile", since the two
+              go together. (A "Preferences" item used to be here too, but its
+              Settings tab only said "Coming soon", so both were taken out) */}
           <ul>
-            <li>
-              <Link to="/settings" className="account-menu-item" onClick={closeMenu}>
-                Settings
-              </Link>
-            </li>
-            {/* "#preferences" opens the Preferences tab on the Settings page */}
-            <li>
-              <Link to="/settings#preferences" className="account-menu-item" onClick={closeMenu}>
-                Preferences
-              </Link>
-            </li>
             {/* Goes straight to Edit profile. This used to be "Profile picture",
                 which opened a Settings tab that only said "Coming soon" */}
             <li>
               <Link to="/editprofile" className="account-menu-item" onClick={closeMenu}>
                 Edit profile
+              </Link>
+            </li>
+            <li>
+              <Link to="/settings" className="account-menu-item" onClick={closeMenu}>
+                Settings
               </Link>
             </li>
           </ul>

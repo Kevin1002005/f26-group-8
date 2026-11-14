@@ -2,7 +2,8 @@
 // You get here from the dropdown under your circle in the top bar.
 // It has a column of tabs on the left. Clicking one shows its box on the right:
 //   Account          a link to Edit profile (email and password come later)
-//   Preferences      the kinds of jobs you want to see (coming soon)
+// (There used to be a "Preferences" tab too. It only said "Coming soon", and
+// the Profile page's "What I'm looking for" card already does that job.)
 //   Appearance       light or dark, the site's colors, and heading style
 //   Privacy & data   who can see your profile and what's on it
 //   Accessibility    font, text size, contrast, spacing, motion, ...
@@ -32,7 +33,6 @@ import { useTheme } from '../theme.js';
 // opens the Privacy & data tab. That's how the dropdown's links open a tab.
 const tabs = [
     { id: 'account', label: 'Account' },
-    { id: 'preferences', label: 'Preferences' },
     { id: 'appearance', label: 'Appearance' },
     { id: 'privacy', label: 'Privacy & data' },
     { id: 'accessibility', label: 'Accessibility' },
@@ -239,21 +239,6 @@ function Settings() {
                                     Privacy tab's buttons do */}
                                 <p className="settings-text">Changing your email or password will work once the site is connected to the backend.</p>
                             </div>
-                        </section>
-
-                        {/* ----- Preferences ----- */}
-                        <section
-                            id="settings-panel-preferences"
-                            role="tabpanel"
-                            aria-labelledby="settings-tab-preferences"
-                            hidden={activeTab !== 'preferences'}
-                            className="settings-panel"
-                        >
-                            <h2 className="settings-panel-title">Preferences</h2>
-                            <p className="settings-text">
-                                Pick the kinds of jobs you want to see (internships, co-ops,
-                                research positions) and how you get notified. Coming soon.
-                            </p>
                         </section>
 
                         {/* ----- Appearance ----- */}

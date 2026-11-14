@@ -22,23 +22,15 @@ function NavBar() {
     // aria-label="Main" names it, so it can be told apart from other
     // sets of links on a page (like "Profile sections" on the Profile page)
     <nav className="feed-nav" aria-label="Main">
-      {/* Left side: the site name and the search box */}
+      {/* Left side: the site name. There used to be a search box here too,
+          but it didn't search anything, and on Discovery it sat right above
+          Discovery's own search box (the one that works), so it was taken out */}
       <div className="feed-nav-left">
         {/* The logo. Clicking it goes to the About page. Since you're
             logged in, its top bar shows a Home button and your circle there */}
         <Link to="/about" className="feed-nav-logo">
           <SiteLogo />
         </Link>
-        {/* A hidden label for screen readers, like the one in the post box (WCAG) */}
-        <label htmlFor="feed-search" className="sr-only">
-          Search
-        </label>
-        {/* The search box. It doesn't search yet */}
-        <input
-          id="feed-search"
-          className="feed-nav-search"
-          placeholder="Search..."
-        />
       </div>
       {/* Right side: links to other pages, the sun/moon button, then your circle */}
       <div className="feed-nav-right">
@@ -57,7 +49,7 @@ function NavBar() {
             logo, so it's still in the top bar, never hidden */}
         <ThemeToggle />
 {/* Your circle. Clicking it opens a dropdown with View profile,
-            Settings, Preferences, Edit profile, and Log out */}
+            Edit profile, Settings, and Log out */}
         <AccountMenu />
       </div>
     </nav>

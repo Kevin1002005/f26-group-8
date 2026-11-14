@@ -2802,7 +2802,9 @@ html:has(.about-site) {
   align-items: center;              /* lines everything up in the middle, top-to-bottom */
 }
 
-/* Left side of the top bar: the site name and the search box */
+/* Left side of the top bar: the site name.
+   (It used to hold a search box too, but that box didn't search anything,
+   and Discovery has its own search that works, so it was taken out) */
 .feed-nav-left {
   display: flex;          /* puts them side by side */
   gap: 12px;              /* space between them */
@@ -2834,14 +2836,6 @@ html:has(.about-site) {
 .feed-nav-logo:focus-visible {
   outline: 3px solid var(--focus-ring); /* a 3px darker blue line around it */
   outline-offset: 4px;                    /* a small gap between it and the line */
-}
-
-/* The search box in the top bar */
-.feed-nav-search {
-  width: 260px;                 /* how wide the box is */
-  border: 1px solid var(--line);    /* thin light blue line around it */
-  border-radius: 999px;         /* pill shape */
-  padding: 10px 16px;           /* space inside, so the words don't touch the edge */
 }
 
 /* Right side of the top bar: the links and your circle */
@@ -2888,8 +2882,8 @@ html:has(.about-site) {
   outline-offset: 2px;
 }
 
-/* Tablets and small laptops: everything still fits in one row if the search
-   box is allowed to shrink, the links sit a little closer together, and the
+/* Tablets and small laptops: everything still fits in one row because the
+   links sit a little closer together, the name is a bit smaller, and the
    Opportunities link shows "Jobs". Without this, the right side pokes off the
    edge of the screen below about 1120px wide */
 @media (max-width: 1120px) {
@@ -2898,18 +2892,11 @@ html:has(.about-site) {
     min-width: 0;         /* ...and is allowed to get narrower than its contents */
   }
 
-  .feed-nav-search {
-    flex: 1;              /* the search box fills whatever room is left... */
-    min-width: 0;         /* ...and is allowed to get narrower than 260px */
-    width: auto;          /* (instead of always being 260px wide) */
-    max-width: 260px;     /* but never wider than it is on big screens */
-  }
-
   .feed-nav-right {
     gap: 8px;             /* links a little closer together */
   }
 
-  /* A slightly smaller name and picture, so the search box keeps enough room */
+  /* A slightly smaller name and picture, so the links keep enough room */
   .feed-nav-logo {
     font-size: 26px;
   }
@@ -2928,9 +2915,9 @@ html:has(.about-site) {
 }
 
 /* Phones: the top bar is too narrow for everything in one row, so it
-   splits into two rows. The name and the search box go on top, and the
-   links and your circle go underneath. Without this, the search box and the
-   links get pushed off the right edge of the screen */
+   splits into two rows. The name goes on top, and the links and your circle
+   go underneath. Without this, the links get pushed off the right edge of
+   the screen */
 @media (max-width: 760px) {
   .feed-nav {
     flex-wrap: wrap;      /* lets the two halves stack into 2 rows */
@@ -2939,25 +2926,19 @@ html:has(.about-site) {
   }
 
   .feed-nav-left {
-    flex: 1 1 100%;       /* takes the whole first row... */
-    min-width: 0;         /* ...and is allowed to be narrower than the name plus a
-                             full-size search box, so the box shrinks to fit instead
-                             of poking out past the edge of the screen */
+    flex: 1 1 100%;       /* takes the whole first row, which pushes the links
+                             down to the second row */
+    min-width: 0;         /* allowed to be narrower than its contents, so nothing
+                             pokes out past the edge of the screen */
   }
 
   .feed-nav-logo {
-    font-size: 24px;      /* a smaller name, so the search box has room next to it */
+    font-size: 24px;      /* a smaller name, to fit phone screens */
   }
 
   .feed-nav-logo .site-logo-icon {
     width: 34px;          /* a smaller picture to match */
     height: 34px;
-  }
-
-  .feed-nav-search {
-    flex: 1;              /* fills whatever room is left next to the name... */
-    min-width: 0;         /* ...and is allowed to get narrower than 260px */
-    width: auto;          /* (instead of always being 260px wide) */
   }
 
   .feed-nav-right {
@@ -3248,7 +3229,7 @@ html:has(.about-site) {
   color: var(--text);     /* deep navy */
 }
 
-/* One item in the dropdown (Settings, Preferences, ...).
+/* One item in the dropdown (Edit profile, Settings, ...).
    ".account-menu" in front makes this rule win over the top bar's own link
    styles (".feed-nav-right a"), which would otherwise add padding and an underline */
 .account-menu .account-menu-item {
@@ -6007,8 +5988,8 @@ html:has(.about-site) {
 
 /* ---------- Settings page ---------- */
 /* Everything below styles the Settings page (Settings.jsx, yoursite.com/settings).
-   The page has a column of tabs on the left (Account, Preferences,
-   Appearance, Privacy & data, Accessibility) and the open tab's box on the right.
+   The page has a column of tabs on the left (Account, Appearance,
+   Privacy & data, Accessibility) and the open tab's box on the right.
    On phones, the tabs move into a row above the box.
    Every class name starts with "settings-" so it can't clash with other pages.
    (What the choices actually DO to the site is further down, under

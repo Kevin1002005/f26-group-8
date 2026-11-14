@@ -1,6 +1,6 @@
 // AccountMenu.jsx is your circle in the top bar, and the dropdown that opens
 // when you click it. The dropdown has links to your profile, Edit profile,
-// Settings, About ScoutSearch, and Log out.
+// Settings, and Log out. (To get to the About page, click the logo.)
 // NavBar.jsx uses it, so it shows up on every page that has the top bar.
 // The styles are in index.css, under "Top bar: account menu".
 //
@@ -143,14 +143,6 @@ function AccountMenu() {
             <li>
               <Link to="/settings" className="account-menu-item" onClick={closeMenu}>
                 Settings
-              </Link>
-            </li>
-            {/* Back to the About page (the site's front page). The logo goes to
-                Opportunities, your home page, so this is the way to About from
-                inside the app. On About, the Home button brings you back */}
-            <li>
-              <Link to="/about" className="account-menu-item" onClick={closeMenu}>
-                About ScoutSearch
               </Link>
             </li>
           </ul>

@@ -26,10 +26,11 @@ function NavBar() {
           but it didn't search anything, and on Discovery it sat right above
           Discovery's own search box (the one that works), so it was taken out */}
       <div className="feed-nav-left">
-        {/* The logo. Clicking it goes to your home page, Opportunities. Every
-            page with this bar is a logged-in page, so it used to be odd that
-            the logo sent you back to the About page, which is for new visitors */}
-        <Link to="/discovery" className="feed-nav-logo">
+        {/* The logo. Clicking it goes back to the About page, the site's front
+            page, so you can always get there from inside the app. (Your home
+            page, Opportunities, is the first link on the right. On About, the
+            Home button brings you back to it) */}
+        <Link to="/about" className="feed-nav-logo">
           <SiteLogo />
         </Link>
       </div>
@@ -61,7 +62,7 @@ function NavBar() {
             logo, so it's still in the top bar, never hidden */}
         <ThemeToggle />
 {/* Your circle. Clicking it opens a dropdown with View profile,
-            Edit profile, Settings, About ScoutSearch, and Log out */}
+            Edit profile, Settings, and Log out */}
         <AccountMenu />
       </div>
     </nav>

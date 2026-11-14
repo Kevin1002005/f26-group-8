@@ -294,7 +294,7 @@ Frontend tasks
         Done: the top bar has Opportunities (-> /discovery; phones show "Jobs"). The account
         menu's "Profile picture" (a dead end) is now "Edit profile" (2026-11-14).
         Also done (2026-11-14): "My applications" is in the top bar (not the account menu),
-        and the logo goes to /discovery.
+        and the logo goes to the About page (so you can always get back to it).
         Left: the About page's guest link, after D7.
         Proposed: top bar = Home, Opportunities, Network, Messages (+ your circle). Account menu
         gains My applications, ScoutCoach, Events, Resume help. Re-check the 375px two-row top
@@ -422,7 +422,7 @@ Done outside this plan (2026-11-14)
       untouched (still behind the login guard); the two <Link> lines to put back are in a
       comment in NavBar.jsx.
     - Opportunities (/discovery) is the home page now (Kevin; tell Roemer): Log in, Sign up,
-      the Google login, the About page's Home button, and the top bar's logo all go there.
+      the Google login, and the About page's Home button all go there.
       The Feed is hidden from the top bar the same way as Network (Feed.jsx unchanged; the
       line to put back is in NavBar.jsx). "My applications" (/applications) is in the top
       bar. The top bar is now: logo, Opportunities, My applications, theme, your circle.
@@ -436,8 +436,9 @@ Done outside this plan (2026-11-14)
       emails a link to that account's address -> /reset-password. Optional, for Anthony:
       Supabase's "Secure password change" setting makes Change password need a recent login;
       the form already handles that answer ("log out, log back in, and try again").
-    - "About ScoutSearch" in the account menu goes back to the About page from inside the app;
-      About's Home button goes back to Opportunities.
+    - From inside the app, the top bar's logo goes back to the About page (there's no
+      separate "About" item in the account menu); About's Home button goes back to
+      Opportunities.
     - Deploying (Kevin): frontend/vercel.json sends every address to index.html, so
       refreshing on /discovery doesn't 404 on Vercel. When the backend is hosted, add an
       /api rewrite to it above that line (see the deploy checklist in the PR / team notes).

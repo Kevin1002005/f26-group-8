@@ -7141,12 +7141,16 @@ html:has(.feed-nav) :focus {
   color: var(--tag-purple-text);
 }
 
-.discovery-type-parttime {
+/* Research positions use the green, programs the amber (the real jobs from the
+   backend come in these four types: internship, co-op, research, program) */
+.discovery-type-parttime,
+.discovery-type-research {
   background-color: var(--tag-green-bg);
   color: var(--tag-green-text);
 }
 
 .discovery-type-fulltime,
+.discovery-type-program,
 .discovery-due-tag {
   background-color: var(--tag-amber-bg);
   color: var(--tag-amber-text);
@@ -7627,6 +7631,9 @@ html:has(.discovery-dialog[open]) {
   max-width: 65ch;                        /* lines no longer than about 65 letters */
   line-height: 1.6;                       /* comfy space between lines */
   color: var(--muted);                    /* gray-blue (7.8:1 / 9.1:1) */
+  white-space: pre-line;                  /* real job posts come as plain text with line breaks
+                                             between paragraphs; this shows those breaks instead
+                                             of running everything into one block */
 }
 
 /* The bullet lists ("What you'll do", "What you need") */

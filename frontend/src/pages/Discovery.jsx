@@ -1,13 +1,13 @@
 // Discovery.jsx is the Discovery page (yoursite.com/discovery).
-// It shows internships, co-ops, and part-time and full-time jobs matched to your profile.
-// Everything on it is made-up sample data for now, because the site
-// isn't connected to the backend yet.
+// It shows real internships, co-ops, research positions, and programs.
+// The jobs come from our backend (GET /api/jobs), which gets them from
+// company job boards (Greenhouse, Lever) and JSearch. See backend/src/jobs.ts.
 // The styles for this page are in index.css, under "Discovery page".
 //
 // Since the 2026-11 revamp it's laid out like a dashboard, one column:
-//   1. DiscoveryHeader   the title, one sentence, the "Examples" tag, and the search bar
+//   1. DiscoveryHeader   the title, one sentence, and the search bar
 //   2. SummaryBoxes      three number boxes: open to you, due soon, on your tracker
-//   3. TypeTabs + Sort   tabs (All, Internship, Co-op, ...) with counts, and the Sort menu
+//   3. TypeTabs + Sort   tabs (All, Internship, Co-op, Research, Program) with counts, and the Sort menu
 //   4. ResultsSection    the table: one row per opportunity (OpportunityRow)
 //   5. ProfileTip        a one-line tip under the table
 //
@@ -18,28 +18,85 @@
 // useState lets the page remember a value and redraw itself when it changes.
 // useRef keeps a reference to something on the screen (here: each row's pop-up,
 // so its buttons can open it).
-// useEffect runs code after the page is drawn (here: opening a pop-up).
+// useEffect runs code after the page is drawn (here: getting the jobs, and opening a pop-up).
 import { useEffect, useRef, useState } from "react";
 // Link goes to another page of the site without reloading everything.
 // useSearchParams reads the extra info at the end of the address, like the
-// "?job=1" in "/discovery?job=1" (the Feed page links here that way).
+// "?job=..." in "/discovery?job=..." (the Feed page links here that way).
 import { Link, useSearchParams } from "react-router";
 // NavBar is the bar across the top of the page. It lives in its own file
 // (components/NavBar.jsx) because every page uses it.
 import NavBar from "../components/NavBar.jsx";
 
-// ---------- Sample data ----------
-// The job listings live in their own file, because the Application tracker
-// page uses them too. See src/data/opportunities.js.
-// isPastDeadline says if a job's deadline has gone by (it then says "Closed")
-import { isPastDeadline, opportunities } from "../data/opportunities.js";
-// The helpers that add a job to (or take it off) the Application tracker.
-// See src/data/tracker.js.
-import { addToTracker, isOnTracker, loadTracker, removeFromTracker } from "../data/tracker.js";
+// api() is how pages talk to our backend (src/api.js).
+import { api } from "../api.js";
+// isPastDeadline says if a job's deadline has gone by (it then says "Closed").
+// (The made-up example jobs in that file are still used by the Feed page.)
+import { isPastDeadline } from "../data/opportunities.js";
+// The helpers that add a job to (or take it off) the Application tracker, and
+// trackerJob, which finds the job behind each saved item. See src/data/tracker.js.
+import { addToTracker, isOnTracker, loadTracker, removeFromTracker, trackerJob } from "../data/tracker.js";
 
 // The tabs across the page. "All" shows everything; the rest match the
-// "type" of each opportunity above.
-const tabs = ["All", "Internship", "Co-op", "Part-time", "Full-time"];
+// "type" of each opportunity (the same four types the database allows).
+const tabs = ["All", "Internship", "Co-op", "Research", "Program"];
+
+// ---------- Turning backend jobs into what this page shows ----------
+
+// The database writes types in lowercase ("co-op"); the tabs show them capitalized.
+const typeNames = {
+  internship: "Internship",
+  "co-op": "Co-op",
+  research: "Research",
+  program: "Program",
+};
+
+// Where each job came from, in words students know. Every outside job has to
+// say where it's from (backend/plans.md: "Every outside job shows its source").
+const sourceNames = {
+  employer: "ScoutSearch",
+  greenhouse: "Greenhouse",
+  lever: "Lever",
+  usajobs: "USAJOBS",
+  adzuna: "Adzuna",
+  jsearch: "JSearch",
+};
+
+// Turns one job from the backend into the shape the rest of this page uses.
+// The names on the left are what the table and the pop-up read; the names on
+// the right are the backend's (see JOB_COLUMNS in backend/src/jobs.ts).
+// "??" means "if this is missing (null), use the thing on the right instead".
+function toOpportunity(job) {
+  return {
+    id: job.id,
+    // "Greenline Labs" -> "GL", for the square logo
+    initials: job.organization
+      .split(/\s+/)
+      .map((word) => word[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase(),
+    title: job.title,
+    organization: job.organization,
+    type: typeNames[job.type],
+    place: job.location ?? (job.setting === "remote" ? "Remote" : "Location not listed"),
+    deadline: job.deadline, // can be null: many jobs don't list one
+    description: job.description ?? "", // the whole description, for the pop-up
+    tags: [], // the backend doesn't have skill tags yet
+    pay: job.pay_text, // can be null
+    requirements: job.requirements,
+    applyUrl: job.apply_url, // the original posting; Apply opens it
+    source: sourceNames[job.source] ?? job.source,
+  };
+}
+
+// Asks the backend for the jobs, and turns each one into the page's shape.
+// It's "async", so it hands back a promise: the list arrives a moment later.
+// The backend sends the newest 50 open jobs ({ jobs: [...] }).
+async function fetchOpportunities() {
+  const body = await api("/jobs");
+  return body.jobs.map(toOpportunity);
+}
 
 // ---------- Helpers ----------
 
@@ -52,18 +109,12 @@ function formatDate(date, options) {
 
 // Puts opportunities in order of deadline, soonest first.
 // [...list] makes a copy first, because .sort() changes the list it's given,
-// and we don't want to shuffle the original sample data.
+// and we don't want to shuffle the list the page remembers.
 // localeCompare compares two words A to Z; because the dates are written
 // year-month-day, A to Z is also earliest to latest.
+// Jobs with no deadline (null) count as "9999-12-31", so they go last.
 function sortByDeadline(list) {
-  return [...list].sort((a, b) => a.deadline.localeCompare(b.deadline));
-}
-
-// Puts opportunities in order of match, highest first.
-// b.match - a.match is a positive number when b fits better, which tells
-// .sort() to put b first.
-function sortByMatch(list) {
-  return [...list].sort((a, b) => b.match - a.match);
+  return [...list].sort((a, b) => (a.deadline ?? "9999-12-31").localeCompare(b.deadline ?? "9999-12-31"));
 }
 
 // True if every word typed in the search bar appears somewhere in this
@@ -159,9 +210,9 @@ function ArrowIcon() {
 
 // ---------- Pieces of the page ----------
 
-// The top of the page: the title, one sentence, the "Examples" tag, and the
-// search bar (the 2026-11 revamp: a calm title on the page, like a dashboard,
-// instead of the old dark navy box).
+// The top of the page: the title, one sentence, and the search bar (the
+// 2026-11 revamp: a calm title on the page, like a dashboard, instead of the
+// old dark navy box).
 // props.search is what's typed in the search bar right now, and
 // props.setSearch changes it. Discovery (at the bottom) remembers it, so the
 // list can use it to filter.
@@ -179,9 +230,7 @@ function DiscoveryHeader(props) {
         {/* The page's one h1 (WCAG) */}
         <h1 className="discovery-head-title">Opportunities</h1>
         <p className="discovery-head-text">
-          Internships, co-ops, and jobs matched to your profile.{" "}
-          {/* The team's rule: anything made up is clearly labeled as an example */}
-          <span className="discovery-examples-tag">Examples</span>
+          Real internships, co-ops, research positions, and programs, from company job boards.
         </p>
       </div>
 
@@ -200,7 +249,7 @@ function DiscoveryHeader(props) {
           id="discovery-search-input"
           className="discovery-search-input"
           type="search"
-          placeholder="Search by role, company, skill, or city"
+          placeholder="Search by role, company, or city"
           value={props.search}
           onChange={(event) => props.setSearch(event.target.value)}
         />
@@ -212,8 +261,10 @@ function DiscoveryHeader(props) {
 // The three summary boxes under the title: how many opportunities there are,
 // how many are due soon, and how many are on your tracker. Like the number
 // boxes at the top of a dashboard, so you see the big picture first.
-// props.dueSoon is the list of opportunities due in the next 14 days
-// (soonest first), and props.trackerCount is how many are on your tracker.
+// props.openCount is how many you can still apply to, props.dueSoon is the list
+// of opportunities due in the next 14 days (soonest first), props.trackerCount
+// is how many are on your tracker, and props.loading is true while the jobs are
+// still on their way (the job numbers show "…" until then, not a wrong 0).
 function SummaryBoxes(props) {
   // The first one due, for the note under the number ("First up: ...")
   const first = props.dueSoon[0];
@@ -223,13 +274,12 @@ function SummaryBoxes(props) {
     <ul className="discovery-summary" aria-label="Summary">
       <li className="discovery-summary-box">
         <span className="discovery-summary-label">Open to you</span>
-        {/* Only the ones you can still apply to (not past their deadline) */}
-        <span className="discovery-summary-number">{opportunities.filter((o) => !isPastDeadline(o.deadline)).length}</span>
-        <span className="discovery-summary-note">Internships, co-ops, and jobs</span>
+        <span className="discovery-summary-number">{props.loading ? "…" : props.openCount}</span>
+        <span className="discovery-summary-note">Internships, co-ops, research, and programs</span>
       </li>
       <li className="discovery-summary-box">
         <span className="discovery-summary-label">Due in the next 2 weeks</span>
-        <span className="discovery-summary-number">{props.dueSoon.length}</span>
+        <span className="discovery-summary-number">{props.loading ? "…" : props.dueSoon.length}</span>
         <span className="discovery-summary-note">
           {/* "first ? (...) : (...)" means "if there's one due, name it; if not, say so" */}
           {first
@@ -301,7 +351,7 @@ function CloseIcon() {
 }
 
 // The pop-up with everything about one opportunity. It opens when you press
-// "View opportunity".
+// "View" or the job's title.
 //
 // It's a <dialog>, the browser's own pop-up. Opened with showModal(), the
 // browser does the hard parts for us (WCAG):
@@ -311,9 +361,9 @@ function CloseIcon() {
 //
 // What's passed in:
 //   opportunity        the opportunity to show
-//   ref                a reference to the <dialog>, so the card can open it.
+//   ref                a reference to the <dialog>, so the row can open it.
 //                      (In React 19, "ref" can be passed in like any other prop.)
-//   saved, toggleSave  the same Save on/off as the card's button, and the
+//   saved, toggleSave  the same Save on/off as the row's button, and the
 //                      function that flips it (and updates the tracker)
 //
 // { opportunity, ref, saved, toggleSave } below "unpacks" the props: it's a
@@ -322,10 +372,10 @@ function CloseIcon() {
 // the page is being drawn, and keeping it separate from the other props
 // makes that clear.
 function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
-  // Whether Apply has been pressed (shows a message, since applying isn't built yet)
-  const [applied, setApplied] = useState(false);
   // A unique id for the title, so the dialog can be named by it (WCAG)
   const titleId = "discovery-dialog-title-" + opportunity.id;
+  // true once the deadline has gone by: Apply then turns off (see the bottom)
+  const closed = isPastDeadline(opportunity.deadline);
 
   // Clicking the dark area around the pop-up closes it. The <dialog> has no
   // padding of its own, so a click whose target is the <dialog> itself (not
@@ -345,8 +395,8 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
       aria-labelledby={titleId}
       onClick={closeIfOutside}
     >
-      {/* The top: the square logo, the title with who and where under it,
-          then the kind of job and the match as small tags, and the X */}
+      {/* The top: the square logo, the title with who, where, and which site we
+          found it on under it, then the kind of job as a small tag, and the X */}
       <div className="discovery-dialog-top">
         <span className="discovery-logo" aria-hidden="true">
           {opportunity.initials}
@@ -356,12 +406,11 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
             {opportunity.title}
           </h2>
           <p className="discovery-dialog-facts">
-            {opportunity.organization} · {opportunity.place}
+            {opportunity.organization} · {opportunity.place} · via {opportunity.source}
           </p>
           <p className="discovery-dialog-tags">
             {/* The same colored tag as the table (typeTagClass, further down) */}
             <span className={typeTagClass[opportunity.type]}>{opportunity.type}</span>
-            <span className="discovery-dialog-match">{opportunity.match}% match</span>
           </p>
         </div>
         {/* A form with method="dialog" closes the pop-up when its button is
@@ -375,69 +424,60 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
 
       {/* The middle part scrolls if the details are longer than the screen */}
       <div className="discovery-dialog-body">
-        {/* The 4 quick facts in one row, as labels and values (dl = description list) */}
-        <dl className="discovery-dialog-facts-grid">
-          <div>
-            <dt>Pay</dt>
-            <dd>{opportunity.pay}</dd>
-          </div>
-          <div>
-            <dt>When</dt>
-            <dd>{opportunity.length}</dd>
-          </div>
-          <div>
-            <dt>Hours</dt>
-            <dd>{opportunity.hours}</dd>
-          </div>
-          <div>
-            <dt>Apply by</dt>
-            <dd>
-              <time dateTime={opportunity.deadline}>
-                {formatDate(opportunity.deadline, { month: "short", day: "numeric", year: "numeric" })}
-              </time>
-            </dd>
-          </div>
-        </dl>
+        {/* The quick facts, as labels and values (dl = description list).
+            Real jobs often leave pay or a deadline out, so each one only shows
+            when the job has it. "&&" means: only draw the part on the right if
+            the left side is there. The whole list is left out if both are missing. */}
+        {(opportunity.pay || opportunity.deadline) && (
+          <dl className="discovery-dialog-facts-grid">
+            {opportunity.pay && (
+              <div>
+                <dt>Pay</dt>
+                <dd>{opportunity.pay}</dd>
+              </div>
+            )}
+            {opportunity.deadline && (
+              <div>
+                <dt>Apply by</dt>
+                <dd>
+                  <time dateTime={opportunity.deadline}>
+                    {formatDate(opportunity.deadline, { month: "short", day: "numeric", year: "numeric" })}
+                  </time>
+                </dd>
+              </div>
+            )}
+          </dl>
+        )}
 
-        <h3 className="discovery-dialog-heading">About the role</h3>
-        <p className="discovery-dialog-text">{opportunity.description}</p>
+        {opportunity.description && (
+          <>
+            <h3 className="discovery-dialog-heading">About the role</h3>
+            {/* The description is plain text (the backend removes any HTML), and
+                React shows it as text, so nothing in it can run as code */}
+            <p className="discovery-dialog-text">{opportunity.description}</p>
+          </>
+        )}
 
-        <h3 className="discovery-dialog-heading">What you'll do</h3>
-        {/* .map() makes one <li> per item, in order. The item's own words
-            are its key, since they're all different. */}
-        <ul className="discovery-dialog-list">
-          {opportunity.responsibilities.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-
-        <h3 className="discovery-dialog-heading">What you need</h3>
-        <ul className="discovery-dialog-list">
-          {opportunity.requirements.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-
-        <h3 className="discovery-dialog-heading">Skills</h3>
-        <ul className="discovery-tags" aria-label="Skills">
-          {opportunity.tags.map((tag) => (
-            <li key={tag} className="discovery-tag">
-              {tag}
-            </li>
-          ))}
-        </ul>
-
-        <h3 className="discovery-dialog-heading">About {opportunity.organization}</h3>
-        <p className="discovery-dialog-text">{opportunity.about}</p>
+        {/* Only if the job lists what they're looking for.
+            .map() makes one <li> per item, in order. Real posts sometimes say
+            the same thing twice, so the key adds the item's place in the list
+            (index) to its words, to keep every key different. */}
+        {opportunity.requirements.length > 0 && (
+          <>
+            <h3 className="discovery-dialog-heading">What they're looking for</h3>
+            <ul className="discovery-dialog-list">
+              {opportunity.requirements.map((item, index) => (
+                <li key={index + item}>{item}</li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
 
-      {/* The bottom: a message on the left, Save and Apply on the right.
+      {/* The bottom: a note on the left, Save and Apply on the right.
           It stays put while the middle scrolls. */}
       <div className="discovery-dialog-bottom">
-        {/* role="status" reads the message out when it appears (WCAG) */}
-        <p className="discovery-dialog-message" role="status">
-          {applied ? "Applying isn't built yet." : ""}
-        </p>
+        <p className="discovery-dialog-message">You'll apply on {opportunity.organization}'s own site.</p>
         <div className="discovery-actions">
           {/* aria-label starts with the word you see ("Save" or "Saved"),
               so voice control users can say what's on the button (WCAG) */}
@@ -452,22 +492,31 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
             {saved ? "Saved" : "Save"}
           </button>
           {/* After the deadline, Apply turns off and says why ("disabled"
-              also stops it from being clicked or reached with Tab) */}
-          <button
-            type="button"
-            className="discovery-solid-button"
-            onClick={() => setApplied(true)}
-            disabled={isPastDeadline(opportunity.deadline)}
-          >
-            {isPastDeadline(opportunity.deadline) ? (
-              "Applications closed"
-            ) : (
-              <>
+              also stops it from being clicked or reached with Tab).
+              Before it, Apply opens the original posting in a new tab, so students
+              apply on the real site. It's a link (<a>), not a button, because it
+              goes somewhere. target="_blank" opens a new tab; rel="noopener
+              noreferrer" stops that other site from controlling or seeing this tab.
+              aria-label warns that a new tab opens, and starts with the visible
+              word "Apply" so voice control still works (WCAG). */}
+          {closed ? (
+            <button type="button" className="discovery-solid-button" disabled>
+              Applications closed
+            </button>
+          ) : (
+            opportunity.applyUrl && (
+              <a
+                href={opportunity.applyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="discovery-solid-button"
+                aria-label={"Apply to " + opportunity.title + " (opens in a new tab)"}
+              >
                 Apply
                 <ArrowIcon />
-              </>
-            )}
-          </button>
+              </a>
+            )
+          )}
         </div>
       </div>
     </dialog>
@@ -476,8 +525,10 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
 
 // True if a deadline is within the next "days" days (and not already past).
 // Used for the "Due soon" tag (7 days) and the summary box (14 days).
+// A job with no deadline (null) is never "due".
 // 1000 * 60 * 60 * 24 is the number of milliseconds in one day.
 function isDueWithin(deadline, days) {
+  if (!deadline) return false;
   const msLeft = new Date(deadline + "T23:59") - new Date();
   return msLeft >= 0 && msLeft <= days * 1000 * 60 * 60 * 24;
 }
@@ -487,13 +538,12 @@ function isDueWithin(deadline, days) {
 const typeTagClass = {
   Internship: "discovery-type-tag discovery-type-internship",
   "Co-op": "discovery-type-tag discovery-type-coop",
-  "Part-time": "discovery-type-tag discovery-type-parttime",
-  "Full-time": "discovery-type-tag discovery-type-fulltime",
+  Research: "discovery-type-tag discovery-type-research",
+  Program: "discovery-type-tag discovery-type-program",
 };
 
 // One row of the table: one opportunity.
 // props.opportunity is one { } from the opportunities list.
-// props.isBest is true for the opportunity with the highest match.
 function OpportunityRow(props) {
   // A shorter name, so we can write opportunity.title instead of props.opportunity.title.
   const opportunity = props.opportunity;
@@ -508,11 +558,18 @@ function OpportunityRow(props) {
   // Runs when Save is pressed, in the row or in the pop-up.
   // Saving puts the job in the tracker's "Saved" column; pressing again
   // ("Saved") takes it off the tracker.
+  // The title, company, deadline, and initials are saved with it, because the
+  // Application tracker page can't look real jobs up anywhere else yet
   function toggleSave() {
     if (saved) {
       removeFromTracker(opportunity.id);
     } else {
-      addToTracker(opportunity.id);
+      addToTracker(opportunity.id, {
+        title: opportunity.title,
+        organization: opportunity.organization,
+        deadline: opportunity.deadline,
+        initials: opportunity.initials,
+      });
     }
     setSaved(!saved);
     // Tells the Discovery page, so "On your tracker" at the top updates
@@ -524,9 +581,9 @@ function OpportunityRow(props) {
   // A reference to this row's View button (see the useEffect below)
   const viewButtonRef = useRef(null);
 
-  // If the Feed page sent you here for THIS job ("/discovery?job=1"), open its
+  // If the Feed page sent you here for THIS job ("/discovery?job=..."), open its
   // pop-up as soon as the row is on the screen. props.openOnArrival is true
-  // only for that job. After opening, props.onOpened clears the "?job=1", so
+  // only for that job. After opening, props.onOpened clears the "?job=...", so
   // the pop-up doesn't open again by itself (for example after switching tabs).
   const openOnArrival = props.openOnArrival;
   const onOpened = props.onOpened;
@@ -545,7 +602,8 @@ function OpportunityRow(props) {
 
   return (
     <tr className="discovery-row">
-      {/* Role: the square logo, the title, and the organization.
+      {/* Role: the square logo, the title, and the organization (with which
+          site we found the job on: every outside job says where it's from).
           data-label is the column's name, shown above each piece on phones,
           where the table turns into one small box per opportunity (index.css) */}
       <td className="discovery-cell-role" data-label="Role">
@@ -566,9 +624,7 @@ function OpportunityRow(props) {
               {opportunity.title}
             </button>
             <span className="discovery-role-org">
-              {opportunity.organization}
-              {/* The best match gets a small tag after the name */}
-              {props.isBest && <span className="discovery-best-tag">Best match</span>}
+              {opportunity.organization} · via {opportunity.source}
             </span>
           </span>
         </span>
@@ -580,33 +636,30 @@ function OpportunityRow(props) {
 
       <td data-label="Location">{opportunity.place}</td>
 
+      {/* Many real jobs don't say what they pay, so this says so instead of
+          leaving the box empty ("??" = use "Not listed" if pay is null) */}
       <td data-label="Pay" className="discovery-cell-nowrap">
-        {opportunity.pay}
+        {opportunity.pay ?? "Not listed"}
       </td>
 
       <td data-label="Apply by">
-        <span className="discovery-apply-by">
-          {/* <time> marks this as a date for computers, using the
-              year-month-day version in dateTime */}
-          <time dateTime={opportunity.deadline}>
-            {formatDate(opportunity.deadline, { month: "short", day: "numeric", year: "numeric" })}
-          </time>
-          {/* "Due soon" when it's within a week, and "Closed" once the deadline
-              has gone by. Written out, not only a color (WCAG) */}
-          {isDueWithin(opportunity.deadline, 7) && <span className="discovery-due-tag">Due soon</span>}
-          {isPastDeadline(opportunity.deadline) && <span className="discovery-due-tag discovery-closed-tag">Closed</span>}
-        </span>
-      </td>
-
-      <td data-label="Match">
-        <span className="discovery-match-cell">
-          {/* The bar is decoration: the number next to it says the same (WCAG).
-              --fill sets how much of the bar is colored in (see index.css) */}
-          <span className="discovery-match-bar" aria-hidden="true">
-            <span className="discovery-match-fill" style={{ "--fill": opportunity.match + "%" }} />
+        {/* Many real jobs don't list a deadline, so this says so instead of a
+            broken date. "? :" picks one of the two */}
+        {opportunity.deadline ? (
+          <span className="discovery-apply-by">
+            {/* <time> marks this as a date for computers, using the
+                year-month-day version in dateTime */}
+            <time dateTime={opportunity.deadline}>
+              {formatDate(opportunity.deadline, { month: "short", day: "numeric", year: "numeric" })}
+            </time>
+            {/* "Due soon" when it's within a week, and "Closed" once the deadline
+                has gone by. Written out, not only a color (WCAG) */}
+            {isDueWithin(opportunity.deadline, 7) && <span className="discovery-due-tag">Due soon</span>}
+            {isPastDeadline(opportunity.deadline) && <span className="discovery-due-tag discovery-closed-tag">Closed</span>}
           </span>
-          <span className="discovery-match-number">{opportunity.match}%</span>
-        </span>
+        ) : (
+          "No deadline listed"
+        )}
       </td>
 
       <td className="discovery-cell-actions">
@@ -654,9 +707,37 @@ function OpportunityRow(props) {
   );
 }
 
-// The list of opportunities: the count and Sort above, then the table.
+// The list of opportunities: the table, with the count under it.
 // props.shown is the opportunities that pass the search and tab, already sorted.
+// props.loading is true while the jobs are still on their way from the backend,
+// and props.loadError is true if getting them failed (props.retry tries again).
 function ResultsSection(props) {
+  // While waiting, or if it failed, show a message in place of the table.
+  // role="status" reads it out when it appears (WCAG).
+  // It reuses the "nothing here" box below, so it needs no new styles.
+  if (props.loading || props.loadError) {
+    return (
+      <section className="discovery-results" aria-labelledby="discovery-results-title">
+        <h2 id="discovery-results-title" className="sr-only">
+          Opportunities
+        </h2>
+        <div className="discovery-empty" role="status">
+          {props.loading ? (
+            <p className="discovery-empty-title">Loading opportunities...</p>
+          ) : (
+            <>
+              <p className="discovery-empty-title">Couldn't load opportunities</p>
+              <p className="discovery-empty-text">Check your connection, then try again.</p>
+              <button type="button" className="discovery-outline-button" onClick={props.retry}>
+                Try again
+              </button>
+            </>
+          )}
+        </div>
+      </section>
+    );
+  }
+
   // "opportunity" for 1, "opportunities" for anything else.
   const word = props.shown.length === 1 ? "opportunity" : "opportunities";
 
@@ -685,7 +766,7 @@ function ResultsSection(props) {
         <div className="discovery-table-box">
           <table className="discovery-table">
             {/* The table's name, for screen readers (WCAG) */}
-            <caption className="sr-only">Opportunities, {props.sortBy === "match" ? "best match first" : "soonest deadline first"}</caption>
+            <caption className="sr-only">Opportunities, {props.sortBy === "deadline" ? "soonest deadline first" : "newest first"}</caption>
             <thead>
               <tr>
                 {/* scope="col" tells screen readers each one names a column (WCAG) */}
@@ -694,7 +775,6 @@ function ResultsSection(props) {
                 <th scope="col">Location</th>
                 <th scope="col">Pay</th>
                 <th scope="col">Apply by</th>
-                <th scope="col">Match</th>
                 {/* The buttons' column has no words on screen, but screen readers get a name */}
                 <th scope="col">
                   <span className="sr-only">Actions</span>
@@ -706,7 +786,6 @@ function ResultsSection(props) {
                 <OpportunityRow
                   key={opportunity.id}
                   opportunity={opportunity}
-                  isBest={opportunity.id === props.bestMatchId}
                   // true only for the job the Feed page linked to (see Discovery below)
                   openOnArrival={opportunity.id === props.openJobId}
                   onOpened={props.onOpened}
@@ -742,6 +821,12 @@ function ProfileTip() {
   );
 }
 
+// How many items on the tracker have a job behind them (trackerJob), so the
+// number at the top matches what the Application tracker page shows
+function trackerTotal() {
+  return loadTracker().filter((item) => trackerJob(item)).length;
+}
+
 // Discovery is the whole page. It puts the pieces above together, and it
 // remembers the search and the picked tab so everything stays in sync.
 function Discovery() {
@@ -749,24 +834,69 @@ function Discovery() {
   const [search, setSearch] = useState("");
   // Which tab is picked. Starts on "All".
   const [picked, setPicked] = useState("All");
-  // How the list is sorted: "match" or "deadline".
-  const [sortBy, setSortBy] = useState("match");
-  // The extra info at the end of the address. For "/discovery?job=1",
-  // searchParams.get("job") gives "1". setSearchParams changes it.
-  const [searchParams, setSearchParams] = useSearchParams();
-  // The job to open right away, as a number (Number("1") is 1), or null if
-  // the address has no "?job=". Number(null) would be 0, so check first.
-  const openJobId = searchParams.get("job") ? Number(searchParams.get("job")) : null;
+  // How the list is sorted: "newest" or "deadline".
+  const [sortBy, setSortBy] = useState("newest");
 
-  // Runs after that job's pop-up opens: removes "?job=1" from the address.
+  // The jobs from the backend. Starts as an empty list until they arrive.
+  const [opportunities, setOpportunities] = useState([]);
+  // true while waiting for the backend, so the list can say "Loading..."
+  const [loading, setLoading] = useState(true);
+  // true if getting the jobs failed, so the list can show "Try again"
+  const [loadError, setLoadError] = useState(false);
+  // Counts how many times "Try again" was pressed. Changing it makes the
+  // useEffect below run again (it's in the [ ] list at the end).
+  const [tries, setTries] = useState(0);
+
+  // Runs when the page opens, and again after each "Try again":
+  // asks the backend for the jobs.
+  useEffect(() => {
+    // If you leave the page before the answer arrives, "ignore" becomes true
+    // (in the cleanup at the bottom), so we don't update a page that's gone.
+    let ignore = false;
+    fetchOpportunities()
+      .then((list) => {
+        if (!ignore) {
+          setOpportunities(list);
+        }
+      })
+      .catch((error) => {
+        // The real reason goes to the console (F12); the page shows a simple message
+        console.error("Loading jobs failed:", error);
+        if (!ignore) {
+          setLoadError(true);
+        }
+      })
+      // .finally runs either way, worked or failed
+      .finally(() => {
+        if (!ignore) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [tries]);
+
+  // Runs when "Try again" is pressed: back to "Loading...", then ask again
+  function retry() {
+    setLoading(true);
+    setLoadError(false);
+    setTries(tries + 1);
+  }
+
+  // The extra info at the end of the address. For "/discovery?job=abc",
+  // searchParams.get("job") gives "abc". setSearchParams changes it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The job to open right away, or null if the address has no "?job=".
+  // Real job ids are long codes (uuids) like "3f2a...", so it stays as text.
+  const openJobId = searchParams.get("job");
+
+  // Runs after that job's pop-up opens: removes "?job=..." from the address.
   // replace: true swaps the address instead of adding a new one, so the
   // browser's Back button still goes back to the Feed page.
   function clearOpenJob() {
     setSearchParams({}, { replace: true });
   }
-
-  // The opportunity with the highest match: sort by match, take the first.
-  const bestMatch = sortByMatch(opportunities)[0];
 
   // The opportunities that pass the search (see matchesSearch above)
   const searched = opportunities.filter((opportunity) => matchesSearch(opportunity, search));
@@ -780,16 +910,17 @@ function Discovery() {
     counts[tab] = tab === "All" ? searched.length : searched.filter((o) => o.type === tab).length;
   });
 
-  // For the summary boxes: what's due in the next 2 weeks (soonest first),
-  // and how many jobs are on your tracker (saved in this browser).
+  // For the summary boxes: how many you can still apply to, what's due in the
+  // next 2 weeks (soonest first), and how many jobs are on your tracker.
+  const openCount = opportunities.filter((o) => !isPastDeadline(o.deadline)).length;
   const dueSoon = sortByDeadline(opportunities.filter((o) => isDueWithin(o.deadline, 14)));
   // The tracker count is state, so the page redraws when it changes. Each row's
   // Save button runs updateTrackerCount (through ResultsSection) after saving.
   // Before, it was only read when the page opened, so it stayed at the old
   // number until a refresh
-  const [trackerCount, setTrackerCount] = useState(() => loadTracker().length);
+  const [trackerCount, setTrackerCount] = useState(trackerTotal);
   function updateTrackerCount() {
-    setTrackerCount(loadTracker().length);
+    setTrackerCount(trackerTotal());
   }
 
   // Of the ones that pass the search, keep only the picked tab's:
@@ -797,7 +928,8 @@ function Discovery() {
   const filtered = searched.filter((opportunity) => picked === "All" || opportunity.type === picked);
 
   // Then sort what's left, the way the Sort dropdown says.
-  const shown = sortBy === "match" ? sortByMatch(filtered) : sortByDeadline(filtered);
+  // "newest" keeps the backend's order (newest first), so there's nothing to do.
+  const shown = sortBy === "deadline" ? sortByDeadline(filtered) : filtered;
 
   // The "Show all opportunities" button: empty search bar, back to All.
   function showAll() {
@@ -813,7 +945,7 @@ function Discovery() {
           boxes, the tabs and Sort, then the table */}
       <main className="discovery-page">
         <DiscoveryHeader search={search} setSearch={setSearch} />
-        <SummaryBoxes dueSoon={dueSoon} trackerCount={trackerCount} />
+        <SummaryBoxes openCount={openCount} dueSoon={dueSoon} trackerCount={trackerCount} loading={loading} />
 
         {/* The tabs on the left, Sort on the right */}
         <div className="discovery-toolbar">
@@ -829,7 +961,10 @@ function Discovery() {
               value={sortBy}
               onChange={(event) => setSortBy(event.target.value)}
             >
-              <option value="match">Best match</option>
+              {/* "Newest" is the order the backend sends: newest jobs first.
+                  (There's no "Best match" yet, because matching jobs to your
+                  profile isn't built.) */}
+              <option value="newest">Newest</option>
               <option value="deadline">Deadline</option>
             </select>
           </div>
@@ -837,7 +972,9 @@ function Discovery() {
 
         <ResultsSection
           shown={shown}
-          bestMatchId={bestMatch.id}
+          loading={loading}
+          loadError={loadError}
+          retry={retry}
           sortBy={sortBy}
           showAll={showAll}
           openJobId={openJobId}

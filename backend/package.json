@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "tsx watch --env-file=secrets.env src/app.ts",
     "start": "tsx --env-file=secrets.env src/app.ts",
+    "start:host": "tsx src/app.ts",
     "import-jobs": "tsx --env-file=secrets.env src/import-jobs.ts"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "keywords": [],
   "author": "",
@@ -16,14 +20,14 @@
     "@supabase/supabase-js": "^2.117.3",
     "bcrypt": "^6.0.0",
     "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3"
+    "jsonwebtoken": "^9.0.3",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.6.4",
-    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
   "allowScripts": {

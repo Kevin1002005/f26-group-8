@@ -55,7 +55,13 @@ app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
 
 // no express.static here: the frontend is its own Vite app (npm run dev in frontend/),
 // and the old express.static('frontend') pointed at backend/frontend, which doesn't exist
-app.listen(3000);
+// the port: hosts like Render and Railway pick one and pass it in as PORT.
+// on your computer there's no PORT, so it's 3000 (where the Vite proxy sends /api)
+const port = Number(process.env.PORT) || 3000;
+app.listen(port, () => {
+  // shows up in the host's logs, so you can see the server really started
+  console.log(`backend listening on port ${port}`);
+});
 
 
 

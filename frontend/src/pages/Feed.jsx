@@ -21,8 +21,9 @@ import { Link } from "react-router";
 // open that exact job there. isPastDeadline says if a job's deadline has gone by.
 import { isPastDeadline, opportunities } from "../data/opportunities.js";
 // The Application tracker's list (src/data/tracker.js): Save on a listing post
-// adds the job to it, and "Due soon" reads it
-import { addToTracker, isOnTracker, loadTracker, removeFromTracker } from "../data/tracker.js";
+// adds the job to it, and "Due soon" reads it (trackerJob finds each item's job,
+// real or example)
+import { addToTracker, isOnTracker, loadTracker, removeFromTracker, trackerJob } from "../data/tracker.js";
 // Who is logged in (src/use-current-user.js), so your own posts and comments
 // show your name instead of the made-up example person
 import { useCurrentUser } from "../use-current-user.js";
@@ -813,13 +814,14 @@ function ListingPost(props) {
 // (It used to be a box with today's date, which was only for looks.)
 // props.tracker is the tracker's list, kept by the Feed page (see Feed below)
 function DueSoonCard(props) {
-  // The tracker's list is [{ id, stage }, ...]. For each one, find its job,
-  // keep the ones due in the next 14 days, and sort them soonest first
+  // The tracker's list is [{ id, stage }, ...]. For each one, find its job
+  // (a real job saved on Opportunities, or an example), keep the ones due in
+  // the next 14 days, and sort them soonest first. A job with no deadline is never "due"
   const due = props.tracker
     // Leave out what's already in Submitted: it's sent, so it isn't "due" anymore
     .filter((item) => item.stage !== "submitted")
-    .map((item) => opportunities.find((job) => job.id === item.id))
-    .filter((job) => job && isDueWithin(job.deadline, 14))
+    .map((item) => trackerJob(item))
+    .filter((job) => job && job.deadline && isDueWithin(job.deadline, 14))
     .sort((a, b) => a.deadline.localeCompare(b.deadline));
 
   return (

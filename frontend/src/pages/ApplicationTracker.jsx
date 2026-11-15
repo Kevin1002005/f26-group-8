@@ -22,12 +22,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 // NavBar is the bar across the top of the page (components/NavBar.jsx).
 import NavBar from "../components/NavBar.jsx";
-// The job listings (the same ones as on Discovery), and isPastDeadline,
-// which says if a job's deadline has gone by
-import { isPastDeadline, opportunities } from "../data/opportunities.js";
+// isPastDeadline says if a job's deadline has gone by
+import { isPastDeadline } from "../data/opportunities.js";
 // Reads and saves which jobs are on the board (shared with Discovery's Save
-// button). watchTracker hears about changes made in another tab
-import { loadTracker, saveTracker, watchTracker } from "../data/tracker.js";
+// button). watchTracker hears about changes made in another tab, and
+// trackerJob finds the job behind each saved item (a real job or an example)
+import { loadTracker, saveTracker, trackerJob, watchTracker } from "../data/tracker.js";
 
 // ---------- Icons ----------
 // Small drawings made with SVG. aria-hidden="true" hides them from screen
@@ -117,16 +117,16 @@ function formatDate(date) {
   return new Date(date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// Builds the board from the saved list. The saved list only has each job's
-// id and column, so this looks up the rest (title, company, ...) in the
-// opportunities list.
+// Builds the board from the saved list. trackerJob (tracker.js) finds each
+// item's job: a real job's title, company, and deadline were saved with it,
+// and an example job is looked up in the opportunities list.
 function loadApplications() {
   return (
     loadTracker()
       // For each saved item, find its job and add the column to it.
       // { ...job, stage: item.stage } copies the job and adds its column.
       .map((item) => {
-        const job = opportunities.find((opportunity) => opportunity.id === item.id);
+        const job = trackerJob(item);
         return job ? { ...job, stage: item.stage } : null;
       })
       // Drop any saved id that no longer matches a job (null from above)
@@ -187,12 +187,15 @@ function TrackerCard(props) {
   const selectId = "tracker-move-" + app.id;
 
   // The small line at the bottom of the card changes with the column,
-  // and says "Closed" once the deadline has gone by (if you never sent it)
-  let note = "Apply by " + formatDate(app.deadline);
+  // and says "Closed" once the deadline has gone by (if you never sent it).
+  // Many real jobs don't list a deadline at all
+  let note = "No deadline listed";
   if (app.stage === "submitted") {
     note = "Application sent";
   } else if (isPastDeadline(app.deadline)) {
     note = "Closed " + formatDate(app.deadline);
+  } else if (app.deadline) {
+    note = "Apply by " + formatDate(app.deadline);
   }
 
   return (
@@ -335,11 +338,19 @@ function ApplicationTracker() {
   // The sentence screen readers hear after a card moves
   const [announcement, setAnnouncement] = useState("");
 
-  // Every time the board changes, save it (just each job's id and column),
-  // so it's still there after a refresh. [applications] at the end means
-  // "only run this when applications changes".
+  // Every time the board changes, save it: each job's id and column, plus its
+  // title, company, deadline, and initials (a real job can't be looked up
+  // anywhere else yet, see trackerJob in tracker.js), so it's still there after
+  // a refresh. [applications] at the end means "only run this when applications changes".
   useEffect(() => {
-    saveTracker(applications.map((app) => ({ id: app.id, stage: app.stage })));
+    saveTracker(applications.map((app) => ({
+      id: app.id,
+      stage: app.stage,
+      title: app.title,
+      organization: app.organization,
+      deadline: app.deadline,
+      initials: app.initials,
+    })));
   }, [applications]);
 
   // If you save a job on Opportunities in ANOTHER tab while this page is open,

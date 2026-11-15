@@ -1,3 +1,4 @@
+Updated
 Anthony: Sign Up, Sign in, database
 Sign Up steps:
     check if user exists

@@ -137,6 +137,10 @@ SSO login (planned 2026-10-19) - replaces username/password with Supabase Auth
              req.user = { id: data.claims.sub, email: data.claims.email ?? null } -> next()
         J1c. drop the jsonwebtoken import and the JWT_KEY check
              (this also fixes the 3 items in the "Jayden:" list above)
+        Progress (2026-11-15): J1a-c written. Tested: no header, empty, garbage and forged tokens
+             all get 401 (getClaims THROWS on garbage, so it's wrapped in try/catch).
+             Also rejects tokens that aren't role 'authenticated' (the old anon key is a signed token too).
+             [ ] still to test with a real login token
 
     [ ] Task S5 - remove old password login            files: backend/src/auth.ts, backend/package.json  (Anthony)
         needs: Google working end to end AND J1 merged
@@ -172,10 +176,13 @@ Jobs: outside sources + employer postings (planned 2026-11-13) - frontend/plans.
                     User-Agent (= the email used to sign up for the key), Authorization-Key
         Adzuna      api.adzuna.com/v1/api/jobs/us/search/{page}?what=intern        free key, free tier is for
                     evaluation/academic use; every Adzuna listing must show an "Adzuna" label linked to adzuna.com
+        JSearch     jsearch.p.rapidapi.com/search-v2?query=...&employment_types=INTERN   free RapidAPI key
+                    (Basic plan, ~200 requests/month); headers x-rapidapi-key, x-rapidapi-host.
+                    /search was removed in fall 2026; v2 puts the list in data.jobs (added 2026-11-15, Jayden)
         Every outside job shows its source and links out to the original posting.
 
     Shared contract additions (copy into frontend/plans.md once agreed):
-        Job also has  source: 'employer' | 'greenhouse' | 'lever' | 'usajobs' | 'adzuna'
+        Job also has  source: 'employer' | 'greenhouse' | 'lever' | 'usajobs' | 'adzuna' | 'jsearch'
                       status: 'pending' | 'open' | 'closed'
         Job ids are uuid strings, not numbers
         Job drops is_posted (status already says whether a job is visible)
@@ -218,6 +225,9 @@ Jobs: outside sources + employer postings (planned 2026-11-13) - frontend/plans.
             [x] shared.ts, greenhouse.ts (10 boards), lever.ts (3 sites), import-jobs.ts, the script
             [x] first real run against Supabase: greenhouse 131, lever 67
             [ ] usajobs.ts and adzuna.ts, after their free keys are in secrets.env
+            [ ] jsearch.ts written (Jayden, 2026-11-15): run jobs.sql step 4 in Supabase, then a first real run
+            [ ] merge similar jobs + only high school / undergrad jobs (Jayden, 2026-11-15): importer steps 1-3,
+                jobs.sql step 5 (same title list as NOT_FOR_OUR_STUDENTS in shared.ts)
 
     [x] Task JB3 - read routes                         files: backend/src/jobs.ts (new),
                                                               backend/src/app.ts (one line)  (Anthony)
@@ -231,6 +241,8 @@ Jobs: outside sources + employer postings (planned 2026-11-13) - frontend/plans.
         J2a. requireRole(...roles): look up profiles.role by req.user.id, 403 if not allowed,
              set req.role and req.employerVerified. Supabase tokens don't carry our roles,
              so this has to read the table.
+        Progress (2026-11-15): J2a written (middleware.ts). Tested: no authenticateToken in front -> 500,
+             no profile row -> 403. [ ] still to test with a real profile (profiles is empty until S4)
 
     [ ] Task JB4 - employer request                    files: backend/src/auth.ts  (Anthony)
         needs: J1, S4, R1

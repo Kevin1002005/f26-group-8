@@ -7,7 +7,7 @@
 // has to decide about every column, AND every row has the same keys: when many rows are
 // saved at once, Supabase fills a key that's missing from one row with null.
 export type ImportedJob = {
-  source: 'greenhouse' | 'lever' | 'usajobs' | 'adzuna';
+  source: 'greenhouse' | 'lever' | 'usajobs' | 'adzuna' | 'jsearch';
   external_id: string;          // the job's id on the outside site
   title: string;
   organization: string;
@@ -147,4 +147,119 @@ export function listItems(html: string | null | undefined): string[] {
     .split(/<\/li>/i)
     .map((part) => htmlToText(part))
     .filter((item): item is string => item !== null);
+}
+
+
+// ---------- who the job is for (only high schoolers and college undergrads) ----------
+
+// titles that mean the job is for grad students, PhDs, or people who already graduated.
+// \b is "edge of a word", so "undergraduate" does NOT match "graduate"
+// (there's no word edge between the r and the g).
+// "master's" needs the s, so "Scrum Master Intern" still counts.
+// jobs.sql step 5 has the SAME list as a database rule. If you change one, change both:
+// if the database rule catches a job this one missed, the whole batch fails to save.
+export const NOT_FOR_OUR_STUDENTS = /\b(ph\.?\s?d|doctoral|postdoctoral|post-?docs?|master['’]?s|mba|graduate|grad)\b/i;
+
+// descriptions that only accept grad students, like "currently pursuing a PhD" or
+// "Master's students only". A description that says "Bachelor's, Master's, or PhD"
+// still passes, because undergrads can apply to that one.
+const GRAD_ONLY_DESCRIPTION = [
+  /\b(currently|actively)\s+(enrolled|pursuing|working towards?)\s+(in\s+)?(an?\s+)?(ph\.?\s?d|doctoral|master['’]?s|mba|graduate)\b/i,
+  /\b(ph\.?\s?d|doctoral|master['’]?s|mba|graduate)\s+students\s+only\b/i,
+];
+
+// true if high schoolers or college undergrads can apply
+export function isForOurStudents(title: string, description: string | null): boolean {
+  if (NOT_FOR_OUR_STUDENTS.test(title)) return false;
+  if (description && GRAD_ONLY_DESCRIPTION.some((rule) => rule.test(description))) return false;
+  return true;
+}
+
+// 'high-school' if the post only mentions high school, 'both' if it mentions high school
+// AND college, otherwise 'college' (most internships are for college students)
+export function guessLevel(title: string, description: string | null): ImportedJob['level'] {
+  const text = `${title} ${description ?? ''}`;
+  const highSchool = /\bhigh[\s-]?school(ers?)?\b/i.test(text);
+  const college = /\b(college|undergrad(uate)?s?|university|bachelor['’]?s)\b/i.test(text);
+  if (highSchool && college) return 'both';
+  if (highSchool) return 'high-school';
+  return 'college';
+}
+
+
+// ---------- merging similar jobs ----------
+
+// "Software Engineer Intern - Summer 2027" and "Software Engineer Intern (Summer 2027)"
+// both become "software engineer intern": lowercase, no years, no seasons, no punctuation
+function simplifyTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/['’]/g, '')                              // "master's" -> "masters"
+    .replace(/\b20\d\d\b/g, ' ')                        // years
+    .replace(/\b(summer|fall|autumn|spring|winter)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')                        // punctuation -> spaces
+    .trim();
+}
+
+// "Stripe, Inc." and "stripe" are the same company
+function simplifyOrganization(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\b(inc|llc|ltd|corp|corporation)\b\.?/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+// two jobs are "the same job" if they're at the same company with the same simplified title.
+// location is left out on purpose: companies often post one internship once per city.
+export function jobKey(job: { organization: string; title: string }): string {
+  return `${simplifyOrganization(job.organization)}|${simplifyTitle(job.title)}`;
+}
+
+// "https://Boards.Greenhouse.io/stripe/jobs/123?gh_src=abc" -> "boards.greenhouse.io/stripe/jobs/123"
+// so the same posting reached through two sites counts as one link
+export function simplifyUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return (u.host + u.pathname).toLowerCase().replace(/\/+$/, '');
+  } catch {
+    return url.toLowerCase();
+  }
+}
+
+// turns many "same job" rows into one row each.
+// the kept row is the one with the smallest external_id, so the SAME row wins every run.
+// (if it changed, the importer would close the old row and add a new one with a new id,
+// and links to the old job would break.)
+// its location becomes every city in the group, like "Boston, MA · New York, NY +2 more".
+export function mergeSimilarJobs(jobs: ImportedJob[]): ImportedJob[] {
+  const groups = new Map<string, ImportedJob[]>();
+  for (const job of jobs) {
+    const key = jobKey(job);
+    const group = groups.get(key);
+    if (group) group.push(job);
+    else groups.set(key, [job]);
+  }
+
+  return [...groups.values()].map((group) => {
+    group.sort((a, b) => (a.external_id < b.external_id ? -1 : 1));
+    const kept = group[0]!;   // "!" because every group has at least one job
+    if (group.length === 1) return kept;
+
+    const locations = [...new Set(group.map((job) => job.location).filter((l): l is string => !!l))];
+    const shown = locations.slice(0, 3).join(' · ');
+    const settings = new Set(group.map((job) => job.setting));
+
+    return {
+      ...kept,
+      location: locations.length > 3 ? `${shown} +${locations.length - 3} more` : shown || null,
+      // only keep remote/hybrid/on-site if every copy agrees
+      setting: settings.size === 1 ? kept.setting : null,
+      // fill in anything the kept copy is missing from the other copies
+      paid: group.some((job) => job.paid) ? true : kept.paid,
+      pay_text: group.find((job) => job.pay_text)?.pay_text ?? null,
+      deadline: group.find((job) => job.deadline)?.deadline ?? null,
+      description: group.find((job) => job.description)?.description ?? null,
+    };
+  });
 }

@@ -6,26 +6,88 @@
 import { supabase } from './db.js';
 import { fetchGreenhouse } from './job-sources/greenhouse.js';
 import { fetchLever } from './job-sources/lever.js';
-import type { ImportedJob, SourceResult } from './job-sources/shared.js';
+import { fetchJSearch } from './job-sources/jsearch.js';
+import {
+  isForOurStudents, mergeSimilarJobs, jobKey, simplifyUrl,
+  type ImportedJob, type SourceResult,
+} from './job-sources/shared.js';
 
 // every source we import from. USAJOBS and Adzuna get added here once their keys are in secrets.env
-const SOURCES: { name: ImportedJob['source']; fetchJobs: () => Promise<SourceResult> }[] = [
+//
+// aggregator: true is for sites that collect jobs from OTHER sites (JSearch gets them from
+// Google for Jobs). Their copy of a job is skipped if a direct source (like Greenhouse)
+// already has it, because the direct one is more complete and stays up to date.
+// that's also why aggregators go LAST in this list: the direct sources save first.
+type Source = {
+  name: ImportedJob['source'];
+  fetchJobs: () => Promise<SourceResult>;
+  aggregator?: boolean;
+};
+const SOURCES: Source[] = [
   { name: 'greenhouse', fetchJobs: fetchGreenhouse },
   { name: 'lever', fetchJobs: fetchLever },
+  // skips itself (and says so) if JSEARCH_API_KEY isn't in secrets.env
+  { name: 'jsearch', fetchJobs: fetchJSearch, aggregator: true },
 ];
+
+
+// the companies+titles and links of every open job from the OTHER sources, so an aggregator
+// can skip jobs we already have. returns null if the database call fails.
+async function jobsFromOtherSources(name: string): Promise<Set<string> | null> {
+  const taken = new Set<string>();
+  // Supabase sends at most 1000 rows per call, so ask 1000 at a time until a page comes back short
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('jobs')
+      .select('organization, title, apply_url')
+      .neq('source', name)
+      .eq('status', 'open')
+      .range(from, from + 999);
+
+    if (error) {
+      console.error(`${name}: reading other sources' jobs failed`, error);
+      return null;
+    }
+    for (const job of data) {
+      taken.add(jobKey(job));
+      if (job.apply_url) taken.add(simplifyUrl(job.apply_url));
+    }
+    if (data.length < 1000) return taken;
+  }
+}
 
 
 // JB2b, for one source: fetch -> drop duplicate ids -> save -> close jobs the source took down.
 // returns false if something went wrong, so we can report it at the end
-async function importSource(name: string, fetchJobs: () => Promise<SourceResult>): Promise<boolean> {
+async function importSource({ name, fetchJobs, aggregator }: Source): Promise<boolean> {
   // every row saved in this run gets this exact time as last_seen_at.
   // afterwards, an open job from this source with an OLDER last_seen_at wasn't in
   // today's list, which means the company took it down.
   const runStartedAt = new Date().toISOString();
 
-  const { jobs, allFetchesWorked } = await fetchJobs();
+  const { jobs: fetched, allFetchesWorked } = await fetchJobs();
 
-  // drop duplicate ids (keep the last one). Postgres refuses to save a batch that
+  // 1. only jobs high schoolers or college undergrads can apply to (no PhD, master's,
+  // MBA, or new-grad jobs). jobs.sql has a matching rule, so they can't get in another way.
+  const forOurStudents = fetched.filter((job) => isForOurStudents(job.title, job.description));
+
+  // 2. merge copies of the same job (same company + title, like one post per city) into one row
+  let jobs = mergeSimilarJobs(forOurStudents);
+
+  // 3. aggregators only: skip jobs a direct source already has (same company + title, or same link).
+  // a skipped job isn't saved this run, so if an older run saved it, step 5 below closes that copy.
+  if (aggregator) {
+    const taken = await jobsFromOtherSources(name);
+    if (!taken) return false;   // can't tell what's a duplicate, so save nothing and close nothing
+    jobs = jobs.filter((job) => !taken.has(jobKey(job)) && !taken.has(simplifyUrl(job.apply_url)));
+  }
+
+  console.log(
+    `${name}: fetched ${fetched.length}, ${fetched.length - forOurStudents.length} not for our students, ` +
+    `${forOurStudents.length - jobs.length} merged or already listed`
+  );
+
+  // 4. drop duplicate ids (keep the last one). Postgres refuses to save a batch that
   // has the same job in it twice ("ON CONFLICT DO UPDATE command cannot affect row a second time")
   const byId = new Map<string, ImportedJob>();
   for (const job of jobs) {
@@ -56,7 +118,7 @@ async function importSource(name: string, fetchJobs: () => Promise<SourceResult>
     return false;
   }
 
-  // close this source's open jobs that weren't in today's list
+  // 5. close this source's open jobs that weren't in today's list
   const { data: closed, error } = await supabase
     .from('jobs')
     .update({ status: 'closed' })
@@ -77,8 +139,8 @@ async function importSource(name: string, fetchJobs: () => Promise<SourceResult>
 
 // one source at a time, so the log stays readable and one failing source doesn't stop the rest
 let everythingWorked = true;
-for (const { name, fetchJobs } of SOURCES) {
-  const worked = await importSource(name, fetchJobs);
+for (const source of SOURCES) {
+  const worked = await importSource(source);
   if (!worked) everythingWorked = false;
 }
 

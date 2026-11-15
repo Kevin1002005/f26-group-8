@@ -7239,6 +7239,9 @@ html:has(.discovery-dialog[open]) {
   font-size: 16px;
   line-height: 1.6;                       /* comfy space between lines */
   color: var(--muted);                    /* blue paragraph color (8.9:1, WCAG) */
+  white-space: pre-line;                  /* real job posts come as plain text with line breaks
+                                             between paragraphs; this shows those breaks instead
+                                             of running everything into one block */
 }
 
 /* The bullet lists ("What you'll do", "What they're looking for") */

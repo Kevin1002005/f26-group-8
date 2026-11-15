@@ -71,11 +71,17 @@ export function guessSetting(location: string | null): ImportedJob['setting'] {
   return null;
 }
 
-// "2026-12-01T23:59:59Z" -> "2026-12-01". Anything that doesn't start with a date -> null
+// "2026-12-01T23:59:59Z" -> "2026-12-01". Anything that doesn't start with a real date -> null.
+// the shape alone isn't enough: "2026-02-30" looks like a date but Postgres refuses it,
+// and one refused row makes the whole source's save fail. JavaScript rolls a day that
+// doesn't exist over into the next month (2026-02-30 -> March 2), so a real day is one
+// that comes back as the same text. (Postgres has no year 0, so that's out too.)
 export function toDate(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const match = /^\d{4}-\d{2}-\d{2}/.exec(value);
-  return match ? match[0] : null;
+  if (!match || match[0].startsWith('0000')) return null;
+  const day = new Date(`${match[0]}T00:00:00Z`);
+  return !Number.isNaN(day.getTime()) && day.toISOString().startsWith(match[0]) ? match[0] : null;
 }
 
 
@@ -102,13 +108,19 @@ function decodeEntities(text: string): string {
       const isRealCharacter = n > 0 && n <= 0x10ffff && (n < 0xd800 || n > 0xdfff);
       return isRealCharacter ? String.fromCodePoint(n) : whole;
     }
-    return NAMED_ENTITIES[code] ?? whole;
+    // Object.hasOwn: only names written in the list above. A plain NAMED_ENTITIES[code] also
+    // finds what every JavaScript object has built in, so "&constructor;" would turn into
+    // the text "function Object() { [native code] }"
+    return Object.hasOwn(NAMED_ENTITIES, code) ? NAMED_ENTITIES[code] : whole;
   });
 }
 
 // turns a job description's HTML into plain text.
-// we store plain text so the frontend can never be tricked into running a script
-// hidden in someone else's job post (plans.md: "never render description as HTML").
+// the text can still CONTAIN things that look like tags: a posting that writes
+// "&lt;img ...&gt;" decodes to the words "<img ...>". that's harmless only because the
+// frontend shows descriptions as text ({job.description} in React), never as HTML.
+// so never put a description through dangerouslySetInnerHTML
+// (plans.md: "never render description as HTML").
 //
 // escaped: true is for Greenhouse, which sends "&lt;p&gt;" instead of "<p>", so we decode
 // once first to get real tags back. Lever sends real tags, and decoding first there would
@@ -119,12 +131,15 @@ export function htmlToText(html: string | null | undefined, { escaped = false } 
 
   const tagged = escaped ? decodeEntities(html) : html;
 
+  // [^<>]* (not [^>]*) means "a tag can't contain another <". with [^>]*, every "<" that
+  // never gets its ">" makes the search read all the way to the end of the text, so a
+  // posting with thousands of stray "<" took seconds to minutes. now each "<" stops at the next one
   const text = decodeEntities(
     tagged
       // start a new line wherever a paragraph, line, list item or heading ends
-      .replace(/<(br|\/p|li|\/li|\/h[1-6]|\/div)\b[^>]*>/gi, '\n')
+      .replace(/<(br|\/p|li|\/li|\/h[1-6]|\/div)\b[^<>]*>/gi, '\n')
       // then drop every tag that's left
-      .replace(/<[^>]*>/g, '')
+      .replace(/<[^<>]*>/g, '')
   )
     .replace(/[ \t]+/g, ' ')     // squash runs of spaces
     .replace(/ *\n */g, '\n')    // no spaces at the start or end of lines
@@ -147,4 +162,30 @@ export function listItems(html: string | null | undefined): string[] {
     .split(/<\/li>/i)
     .map((part) => htmlToText(part))
     .filter((item): item is string => item !== null);
+}
+
+// Postgres refuses two kinds of characters in text: NUL (\u0000), and half of an emoji's
+// two-part code (a "lone surrogate", left behind when a site cuts text in the middle of
+// an emoji). ONE of them anywhere makes the whole save fail, so every job from every
+// company of that source would go missing, not just the odd one.
+// this removes NUL and turns a lone half into "�". (decodeEntities above already refuses
+// to make them out of &#0; and &#xD800;, but a site can also send them as raw characters.)
+export function storableText(text: string): string {
+  return text.replace(/\u0000/g, '').toWellFormed();
+}
+
+// storableText for every text field of one row
+export function storableJob(job: ImportedJob): ImportedJob {
+  const clean = (text: string | null) => (text === null ? null : storableText(text));
+  return {
+    ...job,
+    external_id: storableText(job.external_id),
+    title: storableText(job.title),
+    organization: storableText(job.organization),
+    location: clean(job.location),
+    pay_text: clean(job.pay_text),
+    description: clean(job.description),
+    requirements: job.requirements.map(storableText),
+    apply_url: storableText(job.apply_url),
+  };
 }

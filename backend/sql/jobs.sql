@@ -1,4 +1,5 @@
 -- plans.md Task JB1. Paste this whole file into Supabase -> SQL Editor -> Run.
+-- Run profiles.sql first: posted_by below links to the profiles table.
 -- Run it before roles.sql: verify_employer in roles.sql changes rows in this table.
 -- (Postgres only looks for the table when that function actually runs, but keeping the
 -- order means nobody can call it before the table is there.)

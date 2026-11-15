@@ -449,15 +449,17 @@ function About() {
                 people know which page they landed on (WCAG) */}
             <title>About | ScoutSearch</title>
 
+            {/* Hidden until you press Tab, then lets keyboard users jump
+                straight past the top bar to the page's content (WCAG).
+                It's the very first thing on the page, so it's the first Tab stop
+                (before the waves' Pause button, which sits in a corner) */}
+            <a className="about-skip-link" href="#main">Skip to main content</a>
+
             {/* The see-through layer the click sparks are drawn on */}
             <ClickSpark />
 
             {/* The flowing lines behind the page (and their Pause button) */}
             <Waves />
-
-            {/* Hidden until you press Tab, then lets keyboard users jump
-                straight past the top bar to the page's content (WCAG) */}
-            <a className="about-skip-link" href="#main">Skip to main content</a>
 
             {/* The bar at the top of the page. "about-bar-band" makes it navy, the
                 same as the band behind the first screen (Log in and Sign up use

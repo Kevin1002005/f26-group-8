@@ -5,10 +5,12 @@
 // Route: one page. It matches a web address (path) to a component (element).
 // Navigate: sends the visitor to a different address automatically.
 // useLocation: the current address (used to reset the error page, below).
-import { Routes, Route, Navigate, useLocation } from "react-router";
+// useNavigationType: how you got to this page: "POP" for Back or Forward
+import { Routes, Route, Navigate, useLocation, useNavigationType } from "react-router";
 // lazy: waits to download a page's code until someone opens that page.
 // Suspense: what to show during the split second that download takes.
-import { lazy, Suspense } from "react";
+// useEffect runs code after the page is on the screen (see PageChange)
+import { lazy, Suspense, useEffect } from "react";
 // RequireLogin sends logged-out visitors to the Log in page (components/RequireLogin.jsx).
 // It's tiny, so it loads right away like About.
 import RequireLogin from "./components/RequireLogin.jsx";
@@ -37,6 +39,52 @@ const ApplicationTracker = lazy(() => import("./pages/ApplicationTracker.jsx"));
 const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
 
+// The path of the page PageChange last handled, like "/discovery". null until
+// the first page opens. Only the path counts: jumping to a section of the
+// same page (#features) or changing "?job=1" isn't a new page
+let handledPage = null;
+// How many pages PageChange has handled during this visit
+let pagesSeen = 0;
+
+// PageChange does what a full page load would do, each time a new page opens.
+// This site swaps pages without reloading, so on its own the browser:
+//  - stays scrolled down, so a link near the bottom of a long page opens the
+//    next page partway down
+//  - drops the keyboard focus, and screen readers don't say which page opened
+// So, after each new page is on the screen, it scrolls to the top (except for
+// Back and Forward, where the browser puts you back where you were) and puts
+// the keyboard focus on the page's heading (<h1>), so screen readers read it
+// and Tab continues from the top of the new page (WCAG).
+// The first page of a visit is left alone: the browser already handled it.
+// So is a page you're sent to straight from the first one ("/" opens About, a
+// locked page opens Log in, both with "replace"): that's still the page you
+// opened, and its first Tab stop should still be "Skip to main content".
+// It sits inside the ErrorBoundary, which starts over on every page, so this
+// runs once per page, after the page's file has downloaded.
+function PageChange() {
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  useEffect(() => {
+    // Still the same page (a section link, "?job=", or React running effects
+    // twice while developing): nothing to do
+    if (handledPage === location.pathname) return;
+    handledPage = location.pathname;
+    pagesSeen += 1;
+    const isFirstPage = pagesSeen === 1 || (pagesSeen === 2 && navigationType === "REPLACE");
+    if (isFirstPage) return;
+    if (navigationType !== "POP") window.scrollTo(0, 0);
+    const heading = document.querySelector("h1");
+    if (heading) {
+      // tabindex -1 lets code focus a heading, without making it a Tab stop.
+      // preventScroll: the focus mustn't undo the scrolling above
+      heading.setAttribute("tabindex", "-1");
+      heading.focus({ preventScroll: true });
+    }
+  }, [location.pathname, navigationType]);
+  // It doesn't draw anything
+  return null;
+}
+
 // A "component" is a function that returns what should appear on the screen.
 function App() {
   // The current address. key={location.pathname} gives the ErrorBoundary a
@@ -51,6 +99,8 @@ function App() {
           It's usually too quick to notice. The text is hidden on screen, but
           role="status" lets screen readers hear that a page is loading (WCAG) */}
       <Suspense fallback={<p role="status" className="sr-only">Loading page...</p>}>
+        {/* Scrolls to the top and focuses the new page's heading (see above) */}
+        <PageChange />
         <Routes>
           {/* "/" is the homepage. It sends visitors straight to the About page.
               "replace" swaps "/" for "/about" in the browser's history instead of

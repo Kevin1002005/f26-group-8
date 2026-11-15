@@ -19,7 +19,12 @@
          index.css. It also sets the Settings page's colors (data-palette,
          Blue / Mint / Lavender) for the same reason.
          try/catch: some private windows block localStorage; then it just
-         follows the computer -->
+         follows the computer.
+         IF YOU CHANGE THIS SCRIPT (even one space): the live site only runs it
+         because vercel.json's Content-Security-Policy lists its fingerprint
+         (the 'sha256-...' after script-src). Make the new one with the command
+         in README.md ("Security headers") and paste it there, or Vercel will
+         block the script and the page will flash the wrong colors -->
     <script>
       (function () {
         var html = document.documentElement;
@@ -42,7 +47,9 @@
     <!-- The page color, before index.css has loaded (while developing, the
          styles arrive a moment after the page appears). var(--bg) takes over
          once index.css is there; the color after the comma is only for that
-         first moment, so it matches --bg in index.css -->
+         first moment, so it matches --bg in index.css.
+         Like the script above, its fingerprint is in vercel.json (after
+         style-src): change one, change the other (README.md, "Security headers") -->
     <style>
       html { background-color: var(--bg, #f6f9fc); }
       html[data-theme="dark"] { background-color: var(--bg, #0a1a2f); }

@@ -52,8 +52,13 @@ class ErrorBoundary extends Component {
                 <main className="error-page-main">
                     <div className="error-page-box">
                         <p className="error-page-label">Error</p>
-                        {/* role="alert" makes screen readers announce it right away (WCAG) */}
-                        <h1 className="error-page-title" role="alert">Something went wrong</h1>
+                        {/* role="alert" makes screen readers announce it right away (WCAG).
+                            It's on a <div> around the heading, not on the <h1> itself:
+                            on the <h1>, it would replace the "heading" role, and screen
+                            reader users would find no heading on the page */}
+                        <div role="alert">
+                            <h1 className="error-page-title">Something went wrong</h1>
+                        </div>
                         <p className="error-page-text">
                             This page had a problem loading. Trying again usually fixes it. If it keeps
                             happening, check your internet connection.

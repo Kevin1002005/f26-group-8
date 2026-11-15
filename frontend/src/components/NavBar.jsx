@@ -45,9 +45,10 @@ function NavBar() {
         <NavLink to="/feed">Feed</NavLink>
         {/* The Discovery page: internships, co-ops, and jobs.
             "Opportunities" is too long for the phone top bar, so phones show
-            "Jobs" instead (index.css swaps them). aria-label makes screen
-            readers always say "Opportunities", whichever word is showing. */}
-        <NavLink to="/discovery" aria-label="Opportunities">
+            "Jobs" instead (index.css swaps them, hiding the other word with
+            display: none). No aria-label: screen readers and voice control then
+            use whichever word is showing, so saying "tap Jobs" works (WCAG) */}
+        <NavLink to="/discovery">
           <span className="feed-nav-long-word">Opportunities</span>
           <span className="feed-nav-short-word">Jobs</span>
         </NavLink>

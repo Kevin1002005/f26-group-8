@@ -13,6 +13,9 @@
 // useRef keeps a reference to the drawing area on the screen.
 // useEffect runs code after it's on the screen.
 import { useEffect, useRef } from "react";
+// wantsReducedMotion is true if "reduce motion" is on, on the computer or in
+// our Settings page (settings.js)
+import { wantsReducedMotion } from "../../settings.js";
 
 // How the sparks look. Change these numbers to change the burst
 const SPARK_COUNT = 8;      // how many lines in each burst
@@ -91,8 +94,9 @@ function ClickSpark() {
             // detail is 0 when the "click" came from the keyboard (Enter on a
             // link). Those have no mouse position, so skip them
             if (event.detail === 0) return;
-            // No sparks for people who turned on "reduce motion" (WCAG)
-            if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+            // No sparks for people who turned on "reduce motion", on their
+            // computer or in our Settings page (WCAG)
+            if (wantsReducedMotion()) return;
 
             // Reads the spark color from index.css, so it stays with the site's colors
             const color = getComputedStyle(canvas).getPropertyValue("--spark-color").trim();

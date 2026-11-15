@@ -127,7 +127,15 @@ function ResetPassword() {
         setSaving(true);
         setMessage('');
         // Saves the new password on your account
-        const { error } = await supabase.auth.updateUser({ password: password });
+        let data, error;
+        try {
+            ({ data, error } = await supabase.auth.updateUser({ password: password }));
+        } catch (thrown) {
+            // supabase-js hands back { error } for its own problems, but a few rare
+            // ones are thrown instead. Treat them like any other error, so the
+            // button can't stay stuck on "Saving..."
+            error = thrown;
+        }
         setSaving(false);
 
         if (error) {
@@ -147,8 +155,9 @@ function ResetPassword() {
             return;
         }
 
-        // It worked, and you're logged in now
-        markLoggedIn();
+        // It worked, and you're logged in now. data.user.id says who
+        // (login-status.js keeps each person's resume and tracker apart with it)
+        markLoggedIn(data.user.id);
         setScreen('done');
     }
 

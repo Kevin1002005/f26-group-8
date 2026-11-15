@@ -167,3 +167,12 @@ export const opportunities = [
     ],
   },
 ];
+
+// True once a deadline ("2026-11-20") has gone by. A job stays open for all
+// of its last day and closes at 11:59 pm, on this computer's clock (the same
+// time Discovery's "Due soon" tag goes away, so one tag hands over to the other).
+// Discovery, the Application tracker, and the Feed use it, so a closed job
+// says "Closed" everywhere instead of still asking you to apply.
+export function isPastDeadline(deadline) {
+  return new Date(deadline + "T23:59") < new Date();
+}

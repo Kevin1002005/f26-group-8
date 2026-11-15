@@ -18,8 +18,8 @@ import NavBar from "../components/NavBar.jsx";
 import { Link } from "react-router";
 // The jobs, for the listing posts and the right column. They're the same list
 // as the Discovery page uses (src/data/opportunities.js), so clicking one can
-// open that exact job there.
-import { opportunities } from "../data/opportunities.js";
+// open that exact job there. isPastDeadline says if a job's deadline has gone by.
+import { isPastDeadline, opportunities } from "../data/opportunities.js";
 // The Application tracker's list (src/data/tracker.js): Save on a listing post
 // adds the job to it, and "Due soon" reads it
 import { addToTracker, isOnTracker, loadTracker, removeFromTracker } from "../data/tracker.js";
@@ -532,7 +532,10 @@ function Post(props) {
         await navigator.clipboard.writeText(link);
         setShareMessage("Link copied.");
       }
-    } catch {
+    } catch (error) {
+      // Closing the phone's share menu without picking anything counts as an
+      // "AbortError". That's you changing your mind, not a failure, so say nothing
+      if (error.name === "AbortError") return;
       setShareMessage("Couldn't share this post. Try again.");
     }
   }
@@ -770,17 +773,21 @@ function ListingPost(props) {
             <li className="feed-fact-tag">{job.place}</li>
             <li className="feed-fact-tag">{job.pay}</li>
             <li className="feed-fact-tag">Apply by {shortDate(job.deadline)}</li>
-            {/* "Due soon" when the deadline is within a week (written out, not only a color) */}
+            {/* "Due soon" when the deadline is within a week, and "Closed" once it
+                has gone by (written out, not only a color) */}
             {isDueWithin(job.deadline, 7) && <li className="feed-kind-tag feed-kind-tag-amber">Due soon</li>}
+            {isPastDeadline(job.deadline) && <li className="feed-kind-tag feed-kind-tag-closed">Closed</li>}
           </ul>
           <div className="feed-listing-actions">
             {/* Save: on/off. aria-pressed tells screen readers if it's on, and
-                aria-label says which job (every listing has a Save) (WCAG) */}
+                aria-label says which job (every listing has a Save) (WCAG).
+                It starts with the word you see ("Save" or "Saved"), so voice
+                control users can say what's on the button (WCAG) */}
             <button
               type="button"
               className="feed-listing-save"
               aria-pressed={saved}
-              aria-label={"Save " + job.title}
+              aria-label={(saved ? "Saved " : "Save ") + job.title}
               onClick={toggleSave}
             >
               {saved ? "Saved" : "Save"}
@@ -809,6 +816,8 @@ function DueSoonCard(props) {
   // The tracker's list is [{ id, stage }, ...]. For each one, find its job,
   // keep the ones due in the next 14 days, and sort them soonest first
   const due = props.tracker
+    // Leave out what's already in Submitted: it's sent, so it isn't "due" anymore
+    .filter((item) => item.stage !== "submitted")
     .map((item) => opportunities.find((job) => job.id === item.id))
     .filter((job) => job && isDueWithin(job.deadline, 14))
     .sort((a, b) => a.deadline.localeCompare(b.deadline));

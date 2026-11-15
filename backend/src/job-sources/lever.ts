@@ -48,12 +48,18 @@ export async function fetchLever(): Promise<SourceResult> {
       )) as LeverJob[];
 
       for (const job of body) {
-        // same safety check as greenhouse.ts: skip a job missing what our table requires
-        if (typeof job.id !== 'string' || typeof job.text !== 'string' || !isWebLink(job.hostedUrl)) {
-          continue;
-        }
-        if (isInternTitle(job.text)) {
-          jobs.push(toImportedJob(job, name));
+        // same as greenhouse.ts: one job that can't be read (say, a currency code that
+        // makes payText throw) is skipped on its own, instead of losing the rest of the list
+        try {
+          // same safety check as greenhouse.ts: skip a job missing what our table requires
+          if (typeof job.id !== 'string' || typeof job.text !== 'string' || !isWebLink(job.hostedUrl)) {
+            continue;
+          }
+          if (isInternTitle(job.text)) {
+            jobs.push(toImportedJob(job, name));
+          }
+        } catch {
+          console.error(`lever ${site}: skipped one job that couldn't be read`);
         }
       }
     } catch (err) {
@@ -90,14 +96,23 @@ function toImportedJob(job: LeverJob, organization: string): ImportedJob {
     level: 'college',              // same reason as greenhouse.ts
     location: job.categories?.location?.trim() || null,
     setting: SETTINGS[job.workplaceType ?? ''] ?? null,
-    // a salary range means it's paid. no range means Lever didn't say, so null (not false)
-    paid: job.salaryRange ? true : null,
-    pay_text: job.salaryRange ? payText(job.salaryRange) : null,
+    // a salary range means it's paid. no range means Lever didn't say, so null (not false).
+    // a range with no numbers in it counts as no range (payText would write "$NaN per hour")
+    paid: hasPay(job.salaryRange) ? true : null,
+    pay_text: hasPay(job.salaryRange) ? payText(job.salaryRange) : null,
     deadline: null,                // Lever postings don't have deadlines
     description: description || null,
     requirements: listItems(requirementsList?.content),
     apply_url: job.hostedUrl,
   };
+}
+
+// true when the salary range has real numbers in both ends, and its currency is a
+// 3-letter code like "USD" (or missing, which payText reads as USD). Intl.NumberFormat
+// throws on anything else, like "US$", and that would lose the whole job, not just its pay
+function hasPay(range: LeverJob['salaryRange']): range is NonNullable<LeverJob['salaryRange']> {
+  return !!range && Number.isFinite(range.min) && Number.isFinite(range.max)
+    && (!range.currency || /^[A-Za-z]{3}$/.test(range.currency));
 }
 
 // { min: 40, max: 50, currency: 'USD', interval: 'per-hour-wage' } -> "$40 - $50 per hour"

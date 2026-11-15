@@ -228,14 +228,22 @@ function Signup() {
         //   (see use-current-user.js)
         // - emailRedirectTo is where the "confirm your email" link sends you:
         //   the Log in page, which finishes logging you in
-        const { data, error } = await supabase.auth.signUp({
-            email: email,
-            password: form.password.value,
-            options: {
-                data: { full_name: name.trim() },
-                emailRedirectTo: window.location.origin + '/login',
-            },
-        });
+        let data, error;
+        try {
+            ({ data, error } = await supabase.auth.signUp({
+                email: email,
+                password: form.password.value,
+                options: {
+                    data: { full_name: name.trim() },
+                    emailRedirectTo: window.location.origin + '/login',
+                },
+            }));
+        } catch (thrown) {
+            // supabase-js hands back { error } for its own problems, but a few rare
+            // ones (like the browser refusing to save the login) are thrown instead.
+            // Treat them like any other error, so the button can't stay stuck
+            error = thrown;
+        }
         setSigningUp(false);
 
         if (error) {
@@ -259,11 +267,13 @@ function Signup() {
         // If Supabase's "Confirm email" setting is off, you're logged in right
         // away (data.session is your login)
         if (data.session) {
-            // Remember that you're logged in, so the About page shows your
-            // circle and a Home button instead of "Log in" and "Sign up"
-            markLoggedIn();
-            // Go to Opportunities, the home page, after signing up
-            navigate('/discovery');
+            // Remember who's logged in, so the About page shows your circle and
+            // a Home button instead of "Log in" and "Sign up" (and your resume
+            // and tracker are kept under your own account, see login-status.js)
+            markLoggedIn(data.session.user.id);
+            // Go to Opportunities, the home page, after signing up.
+            // replace: Back from Opportunities skips the finished Sign up form
+            navigate('/discovery', { replace: true });
             return;
         }
 
@@ -448,7 +458,9 @@ function Signup() {
                                     </label>
                                     {/* type="password" hides what you type as dots.
                                         "new-password" tells password managers to suggest a strong new password.
-                                        autoFocus puts the cursor here as soon as step 2 shows.
+                                        No autoFocus here: when step 2 shows, the useEffect near the top moves
+                                        the focus to the step's heading (so screen readers read it out), and
+                                        autoFocus would make the focus jump twice. Tab goes from the heading to here.
                                         The red message works like the Name box on step 1 */}
                                     <input
                                         id="password"
@@ -456,7 +468,6 @@ function Signup() {
                                         type="password"
                                         autoComplete="new-password"
                                         required
-                                        autoFocus
                                         className="signup-input"
                                         onChange={() => setErrors({ ...errors, password: '' })}
                                         aria-invalid={Boolean(errors.password)}

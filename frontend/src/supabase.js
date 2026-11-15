@@ -17,14 +17,23 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 // If .env.local is missing, createClient crashes, and since App.jsx loads the
 // Log in and Sign up pages right away, the whole site would go blank. So with
 // no keys we export null instead, and the pages check for that before using it.
-// "a ? b : c" means "if a, then b, otherwise c"
-export const supabase = supabaseUrl && supabaseKey
-    ? createClient(supabaseUrl, supabaseKey, {
-        auth: {
-            flowType: 'pkce', // Use PKCE flow for authentication
-        },
-    })
-    : null;
+// A key that's there but written wrong (like a URL without "https://", from a
+// typo in Vercel's settings) crashes it the same way, so connect() catches that
+// too: the real reason goes to the console (F12), and the site still opens.
+function connect() {
+    if (!supabaseUrl || !supabaseKey) return null;
+    try {
+        return createClient(supabaseUrl, supabaseKey, {
+            auth: {
+                flowType: 'pkce', // Use PKCE flow for authentication
+            },
+        });
+    } catch (error) {
+        console.error('Supabase: VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY looks wrong:', error);
+        return null;
+    }
+}
+export const supabase = connect();
 
 // Remembers if this visit came from a "reset your password" email link.
 // Supabase says so with a PASSWORD_RECOVERY event as the site opens, which

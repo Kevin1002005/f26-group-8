@@ -12,7 +12,12 @@
 // turned off (some private windows). Then the builder still works, it just
 // won't remember anything after a refresh.
 
-// The name it's saved under in localStorage
+// accountKey and readAccountItem keep each account's resume apart
+// (login-status.js): on a shared computer, the next person to log in gets
+// their own resume, not yours. Yours stays for when you log back in.
+import { accountKey, readAccountItem } from './login-status.js';
+
+// The name it's saved under in localStorage (plus the account's id, added by accountKey)
 const storageKey = 'scoutsearch-resume';
 
 // A made-up example, so a new visitor sees how a finished resume looks.
@@ -125,7 +130,7 @@ function fillGaps(saved) {
 // saved text is broken)
 export function loadResume() {
     try {
-        const saved = JSON.parse(localStorage.getItem(storageKey));
+        const saved = JSON.parse(readAccountItem(storageKey));
         // A quick check that it really is a resume, in case something else got saved there
         return saved && typeof saved.contact === 'object' && saved.contact !== null ? fillGaps(saved) : null;
     } catch {
@@ -137,7 +142,7 @@ export function loadResume() {
 // browser's storage is full or turned off, so the page can warn you
 export function saveResume(resume) {
     try {
-        localStorage.setItem(storageKey, JSON.stringify(resume));
+        localStorage.setItem(accountKey(storageKey), JSON.stringify(resume));
         return true;
     } catch {
         return false;
@@ -152,7 +157,7 @@ export function saveResume(resume) {
 export function watchOtherTabs(callback) {
     function handleStorage(event) {
         // event.key is the name that changed (null means everything was cleared)
-        if (event.key === storageKey || event.key === null) {
+        if (event.key === accountKey(storageKey) || event.key === null) {
             callback(loadResume());
         }
     }

@@ -31,7 +31,8 @@ import NavBar from "../components/NavBar.jsx";
 // ---------- Sample data ----------
 // The job listings live in their own file, because the Application tracker
 // page uses them too. See src/data/opportunities.js.
-import { opportunities } from "../data/opportunities.js";
+// isPastDeadline says if a job's deadline has gone by (it then says "Closed")
+import { isPastDeadline, opportunities } from "../data/opportunities.js";
 // The helpers that add a job to (or take it off) the Application tracker.
 // See src/data/tracker.js.
 import { addToTracker, isOnTracker, loadTracker, removeFromTracker } from "../data/tracker.js";
@@ -65,14 +66,16 @@ function sortByMatch(list) {
   return [...list].sort((a, b) => b.match - a.match);
 }
 
-// True if what was typed in the search bar appears anywhere in this
+// True if every word typed in the search bar appears somewhere in this
 // opportunity's title, company, type, place, or skill tags.
 // toLowerCase() makes "REACT", "React", and "react" all count as the same.
 function matchesSearch(opportunity, search) {
-  // trim() removes spaces at the start and end, so "  react " still works
-  const words = search.trim().toLowerCase();
+  // trim() removes spaces at the start and end, so "  react " still works.
+  // split(/\s+/) cuts it into separate words at the spaces, so "python cambridge"
+  // finds a job with both words in it, in any order, not only that exact phrase
+  const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
   // An empty search bar matches everything
-  if (words === "") {
+  if (words.length === 0) {
     return true;
   }
   // All the searchable text joined into one long piece of lowercase text
@@ -85,8 +88,9 @@ function matchesSearch(opportunity, search) {
   ]
     .join(" ")
     .toLowerCase();
-  // includes() checks if the search words are somewhere inside that text
-  return text.includes(words);
+  // every() is true only if EVERY word is somewhere inside that text
+  // (includes() checks one word)
+  return words.every((word) => text.includes(word));
 }
 
 // ---------- Icons ----------
@@ -219,7 +223,8 @@ function SummaryBoxes(props) {
     <ul className="discovery-summary" aria-label="Summary">
       <li className="discovery-summary-box">
         <span className="discovery-summary-label">Open to you</span>
-        <span className="discovery-summary-number">{opportunities.length}</span>
+        {/* Only the ones you can still apply to (not past their deadline) */}
+        <span className="discovery-summary-number">{opportunities.filter((o) => !isPastDeadline(o.deadline)).length}</span>
         <span className="discovery-summary-note">Internships, co-ops, and jobs</span>
       </li>
       <li className="discovery-summary-box">
@@ -434,19 +439,34 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
           {applied ? "Applying isn't built yet." : ""}
         </p>
         <div className="discovery-actions">
+          {/* aria-label starts with the word you see ("Save" or "Saved"),
+              so voice control users can say what's on the button (WCAG) */}
           <button
             type="button"
             className="discovery-outline-button"
             aria-pressed={saved}
-            aria-label={"Save " + opportunity.title}
+            aria-label={(saved ? "Saved " : "Save ") + opportunity.title}
             onClick={toggleSave}
           >
             <BookmarkIcon />
             {saved ? "Saved" : "Save"}
           </button>
-          <button type="button" className="discovery-solid-button" onClick={() => setApplied(true)}>
-            Apply
-            <ArrowIcon />
+          {/* After the deadline, Apply turns off and says why ("disabled"
+              also stops it from being clicked or reached with Tab) */}
+          <button
+            type="button"
+            className="discovery-solid-button"
+            onClick={() => setApplied(true)}
+            disabled={isPastDeadline(opportunity.deadline)}
+          >
+            {isPastDeadline(opportunity.deadline) ? (
+              "Applications closed"
+            ) : (
+              <>
+                Apply
+                <ArrowIcon />
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -501,6 +521,8 @@ function OpportunityRow(props) {
   }
   // A reference to this row's pop-up, so "View" can open it
   const dialogRef = useRef(null);
+  // A reference to this row's View button (see the useEffect below)
+  const viewButtonRef = useRef(null);
 
   // If the Feed page sent you here for THIS job ("/discovery?job=1"), open its
   // pop-up as soon as the row is on the screen. props.openOnArrival is true
@@ -512,6 +534,10 @@ function OpportunityRow(props) {
     // ".open" is true if the pop-up is already open. Opening it twice would
     // cause an error, so only open it if it isn't open yet.
     if (openOnArrival && !dialogRef.current.open) {
+      // Focus this row's View button first: closing a pop-up puts the focus
+      // back where it was before it opened. Coming from the Feed, nothing had
+      // the focus yet, so keyboard users would land back at the top of the page
+      viewButtonRef.current.focus();
       dialogRef.current.showModal();
       onOpened();
     }
@@ -565,8 +591,10 @@ function OpportunityRow(props) {
           <time dateTime={opportunity.deadline}>
             {formatDate(opportunity.deadline, { month: "short", day: "numeric", year: "numeric" })}
           </time>
-          {/* "Due soon" when it's within a week. Written out, not only a color (WCAG) */}
+          {/* "Due soon" when it's within a week, and "Closed" once the deadline
+              has gone by. Written out, not only a color (WCAG) */}
           {isDueWithin(opportunity.deadline, 7) && <span className="discovery-due-tag">Due soon</span>}
+          {isPastDeadline(opportunity.deadline) && <span className="discovery-due-tag discovery-closed-tag">Closed</span>}
         </span>
       </td>
 
@@ -586,13 +614,13 @@ function OpportunityRow(props) {
           {/* Save: an on/off button. !saved flips true to false and false
               to true. aria-pressed tells screen readers if it's on (WCAG).
               aria-label says which opportunity, because every row has a
-              Save button. It starts with the visible word "Save" so
-              voice control still works (WCAG). */}
+              Save button. It starts with the visible word ("Save" or
+              "Saved") so voice control still works (WCAG). */}
           <button
             type="button"
             className="discovery-outline-button discovery-small-button"
             aria-pressed={saved}
-            aria-label={"Save " + opportunity.title}
+            aria-label={(saved ? "Saved " : "Save ") + opportunity.title}
             onClick={toggleSave}
           >
             <BookmarkIcon />
@@ -606,6 +634,7 @@ function OpportunityRow(props) {
             className="discovery-solid-button discovery-small-button"
             aria-label={"View " + opportunity.title}
             aria-haspopup="dialog"
+            ref={viewButtonRef}
             onClick={() => dialogRef.current.showModal()}
           >
             View
@@ -739,11 +768,16 @@ function Discovery() {
   // The opportunity with the highest match: sort by match, take the first.
   const bestMatch = sortByMatch(opportunities)[0];
 
+  // The opportunities that pass the search (see matchesSearch above)
+  const searched = opportunities.filter((opportunity) => matchesSearch(opportunity, search));
+
   // How many opportunities each tab has, for the numbers on the tabs.
   // For each tab name, count the opportunities of that type ("All" counts all).
+  // They're counted after the search, so with "python" typed, "Co-op 1" means
+  // one co-op matches, and a tab's number is always what clicking it shows
   const counts = {};
   tabs.forEach((tab) => {
-    counts[tab] = tab === "All" ? opportunities.length : opportunities.filter((o) => o.type === tab).length;
+    counts[tab] = tab === "All" ? searched.length : searched.filter((o) => o.type === tab).length;
   });
 
   // For the summary boxes: what's due in the next 2 weeks (soonest first),
@@ -758,13 +792,9 @@ function Discovery() {
     setTrackerCount(loadTracker().length);
   }
 
-  // Keep only the opportunities that pass BOTH tests:
-  //   1. the tab: "All" is picked, or its type is the picked one ("||" means "or")
-  //   2. the search: the typed words appear in it (see matchesSearch above)
-  // "&&" means "and": both have to be true.
-  const filtered = opportunities.filter(
-    (opportunity) => (picked === "All" || opportunity.type === picked) && matchesSearch(opportunity, search),
-  );
+  // Of the ones that pass the search, keep only the picked tab's:
+  // "All" is picked, or its type is the picked one ("||" means "or")
+  const filtered = searched.filter((opportunity) => picked === "All" || opportunity.type === picked);
 
   // Then sort what's left, the way the Sort dropdown says.
   const shown = sortBy === "match" ? sortByMatch(filtered) : sortByDeadline(filtered);

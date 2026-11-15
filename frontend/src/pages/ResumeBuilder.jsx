@@ -447,12 +447,17 @@ function ResumeBuilder() {
 
     // "Download PDF": the browser's print window, where you pick "Save as PDF".
     // The page's name becomes the file's name ("Jamie Rivera - Resume.pdf"),
-    // then goes back to normal after the window closes
+    // then goes back to normal after the window closes.
+    // "afterprint" is the browser saying the print window closed. On computers,
+    // window.print() waits for that anyway, but on phones it comes back right
+    // away, before the PDF is made, so putting the name back on the next line
+    // would name the file "Resume builder | ScoutSearch". { once: true } stops
+    // listening after the first time
     function download() {
         const oldTitle = document.title;
         document.title = (resume.contact.name.trim() || 'My') + ' - Resume';
+        window.addEventListener('afterprint', () => { document.title = oldTitle; }, { once: true });
         window.print();
-        document.title = oldTitle;
     }
 
     return (

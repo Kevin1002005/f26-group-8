@@ -6,7 +6,7 @@
 import { supabase } from './db.js';
 import { fetchGreenhouse } from './job-sources/greenhouse.js';
 import { fetchLever } from './job-sources/lever.js';
-import type { ImportedJob, SourceResult } from './job-sources/shared.js';
+import { storableJob, type ImportedJob, type SourceResult } from './job-sources/shared.js';
 
 // every source we import from. USAJOBS and Adzuna get added here once their keys are in secrets.env
 const SOURCES: { name: ImportedJob['source']; fetchJobs: () => Promise<SourceResult> }[] = [
@@ -29,7 +29,10 @@ async function importSource(name: string, fetchJobs: () => Promise<SourceResult>
   // has the same job in it twice ("ON CONFLICT DO UPDATE command cannot affect row a second time")
   const byId = new Map<string, ImportedJob>();
   for (const job of jobs) {
-    byId.set(job.external_id, job);
+    // storableJob (shared.ts) removes the characters Postgres can't store. it runs before
+    // the duplicate check, so two ids that only differed by one of them count as one job
+    const clean = storableJob(job);
+    byId.set(clean.external_id, clean);
   }
   const rows = [...byId.values()].map((job) => ({
     ...job,

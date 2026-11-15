@@ -185,9 +185,12 @@ function ThemeToggle() {
 
       {/* "open && (...)" means "only draw the menu while it's open".
           role="menu" and role="menuitemradio" tell screen readers it's a
-          menu where one choice is on, and aria-checked says which (WCAG) */}
+          menu where one choice is on, and aria-checked says which (WCAG).
+          tabIndex={-1}: clicking an empty spot in the menu moves the focus to the
+          menu itself instead of the page, so handleBlur doesn't close it under
+          your mouse. -1 means it's never a stop when you press Tab */}
       {open && (
-        <div id={menuId} className="theme-menu-list" role="menu" aria-label="Color theme">
+        <div id={menuId} className="theme-menu-list" role="menu" aria-label="Color theme" tabIndex={-1}>
           {choices.map((choice, index) => (
             <button
               key={choice.value}

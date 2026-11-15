@@ -37,7 +37,7 @@ const shortestPassword = 8;
 
 // ---------- The tabs ----------
 // The "id" is also the end of the web address: yoursite.com/settings#privacy
-// opens the Privacy & data tab. That's how the dropdown's links open a tab.
+// opens the Privacy & data tab, so a link or bookmark can open a tab directly.
 const tabs = [
     { id: 'account', label: 'Account' },
     { id: 'appearance', label: 'Appearance' },
@@ -263,6 +263,10 @@ function Settings() {
     // The tab buttons, so the arrow keys can move the keyboard focus between them
     const tabRefs = useRef([]);
 
+    // true while the text size slider is being dragged with a mouse or finger
+    // (see the slider below). A ref, because changing it shouldn't redraw the page
+    const draggingSlider = useRef(false);
+
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -298,9 +302,12 @@ function Settings() {
 
     // Changes one choice, then saves all of them and puts them into effect.
     // [name]: value means "the setting called whatever is in name", so
-    // changeSetting('palette', 'mint') sets settings.palette to 'mint'
+    // changeSetting('palette', 'mint') sets settings.palette to 'mint'.
+    // It starts from loadSettings() (what's saved right now), not from this
+    // page's copy: if you changed something in another tab, this page's copy
+    // is old, and saving it would quietly undo that change
     function changeSetting(name, value) {
-        const newSettings = { ...settings, [name]: value };
+        const newSettings = { ...loadSettings(), [name]: value };
         setSettings(newSettings);
         saveSettings(newSettings);
         applySettings(newSettings);
@@ -308,8 +315,9 @@ function Settings() {
     }
 
     // Puts the listed settings back to how they started
+    // (starting from what's saved right now, for the same reason as changeSetting)
     function resetSettings(names) {
-        const newSettings = { ...settings };
+        const newSettings = { ...loadSettings() };
         names.forEach((name) => {
             newSettings[name] = defaultSettings[name];
         });
@@ -330,7 +338,7 @@ function Settings() {
 
                 <div className="settings-layout">
                     {/* The column of tabs. role="tablist" and role="tab" tell screen
-                        readers these are tabs, so they say "tab, 3 of 5" (WCAG).
+                        readers these are tabs, so they say "tab, 3 of 4" (WCAG).
                         Only the open tab is a Tab-key stop (tabIndex 0); the arrow
                         keys move between the others (tabIndex -1) */}
                     <div className="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
@@ -586,16 +594,25 @@ function Settings() {
                                         // (This is the only style set in JSX, because it changes
                                         // as you drag. The look itself stays in index.css)
                                         style={{ '--slider-fill': (settings.textSize - 100) / 50 }}
-                                        // While you drag, only the number next to the slider changes.
-                                        // (The slider grows with the page, so changing the size mid-drag
-                                        // would make it jump around under the mouse.)
-                                        // Number() turns the slider's text "125" into the number 125
-                                        onChange={(event) => setSettings({ ...settings, textSize: Number(event.target.value) })}
-                                        // When you let go, or press an arrow key, the new size is saved and put into effect.
+                                        // While you drag with a mouse or finger, only the number next to
+                                        // the slider changes. (The slider grows with the page, so changing
+                                        // the size mid-drag would make it jump around under the mouse.)
+                                        // Anything else (arrow keys, or a screen reader's swipe up or down,
+                                        // which sends no mouse or key events at all) puts the new size into
+                                        // effect right away. Number() turns the slider's text "125" into 125
+                                        onPointerDown={() => { draggingSlider.current = true; }}
+                                        onChange={(event) => {
+                                            if (draggingSlider.current) {
+                                                setSettings({ ...settings, textSize: Number(event.target.value) });
+                                            } else {
+                                                changeSetting('textSize', Number(event.target.value));
+                                            }
+                                        }}
+                                        // When you let go, the new size is saved and put into effect.
                                         // onBlur (leaving the slider) is a backup, in case the mouse was let go somewhere else
-                                        onPointerUp={(event) => changeSetting('textSize', Number(event.target.value))}
-                                        onKeyUp={(event) => changeSetting('textSize', Number(event.target.value))}
-                                        onBlur={(event) => changeSetting('textSize', Number(event.target.value))}
+                                        onPointerUp={(event) => { draggingSlider.current = false; changeSetting('textSize', Number(event.target.value)); }}
+                                        onPointerCancel={() => { draggingSlider.current = false; }}
+                                        onBlur={(event) => { draggingSlider.current = false; changeSetting('textSize', Number(event.target.value)); }}
                                     />
                                     <span className="settings-slider-big-a" aria-hidden="true">A</span>
                                     {/* The size it's on now, like "125%" */}

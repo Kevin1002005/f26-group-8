@@ -19,8 +19,8 @@ import { markLoggedOut } from "../login-status.js";
 // useCurrentUser says who is logged in: name, initials, email (use-current-user.js)
 import { useCurrentUser } from "../use-current-user.js";
 
-// A simple outline of a person, for the circle when we don't know your name
-// (for example, if you used the email form, which isn't connected yet).
+// A simple outline of a person, for the circle when we don't know your name or
+// email yet (for example, for a moment while Supabase reads the login as the page opens).
 // "currentColor" makes it the circle's text color (white).
 // aria-hidden: it's decoration, the button's aria-label names it (WCAG)
 function PersonIcon() {
@@ -99,11 +99,14 @@ function AccountMenu() {
   // event.preventDefault() stops the link from opening /login right away.
   // Otherwise the Log in page would open while Supabase is still logging out,
   // find the old login, and send you straight back to Opportunities
+  // (On a page behind the login guard, the guard notices the log out too and
+  // opens Log in first. "replace" stops that from adding a second Log in page
+  // to the browser's history, so Back doesn't show Log in twice)
   async function handleLogOut(event) {
     event.preventDefault();
     setOpen(false);
     await markLoggedOut();
-    navigate("/login");
+    navigate("/login", { replace: true });
   }
 
   return (
@@ -126,9 +129,13 @@ function AccountMenu() {
         {me.initials || <PersonIcon />}
       </button>
 
-      {/* "open && (...)" means "only draw the dropdown while it's open" */}
+      {/* "open && (...)" means "only draw the dropdown while it's open".
+          tabIndex={-1} on it: clicking an empty spot in the dropdown (your name,
+          the line, the space between items) moves the focus to the dropdown
+          itself instead of to the page, so handleBlur doesn't close it under
+          your mouse. -1 means it's never a stop when you press Tab */}
       {open && (
-        <div id="account-menu-list" className="account-menu-list">
+        <div id="account-menu-list" className="account-menu-list" tabIndex={-1}>
           {/* Your name and a link to your profile. (The Profile page itself
               still shows the made-up example person until it's connected) */}
           <div className="account-menu-header">

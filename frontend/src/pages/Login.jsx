@@ -139,12 +139,25 @@ function Login() {
     useEffect(() => {
         // supabase is null when .env.local is missing (see supabase.js), so skip this
         if (!supabase) return;
+        // "active" turns false if you leave this page before Supabase answers
+        // (finishing a Google login can take a moment). Without it, a slow
+        // answer could still pull you to Opportunities from wherever you went
+        let active = true;
         supabase.auth.getSession().then(({ data }) => {
-            if (data.session) {
-                markLoggedIn();
-                navigate('/discovery');
+            if (active && data.session) {
+                // The id says WHO is logged in (login-status.js uses it to keep
+                // each person's resume and tracker apart)
+                markLoggedIn(data.session.user.id);
+                // replace: swaps Log in out of the browser's history. Otherwise
+                // Back from Opportunities would open Log in, which would see the
+                // login and push you forward again, so Back could never get past it
+                navigate('/discovery', { replace: true });
             }
         });
+        // The clean-up: runs when you leave the page
+        return () => {
+            active = false;
+        };
     }, [navigate]);
 
     // Runs when the Google button is clicked.
@@ -214,10 +227,19 @@ function Login() {
         // Supabase checks the email and password. It never sends the
         // password back, only a login (a "session") if they match.
         // .value is what the user typed in each box
-        const { error } = await supabase.auth.signInWithPassword({
-            email: form.email.value,
-            password: form.password.value,
-        });
+        let data, error;
+        try {
+            ({ data, error } = await supabase.auth.signInWithPassword({
+                email: form.email.value,
+                password: form.password.value,
+            }));
+        } catch (thrown) {
+            // supabase-js hands back { error } for its own problems, but a few rare
+            // ones (like the browser refusing to save the login) are thrown instead.
+            // Treat them like any other error, so the button can't stay stuck on
+            // "Logging in..." with no message
+            error = thrown;
+        }
         setLoggingIn(false);
 
         if (error) {
@@ -237,11 +259,12 @@ function Login() {
             return;
         }
 
-        // It worked. Remember that you're logged in, so the About page shows
-        // your circle and a Home button instead of "Log in" and "Sign up"
-        markLoggedIn();
-        // Go to Opportunities, the home page, after logging in
-        navigate('/discovery');
+        // It worked. Remember who's logged in, so the About page shows your
+        // circle and a Home button instead of "Log in" and "Sign up"
+        markLoggedIn(data.user.id);
+        // Go to Opportunities, the home page, after logging in.
+        // replace: same reason as in the useEffect above (Back isn't trapped)
+        navigate('/discovery', { replace: true });
     }
 
     // Runs when the reset form is submitted (the "Send reset link" button is
@@ -275,9 +298,16 @@ function Login() {
         // Supabase emails a link to make a new password. redirectTo is the page
         // the link opens: our Reset password page (ResetPassword.jsx).
         // window.location.origin is the start of our address (http://localhost:5173)
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin + '/reset-password',
-        });
+        let error;
+        try {
+            ({ error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.origin + '/reset-password',
+            }));
+        } catch (thrown) {
+            // Same as handleSubmit: a rare thrown error mustn't leave the button
+            // stuck on "Sending link..."
+            error = thrown;
+        }
         setSending(false);
 
         // Supabase gives no error for an email with no account (so nobody can

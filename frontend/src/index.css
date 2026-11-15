@@ -2759,6 +2759,21 @@ html:has(.about-site) {
   align-items: center;              /* lines everything up in the middle, top-to-bottom */
 }
 
+/* The sticky top bar mustn't hide whatever has the keyboard focus (WCAG 2.4.11).
+   Pressing Shift+Tab up a page scrolls each button or link just into view, at
+   the very top edge of the screen, which is right under this bar. scroll-margin-top
+   asks the browser to stop that much lower, for whatever has the focus.
+   ":has(.feed-nav)" keeps it to the pages with this bar */
+html:has(.feed-nav) :focus {
+  scroll-margin-top: 84px;          /* the bar is 72px tall, plus a little space */
+}
+
+@media (max-width: 760px) {
+  html:has(.feed-nav) :focus {
+    scroll-margin-top: 136px;       /* on phones the bar is two rows (124px), plus a little space */
+  }
+}
+
 /* Left side of the top bar: the site name.
    (It used to hold a search box too, but that box didn't search anything,
    and Discovery has its own search that works, so it was taken out) */
@@ -3139,6 +3154,13 @@ html:has(.about-site) {
 .feed-kind-tag-amber {
   background-color: var(--tag-amber-bg);
   color: var(--tag-amber-text);     /* 6.6:1 / 8.7:1 */
+}
+
+/* "Closed" on a listing whose deadline has gone by: calm colors, not amber,
+   because it isn't urgent anymore, just over */
+.feed-kind-tag-closed {
+  background-color: var(--soft);    /* the very light blue used for tags */
+  color: var(--subtle);             /* small gray text: 6:1 on boxes */
 }
 
 /* ----- Listing posts ----- */
@@ -7130,6 +7152,14 @@ html:has(.about-site) {
   color: var(--tag-amber-text);
 }
 
+/* "Closed": goes where "Due soon" would be, once a deadline has gone by.
+   It has the same shape as the "Due soon" tag (it uses that class too), but
+   calm colors instead of amber, because it isn't urgent anymore, just over */
+.discovery-closed-tag {
+  background-color: var(--soft);       /* the very light blue used for tags */
+  color: var(--subtle);                /* small gray text: 6:1 on boxes */
+}
+
 /* A cell that should stay on one line ($27–30/hr) */
 .discovery-cell-nowrap {
   white-space: nowrap;
@@ -7243,6 +7273,19 @@ html:has(.about-site) {
 
 .discovery-solid-button:hover {
   background-color: var(--primary-dark);
+}
+
+/* The pop-up's Apply button after the deadline: faded, and the mouse shows it
+   can't be clicked. Its words say why ("Applications closed"). Turned-off
+   buttons don't need the 4.5:1 contrast (WCAG), but the words stay readable */
+.discovery-solid-button:disabled {
+  opacity: 0.6;                         /* faded, so it looks turned off */
+  cursor: not-allowed;                  /* the "no" mouse pointer */
+}
+
+/* ...and hovering doesn't darken it like a button you can press */
+.discovery-solid-button:disabled:hover {
+  background-color: var(--primary);
 }
 
 /* The smaller size for the buttons in each row */
@@ -9235,11 +9278,23 @@ body {
 /* --- Accessibility: text spacing ---
    More room between lines, letters, and words, which makes long text
    easier to follow. These are close to the amounts WCAG 1.4.12 asks sites
-   to handle. "!important" makes these win over every other rule */
-:root[data-text-spacing="on"] body * {
+   to handle. "!important" makes these win over every other rule.
+   ":not(.resume-paper, .resume-paper *)" leaves out the Resume builder's paper
+   and everything on it (see the rule just below) */
+:root[data-text-spacing="on"] body *:not(.resume-paper, .resume-paper *) {
   line-height: 1.7 !important;        /* more space between lines */
   letter-spacing: 0.04em !important;  /* a little more space between letters */
   word-spacing: 0.12em !important;    /* more space between words */
+}
+
+/* --- The Resume builder's paper keeps its own look ---
+   The paper shows exactly what will print, and a resume should look the same
+   to every employer: one classic font, normal spacing, one page. So the
+   heading style and font settings above don't change its name and section
+   headings (it comes after them, so it wins), and text spacing leaves it out */
+:root .resume-paper :is(h1, h2, h3) {
+  font-family: inherit;               /* the paper's own serif (see .resume-paper) */
+  letter-spacing: 0;                  /* the paper's normal letter spacing */
 }
 
 /* --- Accessibility: underline links ---
@@ -9251,14 +9306,26 @@ body {
 
 /* --- Accessibility: reduce motion ---
    Turns off every animation and transition on the site, the same as the
-   computer's own "reduce motion" setting. TextType and SmoothLink check
-   for this too (see wantsReducedMotion in settings.js) */
+   computer's own "reduce motion" setting. TextType, SmoothLink, the About
+   page's waves and click sparks check for this too (see wantsReducedMotion
+   in settings.js). The first line is <html> itself: the smooth scrolling on
+   About, Profile, and Edit Profile is set on <html>, and "*" alone only
+   reaches what's inside it */
+:root[data-reduce-motion="on"],
 :root[data-reduce-motion="on"] *,
 :root[data-reduce-motion="on"] *::before,
 :root[data-reduce-motion="on"] *::after {
   animation: none !important;
   transition: none !important;
   scroll-behavior: auto !important;    /* jumps instead of smooth scrolling */
+}
+
+/* The Profile page's project tiles tilt to follow the mouse. Turning off
+   transitions isn't enough for that (it still moves as the mouse moves),
+   so the tilt itself is turned off */
+:root[data-reduce-motion="on"] .profile-project:hover,
+:root[data-reduce-motion="on"] .profile-project:active {
+  transform: none;                     /* stays flat and still */
 }
 
 /* --- Accessibility: stronger keyboard outline ---

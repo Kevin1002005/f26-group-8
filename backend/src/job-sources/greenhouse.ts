@@ -39,14 +39,21 @@ export async function fetchGreenhouse(): Promise<SourceResult> {
       )) as { jobs: GreenhouseJob[] };
 
       for (const job of body.jobs) {
-        // "as { jobs: GreenhouseJob[] }" above only tells TypeScript what to expect.
-        // nothing checks it while running, so skip a job that's missing what our table
-        // requires, instead of letting one bad row make the whole save fail
-        if (typeof job.id !== 'number' || typeof job.title !== 'string' || !isWebLink(job.absolute_url)) {
-          continue;
-        }
-        if (isInternTitle(job.title)) {
-          jobs.push(toImportedJob(job, board));
+        // a job that can't be read at all (a null in the list, or a location that's a
+        // number, so .trim() throws) would otherwise jump to the catch below and lose
+        // every job after it from this company. this try skips just that one job
+        try {
+          // "as { jobs: GreenhouseJob[] }" above only tells TypeScript what to expect.
+          // nothing checks it while running, so skip a job that's missing what our table
+          // requires, instead of letting one bad row make the whole save fail
+          if (typeof job.id !== 'number' || typeof job.title !== 'string' || !isWebLink(job.absolute_url)) {
+            continue;
+          }
+          if (isInternTitle(job.title)) {
+            jobs.push(toImportedJob(job, board));
+          }
+        } catch {
+          console.error(`greenhouse ${board}: skipped one job that couldn't be read`);
         }
       }
     } catch (err) {

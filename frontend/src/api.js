@@ -22,16 +22,24 @@ export async function api(path, options = {}) {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
 
-    const response = await fetch('/api' + path, {
-        ...options, // copies method and body from options
-        headers: {
-            // tells the backend that what we send is JSON
-            'Content-Type': 'application/json',
-            // only add the token if there is one. The backend's
-            // authenticateToken reads it from here
-            ...(token ? { Authorization: 'Bearer ' + token } : {}),
-        },
-    });
+    // fetch only throws when no answer came back at all (no internet, or the
+    // server is down). Its own message for that is "Failed to fetch", which
+    // means nothing to most people, so pages get a clear sentence instead
+    let response;
+    try {
+        response = await fetch('/api' + path, {
+            ...options, // copies method and body from options
+            headers: {
+                // tells the backend that what we send is JSON
+                'Content-Type': 'application/json',
+                // only add the token if there is one. The backend's
+                // authenticateToken reads it from here
+                ...(token ? { Authorization: 'Bearer ' + token } : {}),
+            },
+        });
+    } catch {
+        throw new Error("Couldn't reach the server. Check your internet and try again.");
+    }
 
     // Our backend always answers in JSON. If the answer is something else
     // (a web page), the backend isn't what answered: it isn't running, or

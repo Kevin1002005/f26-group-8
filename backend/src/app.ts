@@ -1,6 +1,8 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import authRouter from './auth.js';
 import jobsRouter from './jobs.js';
+import applicationsRouter from './applications.js';
+import resumesRouter from './resumes.js';
 
 const app: Express = express();
 // by default Express adds "X-Powered-By: Express" to every answer, which tells attackers
@@ -18,6 +20,11 @@ app.use('/auth', authRouter);
 // JB3a: job routes. under /api because the frontend's Vite proxy only forwards /api
 // (see the shared contract in plans.md). /auth moves under /api too, in Task S4.
 app.use('/api/jobs', jobsRouter);
+
+// B7 and B8 (frontend/plans.md): each student's Application tracker and resume, saved with
+// their account. Both need you to be logged in (they use authenticateToken themselves)
+app.use('/api/applications', applicationsRouter);
+app.use('/api/resumes', resumesRouter);
 
 // catch-all error handler: has to come after all the routes so it catches their errors.
 // Express knows this is an error handler because it takes 4 arguments (err comes first),

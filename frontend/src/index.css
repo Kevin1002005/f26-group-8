@@ -7818,6 +7818,15 @@ html:has(.discovery-dialog[open]) {
   color: var(--muted);                   /* gray-blue (7.4:1 / 10:1 on the page, WCAG) */
 }
 
+/* The small line under the sentence: "Saved to your account." (or why not).
+   Empty in the first moment, so it takes up no space then */
+.tracker-sync:not(:empty) {
+  margin-top: 4px;                       /* a little space under the sentence */
+  max-width: 60ch;                       /* long messages wrap instead of running wide */
+  font-size: 13.5px;                     /* smaller: it's a side note */
+  color: var(--subtle);                  /* the site's small gray text (5.3:1 or more, WCAG) */
+}
+
 /* The "active" box on the right */
 .tracker-progress {
   grid-area: progress;
@@ -8432,6 +8441,15 @@ html:has(.discovery-dialog[open]) {
 /* "Saved in this browser." and the other short messages */
 .resume-status {
   font-size: 13.5px;
+  color: var(--subtle);                       /* 5.5:1 / 6.2:1 on the page */
+}
+
+/* The small line under the intro: "Saved to your account." (or why not).
+   Empty until something is known, so it takes up no space then */
+.resume-sync:not(:empty) {
+  margin-top: 4px;                            /* a little space under the intro */
+  max-width: 60ch;                            /* long messages wrap instead of running wide */
+  font-size: 13.5px;                          /* the same size as .resume-status */
   color: var(--subtle);                       /* 5.5:1 / 6.2:1 on the page */
 }
 

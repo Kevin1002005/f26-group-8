@@ -8,8 +8,9 @@ every page.
 - logging in and signing up with Supabase (email and password, or Google), plus password reset;
 - Opportunities (`/discovery`): real internships, co-ops, research positions, and programs from
   the backend (Greenhouse, Lever, and JSearch), with search, filters, and an Application tracker
-  (`/applications`);
-- a Resume builder (`/resume`) that prints to PDF, the Feed, and Settings (appearance and accessibility).
+  (`/applications`) saved with your account;
+- a Resume builder (`/resume`) that prints to PDF and is saved with your account, the Feed, and
+  Settings (appearance and accessibility).
 
 The people and posts on the Feed, Profile, and Network pages are still made-up examples.
 
@@ -37,6 +38,8 @@ safe to run again.
 1. `backend/sql/profiles.sql`
 2. `backend/sql/jobs.sql`
 3. `backend/sql/roles.sql`
+4. `backend/sql/applications.sql` (the Application tracker; needs `jobs.sql` first)
+5. `backend/sql/resumes.sql` (the Resume builder)
 
 **2. Login settings.** In Supabase, go to Authentication → URL Configuration:
 - set the Site URL to `http://localhost:5173`;
@@ -65,6 +68,9 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
 - `GET /api/jobs` lists open jobs. It takes `type`, `level`, `setting`, `paid`, `q` (search)
   and `page` (50 jobs per page).
 - `GET /api/jobs/:id` returns one job.
+- `/api/applications` (GET, POST, PATCH `/:id`, DELETE `/:id`) is your Application tracker, and
+  `/api/resumes/me` (GET, PUT) is your resume. Both need you to be logged in, and only ever
+  touch your own.
 - To pull in real internships, run `cd backend && npm run import-jobs` by hand, on a computer
   with `backend/secrets.env`. It saves them to the `jobs` table and closes the ones a company
   took down. JSearch only runs if `JSEARCH_API_KEY` is set. Without it, the importer says it
@@ -81,10 +87,19 @@ cd backend && npx tsc --noEmit
 
 ## Where people's things are saved
 
-Your resume and Application tracker are saved in your browser (localStorage), under your
-account. On a shared computer, the next person to log in gets their own, not yours. Logging
-out doesn't delete yours: it's there again when you log back in on that browser. It doesn't
-follow you to other devices yet (frontend/plans.md, F15).
+Your resume and Application tracker are saved with your account (the `resumes` and
+`applications` tables), so they're the same on every device you log in on.
+
+Each browser also keeps its own copy (localStorage), under your account's id. That's what
+makes pages open right away, and what keeps them working when the server can't be reached:
+your changes wait on that device and are sent as soon as it's back. The tracker page and the
+Resume builder each have a line saying "Saved to your account." (or why not yet).
+- On a shared computer, the next person to log in gets their own, not yours. Logging out
+  doesn't delete your copy, and a change that was still waiting is sent the next time you log
+  in on that browser, never to someone else's account.
+- A resume or tracker saved in a browser before accounts kept them is moved to the account
+  automatically, the first time you open the page.
+- If the same resume is edited on two devices, the last save wins.
 
 ## Deploy
 
@@ -154,7 +169,9 @@ has to be on this list.
 - Open a deep link like `/discovery` directly, and refresh it.
 - Sign up, log in (email and Google), and log out.
 - Send yourself a password reset email: its link must open the Vercel site, not localhost.
-- Opportunities loads real jobs. Save one, and it shows on My applications.
+- Opportunities loads real jobs. Save one, and it shows on My applications, with "Saved to
+  your account." under the title. Log in on a second device (or a private window): it's there
+  too. Same for a change in the Resume builder.
 - The browser console (F12) shows no red errors.
 
   Preview addresses are the exception: you may see one about `vercel.live`. That's Vercel's

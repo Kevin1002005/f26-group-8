@@ -6,8 +6,9 @@
 //
 // The board starts empty. A job shows up in "Saved" when you press Save on
 // it on the Discovery page. Which jobs are on the board, and in which column,
-// is kept in this browser by src/data/tracker.js, so it's still there after
-// a refresh. (Later, the backend would keep it for each account.)
+// is saved with your account by src/data/tracker.js, so it's the same on any
+// device. (It's kept in this browser too, so the board still works, and
+// remembers your moves, when the server can't be reached.)
 // The styles for this page are in index.css, under "Application tracker page".
 //
 // How the page is put together, top to bottom:
@@ -15,7 +16,7 @@
 //   2. Three columns    one StageColumn per stage, each holding TrackerCards
 
 // useState lets the page remember a value and redraw itself when it changes.
-// useEffect runs code after the page is drawn (here: saving the board).
+// useEffect runs code after the page is drawn (here: putting the focus back).
 // useRef remembers something without redrawing (here: which menu to focus).
 import { useEffect, useRef, useState } from "react";
 // Link goes to another page of the site without reloading everything.
@@ -24,10 +25,13 @@ import { Link } from "react-router";
 import NavBar from "../components/NavBar.jsx";
 // isPastDeadline says if a job's deadline has gone by
 import { isPastDeadline } from "../data/opportunities.js";
-// Reads and saves which jobs are on the board (shared with Discovery's Save
-// button). watchTracker hears about changes made in another tab, and
-// trackerJob finds the job behind each saved item (a real job or an example)
-import { loadTracker, saveTracker, trackerJob, watchTracker } from "../data/tracker.js";
+// The board's list (shared with Discovery's Save button), from tracker.js:
+//   useTrackerItems   the list, redrawing the page whenever it changes
+//                     (a move here, a Save in another tab, your account's list arriving)
+//   useTrackerSync    syncs with your account when the page opens, and says how it's going
+//   moveOnTracker     moves a job to another column (and saves that to your account)
+//   trackerJob        finds the job behind each saved item (a real job or an example)
+import { moveOnTracker, trackerJob, useTrackerItems, useTrackerSync } from "../data/tracker.js";
 
 // ---------- Icons ----------
 // Small drawings made with SVG. aria-hidden="true" hides them from screen
@@ -117,12 +121,12 @@ function formatDate(date) {
   return new Date(date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// Builds the board from the saved list. trackerJob (tracker.js) finds each
+// Builds the board from the tracker's list. trackerJob (tracker.js) finds each
 // item's job: a real job's title, company, and deadline were saved with it,
 // and an example job is looked up in the opportunities list.
-function loadApplications() {
+function toApplications(items) {
   return (
-    loadTracker()
+    items
       // For each saved item, find its job and add the column to it.
       // { ...job, stage: item.stage } copies the job and adds its column.
       .map((item) => {
@@ -139,6 +143,7 @@ function loadApplications() {
 // The top of the page: Back link, title, sentence, and the "active" box.
 // props.total is how many applications are on the board.
 // props.submitted is how many are in the Submitted column.
+// props.syncMessage says whether the board is saved to your account.
 function TrackerHeader(props) {
   return (
     <header className="tracker-header">
@@ -151,6 +156,13 @@ function TrackerHeader(props) {
       <div className="tracker-heading">
         <h1 className="tracker-title">Application tracker</h1>
         <p className="tracker-subtitle">Keep the opportunities you care about moving forward.</p>
+        {/* Whether your board is saved to your account (see syncMessage below).
+            role="status" makes screen readers read it when it changes (WCAG).
+            It only changes when that really changes, not on every move, so it
+            doesn't talk over the "Moved ... to ..." announcement */}
+        <p className="tracker-sync" role="status">
+          {props.syncMessage}
+        </p>
       </div>
 
       {/* The "active" box on the right */}
@@ -328,9 +340,12 @@ function StageColumn(props) {
 // ApplicationTracker is the whole page. It remembers where every card is,
 // and handles dragging and dropping.
 function ApplicationTracker() {
-  // Every application and its column. loadApplications runs once, the first
-  // time, to bring back the board saved in this browser.
-  const [applications, setApplications] = useState(loadApplications);
+  // The tracker's list, and how syncing with your account is going
+  // ({ state, problem }, see tracker.js). The page redraws when either changes
+  const items = useTrackerItems();
+  const sync = useTrackerSync();
+  // Every application and its column, made from the list
+  const applications = toApplications(items);
   // The id of the card being dragged right now (null when nothing is)
   const [draggingId, setDraggingId] = useState(null);
   // The column a card is being dragged over right now (null when none)
@@ -338,39 +353,19 @@ function ApplicationTracker() {
   // The sentence screen readers hear after a card moves
   const [announcement, setAnnouncement] = useState("");
 
-  // Every time the board changes, save it: each job's id and column, plus its
-  // title, company, deadline, and initials (a real job can't be looked up
-  // anywhere else yet, see trackerJob in tracker.js), so it's still there after
-  // a refresh. [applications] at the end means "only run this when applications changes".
-  useEffect(() => {
-    saveTracker(applications.map((app) => ({
-      id: app.id,
-      stage: app.stage,
-      title: app.title,
-      organization: app.organization,
-      deadline: app.deadline,
-      initials: app.initials,
-    })));
-  }, [applications]);
-
-  // If you save a job on Opportunities in ANOTHER tab while this page is open,
-  // read the board again. Otherwise the next move here would save this tab's
-  // older board over it, and that job would quietly disappear.
-  // watchTracker gives back the clean-up, which stops listening
-  useEffect(() => watchTracker(() => setApplications(loadApplications())), []);
-
   // The id of the "Move to" menu to put the keyboard focus back on, after a
   // move (see moveApplication). null when there's nothing to do
   const focusAfterMove = useRef(null);
   // A moved card is drawn again in its new column, and the menu you were using
   // goes with the old one, so the focus would drop to the top of the page.
-  // After each redraw, put it back on the moved card's menu (it has the same id)
+  // After the list changes, put it back on the moved card's menu (it has the
+  // same id). [items] at the end means "only run this when the list changes"
   useEffect(() => {
     if (focusAfterMove.current) {
       document.getElementById(focusAfterMove.current)?.focus();
       focusAfterMove.current = null;
     }
-  }, [applications]);
+  }, [items]);
 
   // Moves one card to another column.
   // fromMenu is true when the card's "Move to" menu did it (not dragging)
@@ -381,8 +376,8 @@ function ApplicationTracker() {
     if (!app || app.stage === newStage) {
       return;
     }
-    // A new list where only that card's stage is different
-    setApplications(applications.map((item) => (item.id === id ? { ...item, stage: newStage } : item)));
+    // Moves it on this device right away, and saves the move to your account
+    moveOnTracker(id, newStage);
     // Keyboard and screen reader users stay on the card they moved
     if (fromMenu) {
       focusAfterMove.current = "tracker-move-" + id;
@@ -419,12 +414,26 @@ function ApplicationTracker() {
   // Numbers for the "active" box
   const submittedCount = applications.filter((app) => app.stage === "submitted").length;
 
+  // The line under the title: is the board saved to your account?
+  //   a refused change   say what went wrong
+  //   "saved"            your account has everything
+  //   "offline"          changes are waiting on this device
+  //   "waiting"          nothing known yet (the first moment): say nothing
+  let syncMessage = "";
+  if (sync.problem) {
+    syncMessage = sync.problem;
+  } else if (sync.state === "saved") {
+    syncMessage = "Saved to your account.";
+  } else if (sync.state === "offline") {
+    syncMessage = "Not saved to your account yet: the server can't be reached. Your board is kept on this device and will be sent when the server is back.";
+  }
+
   return (
     <>
       <title>Application tracker | ScoutSearch</title>
       <NavBar />
       <main className="tracker-page">
-        <TrackerHeader total={applications.length} submitted={submittedCount} />
+        <TrackerHeader total={applications.length} submitted={submittedCount} syncMessage={syncMessage} />
 
         {/* The board: one column per stage, in order */}
         <div className="tracker-board">

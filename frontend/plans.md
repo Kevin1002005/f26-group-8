@@ -74,9 +74,12 @@ Decisions needed (from the Phase Two Plan doc; tasks that wait on one say so)
             but /discovery is behind the login guard right now (RequireLogin in App.jsx).
             If yes: move its <Route> out of the RequireLogin group, and give Discovery a guest
             top bar (it uses NavBar, which shows the logged-in circle). Then F7's About link too
-    [ ] D8. Tracker columns: the built tracker has 3 (saved, preparing, submitted); the contract's
+    [x] D8. Tracker columns: the built tracker has 3 (saved, preparing, submitted); the contract's
             Application.status has 5 (saved, applied, interviewing, offer, not-selected).
             Pick one and change the other before B7 builds the applications table
+            Decided 2026-11-15 (Kevin): keep the 3 columns. Application.status in the Shared
+            contract is now 'saved' | 'preparing' | 'submitted', the same as the tracker, the
+            check in backend/sql/applications.sql, and STATUSES in backend/src/applications.ts
     [ ] D9. Outside listings (added 2026-11-14, see F17-F19 and B14-B18): which sources first
             (proposed: Greenhouse, Lever, and Ashby job boards for a hand-picked list of 20-50
             companies, plus USAJOBS), who keeps that company list, and whether every listing
@@ -99,8 +102,14 @@ Shared contract (frontend <-> backend), proposed. Change it here first, then in 
     PATCH  /api/admin/listings/:id           (admin)             body { status: 'published' | 'rejected' } -> { job }
     GET    /api/applications                 (student, own)      -> { applications: [Application] }
     POST   /api/applications                 (student)           -> 201 { application }
-    PATCH  /api/applications/:id             (student, own)      -> { application }
+           body { job_id, status? } for one of our jobs (title etc. are copied from the jobs
+           table), or { example_id, title, organization?, deadline?, status? } for an example
+           job in opportunities.js. Already on the tracker -> 200 with the row that's there.
+           At most 200 per student
+    PATCH  /api/applications/:id             (student, own)      body { status?, notes? } -> { application }
     DELETE /api/applications/:id             (student, own)      -> 204
+    (Built 2026-11-15, B7/B8: "student" means any logged-in account for now, since nothing
+    creates profile rows yet, so requireRole('student') would refuse everyone)
     GET    /api/jobs/:id/applications        (owner, staff)      -> { applications: [...] }
     GET    /api/events                       (anyone)            -> { events: [Event] }
     POST   /api/events                       (staff, employer)   -> 201 { event }
@@ -122,8 +131,10 @@ Shared contract (frontend <-> backend), proposed. Change it here first, then in 
                    external_id, fetched_at, status: 'pending' | 'published' | 'rejected' | 'expired'.
                    Students only ever see 'published'. apply_url is the original posting.
     Application  { id, student_id, job_id (null for a job found on another site), title, organization,
-                   status: 'saved' | 'applied' | 'interviewing' | 'offer' | 'not-selected',
+                   status: 'saved' | 'preparing' | 'submitted' (D8),
                    deadline, notes, updated_at }
+                   Built 2026-11-15 with example_id too (an example job in opportunities.js,
+                   null otherwise) and created_at. The API never sends student_id back.
     Event        { id, title, host, starts_at, ends_at, location, online_url, description, created_by }
     Resume       { student_id, data: { contact, education[], experience[], projects[], skills[] }, updated_at }
     Conversation { id (the other person's profile id), name, initials, headline, unread: boolean,
@@ -139,6 +150,8 @@ Shared contract (frontend <-> backend), proposed. Change it here first, then in 
       initials, tags, hours, length, about.
     - src/data/tracker.js saves [{ id, stage }] in localStorage ("scoutsearch-applications"),
       with stage 'saved' | 'preparing' | 'submitted' (see D8).
+      Since F12 (2026-11-15) that's this device's copy: the account's list (/api/applications)
+      is the real one, and stage is Application.status.
     Before F10, either the backend sends Discovery's field names, or one small function turns a
     Job into Discovery's shape. Decide it here, in this section, first.
 
@@ -255,7 +268,7 @@ Frontend tasks
         drag and drop, plus a "Move to" <select> on each card for keyboards and phones; an empty
         message per column; Save in Discovery adds a job to Saved.
         Left:
-        - D8: 3 columns vs. the contract's 5 statuses.
+        - (D8 decided 2026-11-15: the 3 columns stay. Saved to the account since F12.)
         - "Add an application" form for jobs found on other sites (title, organization, status,
           deadline, notes). Today only Discovery's jobs can be on it.
         - Notes on a card, and Remove with an "Undo" message.
@@ -375,11 +388,21 @@ Frontend tasks
         labels on everything, inline errors next to the field, a preview of the card before
         posting. Non-employers see why they can't post.
 
-    [ ] F12 - Tracker and Apply use the backend       files: ApplicationTracker.jsx, data/tracker.js,
+    [~] F12 - Tracker and Apply use the backend       files: ApplicationTracker.jsx, data/tracker.js,
                                                               Discovery.jsx
         needs: B7, F8, D8. Tracker reads/writes /api/applications. On first load, offer to move
         anything saved in localStorage into the account, then clear it. Apply on details
         creates an application with job_id and status 'applied'.
+        Done 2026-11-15 (Kevin): the tracker is saved to the account (data/tracker.js), so it's
+        the same on every device. Discovery's Save, Feed's Save and "Due soon", and the tracker
+        page all read one list. This device keeps a copy, so pages show it right away and keep
+        working when the server can't be reached: changes wait in an outbox
+        ("scoutsearch-applications-outbox:<id>") and are sent when it's back. The tracker page
+        says "Saved to your account." (or why not). Instead of an "offer", a list saved before
+        this is moved to the account automatically, once (the team chose that).
+        Left: Apply still only opens the original posting (no 'applied' row: D8 has no such
+        column; 'submitted' would be the one to use). Notes are saved by PATCH but have no box
+        on the cards yet (F4's list).
 
     [ ] F13 - Applicants view (employers)             files: frontend/src/pages/Applicants.jsx (new),
                                                               index.css ("Applicants page"), App.jsx
@@ -388,8 +411,16 @@ Frontend tasks
     [ ] F14 - Events use the backend                  files: Events.jsx
         needs: B9, F8. Read /api/events; a "Create event" form for staff and employers.
 
-    [ ] F15 - ScoutCoach saves to the account         files: ScoutCoach.jsx, resume-storage.js
+    [x] F15 - ScoutCoach saves to the account         files: ScoutCoach.jsx, resume-storage.js
         needs: B8, F8. Same move-from-localStorage offer as F12.
+        Done 2026-11-15 (Kevin), in the Resume builder (pages/ResumeBuilder.jsx, the page
+        ScoutCoach became): it saves to the account (PUT /api/resumes/me) 1.5 seconds after you
+        stop typing, and right away when you leave the tab. Opening the builder (or coming back
+        to its tab) loads the account's copy, unless this browser has typing the account
+        doesn't have yet: then that wins and is sent. Offline, it's kept in this browser and
+        sent when the server is back. A resume saved before this is moved to the account
+        automatically, once. The example resume is never saved. A line under the intro says
+        "Saved to your account." (or why not).
 
     [ ] F16 - ScoutCoach 2: suggestions               files: ScoutCoach.jsx, index.css (ScoutCoach)
         needs: D3, B10.
@@ -439,7 +470,10 @@ into backend/plans.md, which stays their file)
              redirect URL to http://localhost:5173/reset-password (Anthony)
     B6       jobs table + RLS + the /api/jobs routes                        blocks F10, F11
     B7       applications table + RLS + routes                              blocks F12, F13
+             Done 2026-11-15 (Kevin): backend/sql/applications.sql, backend/src/applications.ts.
+             F13 still needs a route for job owners to see who saved their job
     B8       resumes table + RLS + routes                                   blocks F15
+             Done 2026-11-15 (Kevin): backend/sql/resumes.sql, backend/src/resumes.ts
     B9       events table + RLS + routes                                    blocks F14
     B10      /api/scoutcoach/suggest, after D3: key in secrets.env only, send only the section
              text, rate-limit per student                                   blocks F16

@@ -33,9 +33,11 @@ import { api } from "../api.js";
 // isPastDeadline says if a job's deadline has gone by (it then says "Closed").
 // (The made-up example jobs in that file are still used by the Feed page.)
 import { isPastDeadline } from "../data/opportunities.js";
-// The helpers that add a job to (or take it off) the Application tracker, and
-// trackerJob, which finds the job behind each saved item. See src/data/tracker.js.
-import { addToTracker, isOnTracker, loadTracker, removeFromTracker, trackerJob } from "../data/tracker.js";
+// The Application tracker's list, saved with your account (src/data/tracker.js):
+// the helpers that add a job to it (or take it off), useTrackerItems (the list,
+// redrawing the page when it changes), useTrackerSync (syncs with your account
+// when the page opens), and trackerJob, which finds the job behind each saved item.
+import { addToTracker, removeFromTracker, trackerJob, useTrackerItems, useTrackerSync } from "../data/tracker.js";
 
 // The tabs across the page. "All" shows everything; the rest match the
 // "type" of each opportunity (the same four types the database allows).
@@ -548,22 +550,27 @@ function OpportunityRow(props) {
   // A shorter name, so we can write opportunity.title instead of props.opportunity.title.
   const opportunity = props.opportunity;
 
-  // Each row remembers its own Save button (on/off), like Feed's Like button.
+  // The Save button (on/off) is "on" while this job is on the Application
+  // tracker. It reads the tracker's list instead of remembering its own, so it
+  // stays right when the list changes some other way: your account's list
+  // arriving (a job you saved on another device), or Save in another tab.
   // The pop-up uses the same one, so saving in either place saves both.
-  // It starts as "on" if this job is already on the Application tracker, so
-  // a job you saved before still says "Saved" when you come back.
-  // (useState(() => ...) runs that check only once, when the row first appears.)
-  const [saved, setSaved] = useState(() => isOnTracker(opportunity.id));
+  const trackerItems = useTrackerItems();
+  const saved = trackerItems.some((item) => item.id === opportunity.id);
+  // What screen readers hear after Save is pressed (see the end of the row)
+  const [announcement, setAnnouncement] = useState("");
 
   // Runs when Save is pressed, in the row or in the pop-up.
   // Saving puts the job in the tracker's "Saved" column; pressing again
-  // ("Saved") takes it off the tracker.
-  // The title, company, deadline, and initials are saved with it, because the
-  // Application tracker page can't look real jobs up anywhere else yet
+  // ("Saved") takes it off the tracker. Either way, it's saved to your account.
+  // The title, company, deadline, and initials are kept with it, so the
+  // tracker can show the job right away (and when the server can't be reached)
   function toggleSave() {
     if (saved) {
       removeFromTracker(opportunity.id);
+      setAnnouncement("");
     } else {
+      setAnnouncement("Saved to My applications.");
       addToTracker(opportunity.id, {
         title: opportunity.title,
         organization: opportunity.organization,
@@ -571,10 +578,8 @@ function OpportunityRow(props) {
         initials: opportunity.initials,
       });
     }
-    setSaved(!saved);
-    // Tells the Discovery page, so "On your tracker" at the top updates
-    // right away (not only after a refresh)
-    props.onSaveChange();
+    // (No more to do: the list changed, so this button and "On your tracker"
+    // at the top redraw by themselves)
   }
   // A reference to this row's pop-up, so "View" can open it
   const dialogRef = useRef(null);
@@ -695,9 +700,11 @@ function OpportunityRow(props) {
           </button>
         </span>
 
-        {/* Hidden on screen. Screen readers hear it when Save is pressed (WCAG) */}
+        {/* Hidden on screen. Screen readers hear it when Save is pressed (WCAG).
+            Only then: not when "saved" changes by itself (your account's list
+            arriving would otherwise make every saved row speak at once) */}
         <span className="sr-only" role="status">
-          {saved ? "Saved to My applications." : ""}
+          {announcement}
         </span>
 
         {/* The pop-up. It's on the page all the time but hidden until it's opened. */}
@@ -789,8 +796,6 @@ function ResultsSection(props) {
                   // true only for the job the Feed page linked to (see Discovery below)
                   openOnArrival={opportunity.id === props.openJobId}
                   onOpened={props.onOpened}
-                  // runs after Save is pressed (see Discovery below)
-                  onSaveChange={props.onSaveChange}
                 />
               ))}
             </tbody>
@@ -819,12 +824,6 @@ function ProfileTip() {
       </Link>
     </p>
   );
-}
-
-// How many items on the tracker have a job behind them (trackerJob), so the
-// number at the top matches what the Application tracker page shows
-function trackerTotal() {
-  return loadTracker().filter((item) => trackerJob(item)).length;
 }
 
 // Discovery is the whole page. It puts the pieces above together, and it
@@ -914,14 +913,14 @@ function Discovery() {
   // next 2 weeks (soonest first), and how many jobs are on your tracker.
   const openCount = opportunities.filter((o) => !isPastDeadline(o.deadline)).length;
   const dueSoon = sortByDeadline(opportunities.filter((o) => isDueWithin(o.deadline, 14)));
-  // The tracker count is state, so the page redraws when it changes. Each row's
-  // Save button runs updateTrackerCount (through ResultsSection) after saving.
-  // Before, it was only read when the page opened, so it stayed at the old
-  // number until a refresh
-  const [trackerCount, setTrackerCount] = useState(trackerTotal);
-  function updateTrackerCount() {
-    setTrackerCount(trackerTotal());
-  }
+  // The tracker count: how many items on the tracker have a job behind them
+  // (trackerJob), so it matches what the Application tracker page shows.
+  // useTrackerItems redraws the page whenever the list changes (a Save, or
+  // your account's list arriving), so the number is always up to date.
+  // useTrackerSync syncs with your account when the page opens
+  const trackerItems = useTrackerItems();
+  useTrackerSync();
+  const trackerCount = trackerItems.filter((item) => trackerJob(item)).length;
 
   // Of the ones that pass the search, keep only the picked tab's:
   // "All" is picked, or its type is the picked one ("||" means "or")
@@ -979,7 +978,6 @@ function Discovery() {
           showAll={showAll}
           openJobId={openJobId}
           onOpened={clearOpenJob}
-          onSaveChange={updateTrackerCount}
         />
 
         <ProfileTip />

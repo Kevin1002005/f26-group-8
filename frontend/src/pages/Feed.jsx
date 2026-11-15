@@ -728,6 +728,8 @@ function ListingPost(props) {
       addToTracker(job.id);
     }
     setSaved(!saved);
+    // Tells the Feed page, so the "Due soon" box updates right away
+    props.onSaveChange();
   }
 
   return (
@@ -802,10 +804,11 @@ function ListingPost(props) {
 // The "Due soon" box (top of the right column): the jobs on YOUR tracker
 // whose deadline is in the next 2 weeks, soonest first.
 // (It used to be a box with today's date, which was only for looks.)
-function DueSoonCard() {
+// props.tracker is the tracker's list, kept by the Feed page (see Feed below)
+function DueSoonCard(props) {
   // The tracker's list is [{ id, stage }, ...]. For each one, find its job,
   // keep the ones due in the next 14 days, and sort them soonest first
-  const due = loadTracker()
+  const due = props.tracker
     .map((item) => opportunities.find((job) => job.id === item.id))
     .filter((job) => job && isDueWithin(job.deadline, 14))
     .sort((a, b) => a.deadline.localeCompare(b.deadline));
@@ -952,6 +955,13 @@ function Feed() {
   // near the top), plus the ones you post. (New posts are only kept until the
   // page is refreshed, because there's no backend to save them yet.)
   const [allPosts, setAllPosts] = useState(feedItems);
+  // The Application tracker's list, for the "Due soon" box. It's state, so
+  // the box redraws when a listing's Save button changes it (updateTracker
+  // runs after each Save). Before, the box only read it when the page opened
+  const [tracker, setTracker] = useState(() => loadTracker());
+  function updateTracker() {
+    setTracker(loadTracker());
+  }
 
   // Runs when the post box sends a new post: puts it at the top of the list.
   // [newPost, ...allPosts] makes a new list: the new post, then all the old ones.
@@ -999,7 +1009,7 @@ function Feed() {
             // into the Post component, where it becomes props.author
             // A listing post gets its own piece (ListingPost); the rest are normal posts
             shownPosts.map((post) => post.type === "listing" ? (
-              <ListingPost key={post.id} post={post} />
+              <ListingPost key={post.id} post={post} onSaveChange={updateTracker} />
             ) : (
               <Post
                 key={post.id}
@@ -1027,7 +1037,7 @@ function Feed() {
 
         {/* Right column: what's due soon, then suggestions */}
         <aside className="feed-right">
-          <DueSoonCard />
+          <DueSoonCard tracker={tracker} />
           <OpportunityRadar />
           <PeopleToKnow />
         </aside>

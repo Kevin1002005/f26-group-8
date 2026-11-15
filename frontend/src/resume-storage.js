@@ -89,12 +89,14 @@ export const blankResume = {
 };
 
 // Copies one entry, keeping only the boxes "blank" has, each one as text.
-// A missing box becomes empty, and something that isn't text (a number,
-// null) is turned into text, so the page's .trim() and form boxes always work
+// Text stays, and a number is turned into text ("2026"). Anything else (a
+// missing box, null, a list, an object) becomes empty, so the page's .trim()
+// and form boxes always work and the resume never says "[object Object]"
 function fillBoxes(blank, entry) {
     const filled = {};
     for (const key of Object.keys(blank)) {
-        filled[key] = entry[key] === undefined || entry[key] === null ? '' : String(entry[key]);
+        const value = entry[key];
+        filled[key] = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
     }
     return filled;
 }
@@ -131,11 +133,29 @@ export function loadResume() {
     }
 }
 
-// Saves the whole resume
+// Saves the whole resume. Gives back true if it saved, or false if the
+// browser's storage is full or turned off, so the page can warn you
 export function saveResume(resume) {
     try {
         localStorage.setItem(storageKey, JSON.stringify(resume));
+        return true;
     } catch {
-        // Storage is turned off. Nothing to do: it just won't be remembered.
+        return false;
     }
+}
+
+// Keeps two open tabs in step: runs "callback" with the newest resume
+// whenever ANOTHER tab saves one. (The browser's "storage" event only fires
+// in the other tabs, never in the tab that saved.) Without this, the tab you
+// typed in last would quietly overwrite the other tab's changes.
+// Gives back a function that stops listening, for useEffect's clean-up
+export function watchOtherTabs(callback) {
+    function handleStorage(event) {
+        // event.key is the name that changed (null means everything was cleared)
+        if (event.key === storageKey || event.key === null) {
+            callback(loadResume());
+        }
+    }
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
 }

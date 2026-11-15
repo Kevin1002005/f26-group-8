@@ -5,7 +5,9 @@
 // How it works:
 //   1. The link opens this page with a one-time code in the address (?code=...).
 //      Importing supabase.js is enough for Supabase to swap that code for a
-//      short login, just for changing the password.
+//      short login, just for changing the password. supabase.js also notes
+//      that it came from a reset link (openedFromResetLink), so the form never
+//      shows for someone else who was already logged in on this computer.
 //   2. You type a new password twice, and supabase.auth.updateUser saves it.
 //   3. You're logged in, and a button takes you to Opportunities.
 // If the link is too old or was already used, the page says so and offers a new one.
@@ -29,8 +31,9 @@ import SiteLogo from '../components/SiteLogo.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 // markLoggedIn remembers that you're logged in (login-status.js)
 import { markLoggedIn } from '../login-status.js';
-// supabase is our one shared connection to Supabase (supabase.js)
-import { supabase } from '../supabase.js';
+// supabase is our one shared connection to Supabase (supabase.js).
+// openedFromResetLink is true if a reset link logged you in during this visit
+import { openedFromResetLink, supabase } from '../supabase.js';
 
 // The shortest password we accept (the same as the Sign up page)
 const shortestPassword = 8;
@@ -73,17 +76,22 @@ function ResetPassword() {
 
     // Waits for Supabase to read the link. onAuthStateChange calls us back
     // once it knows: with a "session" (a login) if the link worked, or
-    // without one if it didn't
+    // without one if it didn't.
+    // A login alone isn't enough: someone may already be logged in on this
+    // computer, and a link that didn't work leaves THEIR login in place. Then
+    // the form would change their password. So the login also has to come
+    // from the reset link: the PASSWORD_RECOVERY event, or openedFromResetLink()
+    // if that event happened before this page loaded
     useEffect(() => {
         if (!supabase) return;
         const { data } = supabase.auth.onAuthStateChange((event, session) => {
-            if (session) {
+            if (session && (event === 'PASSWORD_RECOVERY' || openedFromResetLink())) {
                 // The link worked: show the form. (Unless the password was
                 // already saved: Supabase calls back again after saving, and
                 // we want to stay on "done")
                 setScreen((current) => (current === 'done' ? current : 'ready'));
             } else if (event === 'INITIAL_SESSION') {
-                // Supabase finished reading the address and found no login
+                // Supabase finished reading the address, and no reset link logged you in
                 setScreen('invalid');
             }
         });

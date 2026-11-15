@@ -52,8 +52,11 @@ function App() {
           role="status" lets screen readers hear that a page is loading (WCAG) */}
       <Suspense fallback={<p role="status" className="sr-only">Loading page...</p>}>
         <Routes>
-          {/* "/" is the homepage. It sends visitors straight to the About page */}
-          <Route path="/" element={<Navigate to="/about" />} />
+          {/* "/" is the homepage. It sends visitors straight to the About page.
+              "replace" swaps "/" for "/about" in the browser's history instead of
+              adding a new step. Without it, pressing Back on About went to "/",
+              which sent you right back to About, so you could never leave */}
+          <Route path="/" element={<Navigate to="/about" replace />} />
           {/* yoursite.com/about shows the About page */}
           <Route path="/about" element={<About />} />
           {/* yoursite.com/login shows the Login page */}

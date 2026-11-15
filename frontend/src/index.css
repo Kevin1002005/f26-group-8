@@ -8385,6 +8385,17 @@ html:has(.discovery-dialog[open]) {
   color: var(--subtle);                       /* 5.5:1 / 6.2:1 on the page */
 }
 
+/* The warning under the intro when this browser can't save the resume
+   (its storage is full or turned off). Empty the rest of the time, so it
+   takes up no space */
+.resume-save-warning:not(:empty) {
+  margin-top: 8px;
+  max-width: 60ch;
+  font-size: 14px;
+  font-weight: 700;                           /* thick, so it doesn't rely on the red alone (WCAG) */
+  color: var(--signup-error);                 /* the site's error red (8.6:1 / 8.9:1) */
+}
+
 /* Phones only: the "Edit" / "Preview" switch (hidden on big screens) */
 .resume-switch {
   display: none;
@@ -8477,11 +8488,15 @@ html:has(.discovery-dialog[open]) {
   font-size: 13.5px;
   font-weight: 600;
   color: var(--subtle);                       /* 5.8:1 / 7.3:1 */
+  min-width: 0;                               /* allowed to get narrower than its longest word... */
+  overflow-wrap: anywhere;                    /* ...so a very long word or web address wraps onto the
+                                                 next line instead of pushing the buttons off the screen */
 }
 
 /* Move up, Move down, Remove */
 .resume-entry-tools {
   display: flex;
+  flex: none;                                 /* the buttons never shrink; a long name wraps instead */
   gap: 4px;
 }
 
@@ -8783,14 +8798,18 @@ html:has(.discovery-dialog[open]) {
     margin: 0.5in;                            /* half an inch on every side */
   }
 
-  body {
+  /* body:has(.resume-page) means "only while the Resume builder is open".
+     index.css is loaded on every page, so without it, printing any other page
+     (Opportunities, a job, My applications) would hide everything and come
+     out blank. The .resume- rules below only ever match the Resume builder */
+  body:has(.resume-page) {
     zoom: 1 !important;                       /* ignores the Settings page's text size */
     background-color: #ffffff !important;
   }
 
   /* Take the rest of the page out completely (not just hidden): hidden
      things still take up room, and the printout would get extra blank pages */
-  .feed-nav,
+  body:has(.resume-page) .feed-nav,
   .resume-head,
   .resume-switch,
   .resume-form,
@@ -8799,12 +8818,13 @@ html:has(.discovery-dialog[open]) {
   }
 
   /* Anything else that's left is hidden, except the resume */
-  body * {
+  body:has(.resume-page) * {
     visibility: hidden;
   }
 
-  .resume-paper,
-  .resume-paper * {
+  /* (The same "body:has(...)" start, so this rule beats the one above) */
+  body:has(.resume-page) .resume-paper,
+  body:has(.resume-page) .resume-paper * {
     visibility: visible;
   }
 

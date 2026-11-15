@@ -12,7 +12,8 @@
 // useEffect runs a bit of code after the page has been redrawn.
 import { useEffect, useRef, useState } from "react";
 // Link makes a clickable link to another page of our site.
-import { Link } from "react-router";
+// useNavigate goes to another page from code (Log out uses it, below).
+import { Link, useNavigate } from "react-router";
 // markLoggedOut forgets that you're logged in (login-status.js)
 import { markLoggedOut } from "../login-status.js";
 // useCurrentUser says who is logged in: name, initials, email (use-current-user.js)
@@ -90,10 +91,19 @@ function AccountMenu() {
     setOpen(false);
   }
 
-  // Runs when "Log out" is clicked: forgets the login, then closes the menu
-  function handleLogOut() {
-    markLoggedOut();
+  // navigate("/login") opens the Log in page from code
+  const navigate = useNavigate();
+
+  // Runs when "Log out" is clicked: closes the menu, forgets the login, and
+  // only THEN opens the Log in page.
+  // event.preventDefault() stops the link from opening /login right away.
+  // Otherwise the Log in page would open while Supabase is still logging out,
+  // find the old login, and send you straight back to Opportunities
+  async function handleLogOut(event) {
+    event.preventDefault();
     setOpen(false);
+    await markLoggedOut();
+    navigate("/login");
   }
 
   return (
@@ -156,7 +166,8 @@ function AccountMenu() {
           {/* The thin line above Log out. It's only decoration */}
           <div className="account-menu-divider" aria-hidden="true"></div>
 
-          {/* Log out forgets the login (see login-status.js) and goes to the Log in page */}
+          {/* Log out forgets the login (see login-status.js) and goes to the Log in page.
+              It stays a link to /login, so it still reads as "go to Log in" */}
           <Link to="/login" className="account-menu-item" onClick={handleLogOut}>
             Log out
           </Link>

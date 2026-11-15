@@ -495,6 +495,9 @@ function OpportunityRow(props) {
       addToTracker(opportunity.id);
     }
     setSaved(!saved);
+    // Tells the Discovery page, so "On your tracker" at the top updates
+    // right away (not only after a refresh)
+    props.onSaveChange();
   }
   // A reference to this row's pop-up, so "View" can open it
   const dialogRef = useRef(null);
@@ -678,6 +681,8 @@ function ResultsSection(props) {
                   // true only for the job the Feed page linked to (see Discovery below)
                   openOnArrival={opportunity.id === props.openJobId}
                   onOpened={props.onOpened}
+                  // runs after Save is pressed (see Discovery below)
+                  onSaveChange={props.onSaveChange}
                 />
               ))}
             </tbody>
@@ -744,7 +749,14 @@ function Discovery() {
   // For the summary boxes: what's due in the next 2 weeks (soonest first),
   // and how many jobs are on your tracker (saved in this browser).
   const dueSoon = sortByDeadline(opportunities.filter((o) => isDueWithin(o.deadline, 14)));
-  const trackerCount = loadTracker().length;
+  // The tracker count is state, so the page redraws when it changes. Each row's
+  // Save button runs updateTrackerCount (through ResultsSection) after saving.
+  // Before, it was only read when the page opened, so it stayed at the old
+  // number until a refresh
+  const [trackerCount, setTrackerCount] = useState(() => loadTracker().length);
+  function updateTrackerCount() {
+    setTrackerCount(loadTracker().length);
+  }
 
   // Keep only the opportunities that pass BOTH tests:
   //   1. the tab: "All" is picked, or its type is the picked one ("||" means "or")
@@ -800,6 +812,7 @@ function Discovery() {
           showAll={showAll}
           openJobId={openJobId}
           onOpened={clearOpenJob}
+          onSaveChange={updateTrackerCount}
         />
 
         <ProfileTip />

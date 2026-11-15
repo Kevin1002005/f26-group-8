@@ -25,3 +25,24 @@ export const supabase = supabaseUrl && supabaseKey
         },
     })
     : null;
+
+// Remembers if this visit came from a "reset your password" email link.
+// Supabase says so with a PASSWORD_RECOVERY event as the site opens, which
+// can happen before the Reset password page (ResetPassword.jsx) has even
+// loaded. So the listening starts here, right after the connection is made.
+// The Reset password page checks it, so its form only shows for the account
+// in the link, never for someone who was already logged in on this computer
+// (a link that didn't work leaves their login in place)
+let cameFromResetLink = false
+if (supabase) {
+    supabase.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') cameFromResetLink = true
+        // Logging out forgets it, so the next person to log in can't use it
+        if (event === 'SIGNED_OUT') cameFromResetLink = false
+    })
+}
+
+// true if a reset link logged you in during this visit (see above)
+export function openedFromResetLink() {
+    return cameFromResetLink
+}

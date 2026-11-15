@@ -19,7 +19,8 @@ import { useEffect, useRef, useState } from 'react';
 // NavBar is the bar across the top of the page (components/NavBar.jsx).
 import NavBar from '../components/NavBar.jsx';
 // The saved resume, the example, and the empty one (resume-storage.js)
-import { blankResume, exampleResume, loadResume, saveResume } from '../resume-storage.js';
+// (and watchOtherTabs, which keeps two open tabs showing the same resume)
+import { blankResume, exampleResume, loadResume, saveResume, watchOtherTabs } from '../resume-storage.js';
 
 // ---------- The repeating sections ----------
 // Education, Projects, and Experience all work the same way: a list of
@@ -332,6 +333,21 @@ function ResumeBuilder() {
     const [view, setView] = useState('edit');
     // The short message next to the buttons ("Removed Cashier.", ...)
     const [message, setMessage] = useState('');
+    // true when the last save didn't work (the browser's storage is full or
+    // turned off), so the page can warn you before you lose your changes
+    const [saveFailed, setSaveFailed] = useState(false);
+
+    // If this resume is open in another tab and you type there, show those
+    // changes here too, so neither tab overwrites the other. (Runs once; the
+    // "return" stops listening when you leave the page.) If the other tab
+    // cleared everything, this one goes back to the example, like a first visit
+    useEffect(() => {
+        const stopWatching = watchOtherTabs((saved) => {
+            setResume(saved || exampleResume);
+            setShowingExample(saved === null);
+        });
+        return stopWatching;
+    }, []);
 
     // Keyboard users: after Move, Remove, or Add, the button they pressed can
     // move or disappear, and the focus would jump back to the top of the page.
@@ -351,7 +367,8 @@ function ResumeBuilder() {
     // (The example isn't saved until you change something, so it stays an example)
     function update(newResume) {
         setResume(newResume);
-        saveResume(newResume);
+        // saveResume gives back false if it couldn't save ("!" flips it to true)
+        setSaveFailed(!saveResume(newResume));
         setShowingExample(false);
     }
 
@@ -455,6 +472,14 @@ function ResumeBuilder() {
                         <p className="resume-head-text">
                             Fill in the form and your resume updates as you type. It saves in this browser.
                             When it's ready, download it as a PDF.
+                        </p>
+                        {/* Only has words when saving failed (see "saveFailed" above).
+                            role="alert" makes screen readers read it right away, since
+                            your changes would be lost on refresh (WCAG) */}
+                        <p className="resume-save-warning" role="alert">
+                            {saveFailed
+                                ? "This browser isn't saving your resume (its storage is full or turned off). Download a PDF before you leave, so you don't lose your changes."
+                                : ''}
                         </p>
                     </div>
                     <div className="resume-head-actions">

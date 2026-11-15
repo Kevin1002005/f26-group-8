@@ -174,6 +174,10 @@ function Messages() {
             // "return" hands back the promise, so the next check can wait for this one
             return api('/conversations')
                 .then((data) => {
+                    // The backend should send a list ([...]). If it sent something
+                    // else, .find() below would crash the page, so treat it as a
+                    // failed check instead ("throw" jumps to .catch below)
+                    if (!Array.isArray(data)) throw new Error('Something went wrong. Try again.');
                     // It worked: check again in 5 seconds
                     delay = 5000;
                     // If you sent a message while this check was waiting for the

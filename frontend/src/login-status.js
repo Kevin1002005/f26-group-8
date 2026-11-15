@@ -39,13 +39,21 @@ export function markLoggedIn() {
     }
 }
 
-// Forgets the login (the dropdown's "Log out" runs this)
-export function markLoggedOut() {
-    // End the real Google login too. Without this, the Log in page would
-    // still find the old login and send you right back to the feed.
+// Forgets the login (the dropdown's "Log out" runs this).
+// "async" + "await": it waits for Supabase to finish logging out, so whoever
+// runs this can wait too ("await markLoggedOut()") before opening the Log in page
+export async function markLoggedOut() {
+    // End the real Supabase login too. Without this, the Log in page would
+    // still find the old login and send you right back to Opportunities.
     // scope: 'local' logs out only this browser, not your other devices.
-    // supabase is null when .env.local is missing, so "?." skips it then
-    supabase?.auth.signOut({ scope: 'local' });
+    // "await" matters: Supabase only forgets the login AFTER its server answers
+    // (about a third of a second). Without waiting, the Log in page could still
+    // find it in that time. (If the internet is down, Supabase still forgets it
+    // in this browser and hands back an error, so nothing else is needed here)
+    // supabase is null when .env.local is missing, so "if" skips it then
+    if (supabase) {
+        await supabase.auth.signOut({ scope: 'local' });
+    }
     try {
         localStorage.removeItem(storageKey);
     } catch {

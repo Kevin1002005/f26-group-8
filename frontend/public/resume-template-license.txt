@@ -1,0 +1,69 @@
+ScoutSearch Resume builder: where the resume layout comes from
+==============================================================
+
+The Resume builder (yoursite.com/resume) lays out resumes the way
+Jake's Resume does: the name centered at the top, section headings with
+a line under them, and dates on the right. ScoutSearch wrote its own
+HTML and CSS for this (frontend/src/pages/ResumeBuilder.jsx and the
+"Resume builder page" section of frontend/src/index.css). No code from
+the template was copied, but its license notices are kept here anyway,
+to give credit the way the MIT License asks.
+
+Jake's Resume is itself based on sb2nov/resume, so both notices are below.
+
+The MIT License covers the template, not the resumes people make with
+the builder, so nothing from this file needs to appear on a resume.
+
+------------------------------------------------------------------------
+Jake's Resume
+https://github.com/jakegut/resume
+------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2020 Jake Gutierrez
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+------------------------------------------------------------------------
+sb2nov/resume
+https://github.com/sb2nov/resume
+------------------------------------------------------------------------
+
+The MIT License (MIT)
+
+Copyright (c) 2026 Sourabh Bajaj
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

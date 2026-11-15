@@ -58,7 +58,15 @@ Decisions needed (from the Phase Two Plan doc; tasks that wait on one say so)
     [ ] D2. The permissions table (Access Roles doc + the new rows in the Phase Two doc)
     [ ] D3. Does ScoutCoach's AI fit the $0 budget? (blocks F16 and B10 only)
     [ ] D4. Owners for the new pages (F1-F6). Roemer took F2 and F4; F1, F5, F6 still need one
-    [ ] D5. Jake's template: confirm the MIT license in jakegut/resume, keep its copyright notice
+    [x] D5. Jake's template: confirm the MIT license in jakegut/resume, keep its copyright notice
+            Done 2026-11-14: jakegut/resume is MIT (Copyright (c) 2020 Jake Gutierrez), and it's
+            based on sb2nov/resume, also MIT (Sourabh Bajaj). We wrote our own HTML/CSS (no
+            template code copied), but both notices are kept word for word in
+            frontend/public/resume-template-license.txt (served at /resume-template-license.txt).
+            The note under the preview names Jake and links to his repo and that file. The
+            license covers the template, not people's resumes, so nothing goes on the resume.
+            Also: vite.config.js (build.license) writes every bundled library's notice to
+            /third-party-licenses.txt on each build; the About footer links to it
     [ ] D6. Top bar: which new pages get a top-bar link vs. a link in the account menu (see F7).
             Done for now (2026-11-14): top bar = Opportunities, My applications. Feed, Network,
             Messages are hidden until they're real. New pages go in the account menu first
@@ -278,9 +286,16 @@ Frontend tasks
           event (start/end in UTC, escaped commas).
         - Past events are hidden by default with a "Show past events" toggle.
 
-    [ ] F6 - ScoutCoach 1: resume builder              files: frontend/src/pages/ScoutCoach.jsx (new),
+    [~] F6 - ScoutCoach 1: resume builder              files: frontend/src/pages/ResumeBuilder.jsx (new),
                                                               frontend/src/resume-storage.js (new),
-                                                              index.css ("ScoutCoach page"), App.jsx
+                                                              index.css ("Resume builder page"), App.jsx
+        Built 2026-11-14 (Kevin) as the Resume builder at /resume (inside RequireLogin; linked
+        from the account menu). Form on the left, live preview on the right (Edit / Preview
+        switch on phones), autosaves in localStorage, opens with a made-up example. "Download
+        PDF" = window.print() + @media print (only the resume, letter size, 0.5in margins,
+        one page for a normal resume). The layout follows Jake's Resume; the page (not the
+        resume) says so, with links (D5 done). Left: the F16 suggestions panel later.
+        Original task:
         needs: D5. Route /scoutcoach. Students only.
         - Two columns: the form (left) and a live preview (right). Phones: tabs "Edit" / "Preview".
         - Form sections match Resume.data: contact, education, experience, projects, skills.

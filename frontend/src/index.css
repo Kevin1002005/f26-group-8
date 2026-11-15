@@ -96,6 +96,14 @@
   --tag-purple-bg: #ece8fb; --tag-purple-text: #4b3aa8;  /* internships, big news (7.1:1) */
   --tag-green-bg: #d9f4e6;  --tag-green-text: #0b6b3a;   /* part-time, submitted (5.7:1) */
   --tag-amber-bg: #fdf1d6;  --tag-amber-text: #7d4a00;   /* full-time, "Due soon", new listings (6.6:1) */
+
+  /* The Resume builder's "paper": always white with black words, in light AND
+     dark mode, because it's a preview of a printed page. (Dark mode doesn't
+     set these, so these are used there too) */
+  --paper: #ffffff;
+  --paper-ink: #111111;      /* the words (18.9:1 on the paper) */
+  --paper-soft-ink: #555555; /* the hint when the resume is still empty (7.5:1) */
+  --paper-rule: #000000;     /* the line under each section heading */
   --tracker-sent: #1f8a4c;        /* Application tracker: the green "Submitted" dot (4.3:1 on boxes;
                                      dots need 3:1, WCAG). The site has no other green */
   --signup-error: #9b1c1c;        /* red error messages under the boxes (8.6:1 on boxes) */
@@ -8270,6 +8278,574 @@ html:has(.discovery-dialog[open]) {
       fill 180ms ease,
       stroke 180ms ease,
       box-shadow 180ms ease !important;
+  }
+}
+
+/* ---------- Resume builder page ---------- */
+/* Everything below styles the Resume builder (pages/ResumeBuilder.jsx,
+   yoursite.com/resume): the form on the left, the live preview on the
+   right, and what happens when you print or save it as a PDF.
+   Phones show one side at a time, with "Edit" and "Preview" buttons on top.
+   Class names start with "resume-". The preview's own classes start with
+   "resume-paper-". */
+
+/* The whole page */
+.resume-page {
+  max-width: 1320px;                          /* never wider than this */
+  margin: 0 auto;                             /* centered */
+  padding: 32px clamp(16px, 4vw, 32px) 64px;  /* space around: top, sides, bottom */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;                                  /* space between the parts */
+}
+
+/* The title on the left, the buttons on the right */
+.resume-head {
+  display: flex;
+  flex-wrap: wrap;                            /* the buttons drop below on small screens */
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* "Resume builder" */
+.resume-head-title {
+  font-size: 30px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--text);                         /* navy (14.7:1 / 16:1 on the page) */
+}
+
+/* The sentence under the title */
+.resume-head-text {
+  margin-top: 6px;
+  max-width: 60ch;
+  font-size: 15px;
+  color: var(--muted);                        /* 7.4:1 / 10:1 */
+}
+
+/* The small "Example" tag while the example resume is showing */
+.resume-example-tag {
+  display: inline-flex;
+  padding: 2px 9px;
+  margin-left: 4px;
+  border-radius: var(--radius-pill);
+  background-color: var(--tag-amber-bg);
+  color: var(--tag-amber-text);               /* 6.6:1 / 8.7:1 */
+  font-size: 12.5px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* The row of buttons (Download PDF, Start from scratch, ...) */
+.resume-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The buttons' shared shape: pills */
+.resume-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;                           /* a big enough target to tap */
+  padding: 0 16px;
+  border: 1px solid var(--border);            /* gray-blue edge (3.5:1 / 3.3:1) */
+  border-radius: var(--radius-pill);
+  background-color: var(--card);
+  color: var(--text);
+  font-family: inherit;                       /* buttons don't copy the page's font on their own */
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.resume-button:hover {
+  background-color: var(--soft);
+}
+
+/* The main button (Download PDF): solid blue, white words (5.9:1 / 5.2:1) */
+.resume-button-main {
+  border-color: var(--primary);
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.resume-button-main:hover {
+  background-color: var(--primary-dark);
+}
+
+/* "Saved in this browser." and the other short messages */
+.resume-status {
+  font-size: 13.5px;
+  color: var(--subtle);                       /* 5.5:1 / 6.2:1 on the page */
+}
+
+/* Phones only: the "Edit" / "Preview" switch (hidden on big screens) */
+.resume-switch {
+  display: none;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background-color: var(--soft);
+}
+
+/* One side of the switch */
+.resume-switch-button {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--muted);                        /* 7:1 / 6.9:1 on the strip */
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* The side that's on: a white pill (aria-pressed also tells screen readers) */
+.resume-switch-button[aria-pressed="true"] {
+  background-color: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-card);
+}
+
+/* The form on the left, the preview on the right */
+.resume-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); /* the preview a little wider */
+  gap: 24px;
+  align-items: start;
+}
+
+/* ----- The form ----- */
+
+/* All the form's boxes, stacked */
+.resume-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* One box: Contact, Education, Projects, Experience, or Skills */
+.resume-section {
+  padding: 18px 20px;
+  background-color: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-box);
+  box-shadow: var(--shadow-card);
+}
+
+/* The box's title ("Experience") */
+.resume-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* One entry in a box (one school, one job, ...), with a line between entries */
+.resume-entry {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* The first entry doesn't need a line above it */
+.resume-section-title + .resume-entry {
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* The entry's name on the left ("Job 1"), its buttons on the right */
+.resume-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* "Job 1: Library Assistant" */
+.resume-entry-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--subtle);                       /* 5.8:1 / 7.3:1 */
+}
+
+/* Move up, Move down, Remove */
+.resume-entry-tools {
+  display: flex;
+  gap: 4px;
+}
+
+/* The small square buttons */
+.resume-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;                                /* 32px: an easy target (WCAG asks for at least 24) */
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background-color: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.resume-icon-button:hover:not(:disabled) {
+  background-color: var(--soft);
+  color: var(--text);
+}
+
+/* Move up on the first entry (or Move down on the last) can't be used */
+.resume-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* The boxes you type in, two per row (some take the whole row) */
+.resume-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+/* A field that takes the whole row (degree, bullet points, link) */
+.resume-field-wide {
+  grid-column: 1 / -1;
+}
+
+/* One field: the label above the box */
+.resume-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The words above each box */
+.resume-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);                         /* navy */
+}
+
+/* The boxes you type in */
+.resume-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);            /* 3.5:1 / 3.3:1, enough for borders (WCAG) */
+  border-radius: 8px;
+  background-color: var(--card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+}
+
+/* The bullet-point box is taller, and can be made taller by dragging its corner */
+.resume-textarea {
+  min-height: 92px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+/* "One bullet point per line." under the box */
+.resume-hint {
+  font-size: 12.5px;
+  color: var(--subtle);                       /* 5.8:1 / 7.3:1 */
+}
+
+/* "+ Add a job": a dashed button at the bottom of a box */
+.resume-add-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px dashed var(--border);           /* dashed: "add something here" */
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  color: var(--link);                         /* blue (5.9:1 / 8:1) */
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.resume-add-button:hover {
+  background-color: var(--soft);
+}
+
+/* ----- The preview ----- */
+
+/* The preview's column: it stays in view while you scroll the form, and
+   scrolls on its own if the resume is longer than the screen */
+.resume-preview-column {
+  position: sticky;
+  top: 88px;                                  /* just under the top bar */
+  max-height: calc(100vh - 104px);
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: var(--radius-box);
+  background-color: var(--soft);              /* a gray-blue desk under the white paper */
+}
+
+/* The paper itself: a white page with black words, shaped like a letter-size
+   page (8.5 by 11). It grows taller if the resume is longer than one page */
+.resume-paper {
+  aspect-ratio: 8.5 / 11;
+  padding: 36px 40px;
+  background-color: var(--paper);
+  color: var(--paper-ink);
+  box-shadow: var(--shadow-card);
+  font-family: "Latin Modern Roman", "CMU Serif", Georgia, "Times New Roman", serif; /* a classic résumé
+                                                 serif, like the template's (no download needed) */
+  font-size: 10.5pt;
+  line-height: 1.25;
+  overflow-wrap: anywhere;                    /* a very long word or link with no spaces
+                                                 wraps instead of running off the paper */
+}
+
+/* The name at the top, centered and big */
+.resume-paper-name {
+  margin: 0;
+  text-align: center;
+  font-size: 22pt;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0;                          /* the page's tighter headings don't apply here */
+  color: var(--paper-ink);
+}
+
+/* The contact line under the name: "City | email | link" */
+.resume-paper-contact {
+  margin-top: 3pt;
+  text-align: center;
+  font-size: 9.5pt;
+}
+
+/* One section ("Education", "Projects", ...) */
+.resume-paper-section {
+  margin-top: 9pt;
+}
+
+/* The section's heading, with a black line under it */
+.resume-paper-heading {
+  margin: 0 0 4pt;
+  padding-bottom: 1pt;
+  border-bottom: 1px solid var(--paper-rule);
+  font-size: 12pt;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--paper-ink);
+}
+
+/* One entry (a school, a project, a job) */
+.resume-paper-entry {
+  margin-bottom: 5pt;
+}
+
+/* A row with words on the left and on the right (name | dates) */
+.resume-paper-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12pt;
+}
+
+.resume-paper-strong {
+  font-weight: 700;
+}
+
+.resume-paper-italic {
+  font-style: italic;
+}
+
+/* The dates and places on the right. Short ones stay on one line; a very
+   long one wraps once it would take more than half the line, so it can't
+   push the words on the left off the paper */
+.resume-paper-right {
+  flex: none;                                 /* as wide as its words... */
+  max-width: 50%;                             /* ...up to half the line */
+  text-align: right;
+}
+
+/* The bullet points */
+.resume-paper-bullets {
+  margin: 1pt 0 0;
+  padding-left: 14pt;
+  list-style: disc;                           /* round bullets (Tailwind turns them off by default) */
+}
+
+.resume-paper-bullets li {
+  margin-top: 0.5pt;
+  font-size: 10pt;
+}
+
+/* A project's link line, under its bullets */
+.resume-paper-link {
+  font-size: 9.5pt;
+  font-style: italic;
+}
+
+/* One line of skills: "Languages: Python, JavaScript" */
+.resume-paper-skill {
+  margin: 0;
+  font-size: 10pt;
+}
+
+/* The hint shown on the paper while the resume is still empty */
+.resume-paper-empty {
+  margin-top: 40pt;
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--paper-soft-ink);               /* 7.5:1 on the white paper */
+}
+
+/* The note under the preview saying the layout is based on Jake's Resume.
+   It's on the website only: it's outside .resume-paper, so printing (below)
+   hides it and it never appears on anyone's downloaded resume */
+.resume-credit {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--muted);                        /* 7:1 / 6.9:1 on the gray-blue desk */
+}
+
+/* The two links in that note: Jake's Resume (his GitHub page) and the MIT
+   License (the license file, frontend/public/resume-template-license.txt).
+   Underlined, so they don't rely on color alone to look like links (WCAG) */
+.resume-credit a {
+  color: var(--link);                         /* 5.2:1 / 6.6:1 on the gray-blue desk */
+  text-decoration: underline;
+  text-underline-offset: 2px;                 /* a little below the letters */
+}
+
+/* ----- Keyboard outlines (WCAG) ----- */
+.resume-button:focus-visible,
+.resume-switch-button:focus-visible,
+.resume-icon-button:focus-visible,
+.resume-add-button:focus-visible,
+.resume-credit a:focus-visible,
+.resume-input:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ----- Phones and narrow windows: one side at a time ----- */
+@media (max-width: 900px) {
+  .resume-switch {
+    display: inline-flex;                     /* the Edit / Preview switch appears */
+  }
+
+  .resume-layout {
+    grid-template-columns: minmax(0, 1fr);    /* one column */
+  }
+
+  /* Only the side that's picked is shown (data-view is set in ResumeBuilder.jsx) */
+  .resume-layout[data-view="edit"] .resume-preview-column,
+  .resume-layout[data-view="preview"] .resume-form {
+    display: none;
+  }
+
+  .resume-preview-column {
+    position: static;                         /* no sticking on phones */
+    max-height: none;
+    padding: 8px;
+  }
+
+  .resume-paper {
+    padding: 20px 18px;
+    font-size: 9pt;                           /* a little smaller, so a line fits the phone */
+  }
+
+  .resume-fields {
+    grid-template-columns: minmax(0, 1fr);    /* one box per row */
+  }
+}
+
+/* ----- Printing and "Save as PDF" ----- */
+/* Download PDF opens the browser's print window. These rules make the
+   printed page ONLY the resume: everything else is hidden, and the paper
+   fills a letter-size page with half-inch margins. */
+@media print {
+  @page {
+    size: letter;                             /* 8.5 by 11 inches */
+    margin: 0.5in;                            /* half an inch on every side */
+  }
+
+  body {
+    zoom: 1 !important;                       /* ignores the Settings page's text size */
+    background-color: #ffffff !important;
+  }
+
+  /* Take the rest of the page out completely (not just hidden): hidden
+     things still take up room, and the printout would get extra blank pages */
+  .feed-nav,
+  .resume-head,
+  .resume-switch,
+  .resume-form,
+  .resume-credit {
+    display: none !important;
+  }
+
+  /* Anything else that's left is hidden, except the resume */
+  body * {
+    visibility: hidden;
+  }
+
+  .resume-paper,
+  .resume-paper * {
+    visibility: visible;
+  }
+
+  /* No space around the page or between columns: just the paper */
+  .resume-page {
+    max-width: none;
+    padding: 0;
+  }
+
+  .resume-layout {
+    display: block;
+  }
+
+  /* The preview's column shows even if a phone was on "Edit" */
+  .resume-layout .resume-preview-column {
+    display: block !important;
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    background: none;
+  }
+
+  /* The paper fills the page (the page's own margins are set in @page above) */
+  .resume-paper {
+    width: 100%;
+    padding: 0;
+    aspect-ratio: auto;
+    box-shadow: none;
+    font-size: 10.5pt;
+  }
+
+  /* A long resume goes onto a second page. Each entry (a school, a project,
+     a job) stays in one piece, and a heading stays with what's under it, so
+     a page never ends with just "Job 2" and its details on the next page */
+  .resume-paper-entry {
+    break-inside: avoid;
+  }
+
+  .resume-paper-heading {
+    break-after: avoid;
   }
 }
 

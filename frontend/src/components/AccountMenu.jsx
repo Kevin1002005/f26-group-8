@@ -1,6 +1,6 @@
 // AccountMenu.jsx is your circle in the top bar, and the dropdown that opens
 // when you click it. The dropdown has links to your profile, Edit profile,
-// Settings, and Log out. (To get to the About page, click the logo.)
+// Resume builder, Settings, and Log out. (To get to the About page, click the logo.)
 // NavBar.jsx uses it, so it shows up on every page that has the top bar.
 // The styles are in index.css, under "Top bar: account menu".
 //
@@ -138,6 +138,12 @@ function AccountMenu() {
             <li>
               <Link to="/editprofile" className="account-menu-item" onClick={closeMenu}>
                 Edit profile
+              </Link>
+            </li>
+            {/* The Resume builder (pages/ResumeBuilder.jsx): fill in a form, download a PDF */}
+            <li>
+              <Link to="/resume" className="account-menu-item" onClick={closeMenu}>
+                Resume builder
               </Link>
             </li>
             <li>

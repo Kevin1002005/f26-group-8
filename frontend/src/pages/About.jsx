@@ -697,6 +697,12 @@ function About() {
                             <li><a href="#questions">Questions</a></li>
                             <li><Link to="/login">Log in</Link></li>
                             <li><Link to="/signup">Sign up</Link></li>
+                            {/* The copyright notices of the code libraries the site is
+                                built with (vite.config.js writes this file on every build).
+                                A plain <a>, because it's a text file, not one of our pages.
+                                With "npm run dev" it shows Page not found: the file is only
+                                made by "npm run build" (it works on the live site) */}
+                            <li><a href="/third-party-licenses.txt">Open-source licenses</a></li>
                         </ul>
                     </nav>
                 </div>

@@ -34,6 +34,7 @@ const Messages = lazy(() => import("./pages/Messages.jsx"));
 const Settings = lazy(() => import("./pages/Settings.jsx"));
 const Discovery = lazy(() => import("./pages/Discovery.jsx"));
 const ApplicationTracker = lazy(() => import("./pages/ApplicationTracker.jsx"));
+const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
 
 // A "component" is a function that returns what should appear on the screen.
@@ -84,6 +85,8 @@ function App() {
             <Route path="/applications" element={<ApplicationTracker />} />
             {/* yoursite.com/settings shows the Settings page */}
             <Route path="/settings" element={<Settings />} />
+            {/* yoursite.com/resume shows the Resume builder */}
+            <Route path="/resume" element={<ResumeBuilder />} />
           </Route>
 
           {/* "*" matches any address that isn't listed above (like a typo, /feeed).

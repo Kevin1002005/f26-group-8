@@ -1,6 +1,9 @@
 // Login.jsx is the Log in page (yoursite.com/login).
-// For now it only shows a welcome message. It doesn't really log anyone in yet,
-// because the site doesn't have a backend (server and database) yet.
+// There are two ways to log in, and both are real (Supabase checks them):
+//   - Email and password, for accounts made on the Sign up page
+//   - Google, which makes the account the first time you use it
+// Supabase keeps the accounts (in its "auth.users" table), so our own
+// backend doesn't have to store any passwords.
 // It looks just like the Sign up page (same background, top bar, box, and
 // animations), because it uses the same classes from index.css.
 // The styles for this page are in index.css, under "Sign up page" and
@@ -35,7 +38,7 @@ import TextType from '../components/reactbits/TextType.jsx';
 // markLoggedIn remembers that you're logged in (login-status.js)
 import { markLoggedIn } from '../login-status.js';
 // supabase is our one shared connection to Supabase (supabase.js).
-// The Google button uses it to log in
+// The Log in form, the reset form, and the Google button all use it
 import { supabase } from '../supabase.js';
 
 // The words typed after "Log in to find" at the top of the page. It types
@@ -55,17 +58,32 @@ function findProblem(input, emptyMessage) {
     return '';
 }
 
+// Links in our emails (confirm your email, reset your password) come back to
+// this page. If the link was too old or already used, Supabase adds
+// "error_description" to the address (after ? or #). This gives back a
+// message for that, or '' if the address has no problem in it
+function linkProblem() {
+    const address = window.location.search + window.location.hash;
+    if (!address.includes('error_description')) return '';
+    return "That link didn't work. It may be too old or already used. Log in below, or use Forgot your password to get a new one.";
+}
+
 function Login() {
-    // "message" is the text shown above the Log in button. It starts empty ('').
+    // "message" is the text shown above the Log in button. It starts empty (''),
+    // unless the address says an email link didn't work (see linkProblem above).
     // Calling setMessage('...') changes it, and React updates the page.
-    const [message, setMessage] = useState('');
+    const [message, setMessage] = useState(linkProblem);
+
+    // true while Supabase is checking the email and password, so the button
+    // says "Logging in..." and a second click is ignored
+    const [loggingIn, setLoggingIn] = useState(false);
 
     // The red messages under the boxes. It's an object with one message per
     // box: errors.email is the Email box's, errors.password the Password box's.
     // It starts as {} (nothing wrong yet). An empty message '' means that box is fine
     const [errors, setErrors] = useState({});
 
-    // navigate('/feed') // Sends the user to the Feed page after Logging in
+    // navigate('/discovery') // Sends the user to Opportunities (the home page) after logging in
     const navigate = useNavigate();
 
     // What's typed in the Email box. The Log in form and the reset form share
@@ -73,17 +91,13 @@ function Login() {
     // it's already filled in for you
     const [email, setEmail] = useState('');
 
-    // The email the reset link was "sent" to. It starts empty (''). Once it
+    // The email the reset link was sent to. It starts empty (''). Once it
     // has an address in it, the box shows "Check your email"
     const [sentTo, setSentTo] = useState('');
 
-    // true for a moment after "Send reset link" is clicked, while the button
-    // says "Sending link..." (see handleReset)
+    // true while the reset email is being sent, so the button says
+    // "Sending link..." (see handleReset)
     const [sending, setSending] = useState(false);
-
-    // Remembers the little wait in handleReset, so it can be cancelled
-    // if the person leaves the page during it
-    const waitTimer = useRef(null);
 
     // The big heading in the box ("Log in", "Reset your password", or
     // "Check your email"), so the code can move the keyboard focus onto it
@@ -114,26 +128,36 @@ function Login() {
         headingRef.current.focus();
     }, [view]);
 
-    // When the page is closed or left, stop any wait that's still running
-    useEffect(() => {
-        return () => clearTimeout(waitTimer.current);
-    }, []);
-
     // After you pick your account on Google's site, Google sends you back to
     // THIS page with a one-time code in the address bar (?code=...).
+    // The "confirm your email" link from Sign up lands here the same way.
     // Importing supabase.js above is enough for Supabase to see that code and
     // swap it for a real login. getSession() waits for that swap to finish,
-    // then tells us if someone is logged in. If they are, go to the feed.
-    // (This also sends people who are already logged in straight to the feed.)
+    // then tells us if someone is logged in. If they are, go to Opportunities
+    // (/discovery), the home page.
+    // (This also sends people who are already logged in straight there.)
     useEffect(() => {
         // supabase is null when .env.local is missing (see supabase.js), so skip this
         if (!supabase) return;
+        // "active" turns false if you leave this page before Supabase answers
+        // (finishing a Google login can take a moment). Without it, a slow
+        // answer could still pull you to Opportunities from wherever you went
+        let active = true;
         supabase.auth.getSession().then(({ data }) => {
-            if (data.session) {
-                markLoggedIn();
-                navigate('/feed');
+            if (active && data.session) {
+                // The id says WHO is logged in (login-status.js uses it to keep
+                // each person's resume and tracker apart)
+                markLoggedIn(data.session.user.id);
+                // replace: swaps Log in out of the browser's history. Otherwise
+                // Back from Opportunities would open Log in, which would see the
+                // login and push you forward again, so Back could never get past it
+                navigate('/discovery', { replace: true });
             }
         });
+        // The clean-up: runs when you leave the page
+        return () => {
+            active = false;
+        };
     }, [navigate]);
 
     // Runs when the Google button is clicked.
@@ -163,9 +187,12 @@ function Login() {
 
     // Runs when the form is submitted (the Log in button is clicked,
     // or Enter is pressed).
-    function handleSubmit(event) {
+    // "async" lets us "await": wait for Supabase to check the password
+    async function handleSubmit(event) {
         // Normally submitting a form reloads the whole page. This stops that.
         event.preventDefault();
+        // If it's already checking, ignore a second click or Enter
+        if (loggingIn) return;
         // event.target is the form. form.email is the input with name="email"
         const form = event.target;
 
@@ -186,21 +213,64 @@ function Login() {
             return;
         }
 
-        // .value is what the user typed in the Email box.
-        const email = form.email.value;
-        // The backticks ` ` let you put a variable inside text with ${ }.
-        setMessage(`Welcome, ${email}!`);
-        // Remember that you're logged in, so the About page shows your
+        // supabase is null when .env.local is missing (see supabase.js)
+        if (!supabase) {
+            console.error('Log in: VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY is missing from .env.local');
+            setMessage("Couldn't log you in. Please try again later.");
+            return;
+        }
+
+        // Changes the button's words to "Logging in..." and clears an old message
+        setLoggingIn(true);
+        setMessage('');
+
+        // Supabase checks the email and password. It never sends the
+        // password back, only a login (a "session") if they match.
+        // .value is what the user typed in each box
+        let data, error;
+        try {
+            ({ data, error } = await supabase.auth.signInWithPassword({
+                email: form.email.value,
+                password: form.password.value,
+            }));
+        } catch (thrown) {
+            // supabase-js hands back { error } for its own problems, but a few rare
+            // ones (like the browser refusing to save the login) are thrown instead.
+            // Treat them like any other error, so the button can't stay stuck on
+            // "Logging in..." with no message
+            error = thrown;
+        }
+        setLoggingIn(false);
+
+        if (error) {
+            // error.code says what went wrong. The messages never say whether
+            // an email has an account, so nobody can use this page to find
+            // out who's signed up
+            if (error.code === 'email_not_confirmed') {
+                setMessage('Please confirm your email first. The link is in the email we sent when you signed up.');
+            } else if (error.code === 'invalid_credentials') {
+                setMessage("That email and password don't match. Check them and try again.");
+            } else {
+                // Anything else (no internet, Supabase is down, ...). The real
+                // reason goes to the console (F12), not on the page
+                console.error('Log in failed:', error);
+                setMessage("Couldn't log you in right now. Please try again.");
+            }
+            return;
+        }
+
+        // It worked. Remember who's logged in, so the About page shows your
         // circle and a Home button instead of "Log in" and "Sign up"
-        markLoggedIn();
-        // Navigate to the feed page after successful login
-        navigate('/feed');
+        markLoggedIn(data.user.id);
+        // Go to Opportunities, the home page, after logging in.
+        // replace: same reason as in the useEffect above (Back isn't trapped)
+        navigate('/discovery', { replace: true });
     }
 
     // Runs when the reset form is submitted (the "Send reset link" button is
     // clicked, or Enter is pressed). The browser has already checked that
     // the Email box looks like an email address, because it's type="email"
-    function handleReset(event) {
+    async function handleReset(event) {
         // Normally submitting a form reloads the whole page. This stops that.
         event.preventDefault();
         // If it's already working on it, ignore a second click or Enter
@@ -215,21 +285,45 @@ function Login() {
             return;
         }
 
+        if (!supabase) {
+            console.error('Reset password: VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY is missing from .env.local');
+            setMessage("Couldn't send the link. Please try again later.");
+            return;
+        }
+
         // Changes the button's words to "Sending link..."
         setSending(true);
+        setMessage('');
 
-        // A short pause (0.7 seconds) so the words can be read, and then
-        // "Check your email" shows. This is only for looks: no email is
-        // really sent yet.
-        // LATER, if the team keeps email log in, the real email gets sent here
-        // instead, with something like:
-        //   await supabase.auth.resetPasswordForEmail(email, {
-        //       redirectTo: window.location.origin + '/reset-password',
-        //   });
-        waitTimer.current = setTimeout(() => {
-            setSending(false);
-            setSentTo(email);
-        }, 700);
+        // Supabase emails a link to make a new password. redirectTo is the page
+        // the link opens: our Reset password page (ResetPassword.jsx).
+        // window.location.origin is the start of our address (http://localhost:5173)
+        let error;
+        try {
+            ({ error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.origin + '/reset-password',
+            }));
+        } catch (thrown) {
+            // Same as handleSubmit: a rare thrown error mustn't leave the button
+            // stuck on "Sending link..."
+            error = thrown;
+        }
+        setSending(false);
+
+        // Supabase gives no error for an email with no account (so nobody can
+        // find out who's signed up). An error means the email couldn't be sent
+        if (error) {
+            if (error.code === 'over_email_send_rate_limit') {
+                setMessage('Too many emails were sent just now. Please wait a few minutes and try again.');
+            } else {
+                console.error('Reset password failed:', error);
+                setMessage("Couldn't send the link right now. Please try again.");
+            }
+            return;
+        }
+
+        // It worked: show "Check your email"
+        setSentTo(email);
     }
 
     return (
@@ -366,6 +460,7 @@ function Login() {
                                         onClick={() => {
                                             setSentTo('');
                                             setErrors({});
+                                            setMessage('');
                                         }}
                                     >
                                         Forgot your password?
@@ -377,8 +472,13 @@ function Login() {
                                 <p role="status" className="signup-message">{message}</p>
 
                                 {/* type="submit" means clicking this button sends the form.
-                                    "about-button" is the sky-blue button from the About page */}
-                                <button type="submit" className="about-button signup-submit">Log in</button>
+                                    "about-button" is the sky-blue button from the About page.
+                                    aria-disabled (not "disabled") keeps the button reachable
+                                    with Tab while Supabase checks, and handleSubmit ignores
+                                    clicks while it's on */}
+                                <button type="submit" className="about-button signup-submit" aria-disabled={loggingIn}>
+                                    {loggingIn ? 'Logging in...' : 'Log in'}
+                                </button>
                             </form>
 
                             {/* The "or" line between the form and the buttons. It's only
@@ -431,6 +531,10 @@ function Login() {
                                 />
                                 <p id="reset-email-error" className="signup-field-error">{errors.email}</p>
 
+                                {/* Says if the email couldn't be sent. role="status" makes
+                                    screen readers read it out when it appears (WCAG) */}
+                                <p role="status" className="signup-message">{message}</p>
+
                                 {/* aria-disabled (not "disabled") keeps the button reachable
                                     with Tab while it's working, and the words say what's
                                     happening. handleReset ignores clicks while it's on */}
@@ -461,7 +565,7 @@ function Login() {
 
                             {/* Shows the reset form again, with the email still filled
                                 in so it's easy to fix a typo */}
-                            <button type="button" className="signup-secondary-button" onClick={() => setSentTo('')}>
+                            <button type="button" className="signup-secondary-button" onClick={() => { setSentTo(''); setMessage(''); }}>
                                 Use a different email
                             </button>
                         </Fragment>

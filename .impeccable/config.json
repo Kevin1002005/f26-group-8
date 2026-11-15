@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font",
+        "value": "inter",
+        "createdAt": "2026-11-14T22:38:37.561Z",
+        "reason": "Claude: Inter is the site font from the Stripe-style revamp Kevin asked for this session (frontend/plans.md 'Done outside this plan'); DESIGN.md predates that revamp and still lists the old fonts"
+      }
+    ]
+  }
+}

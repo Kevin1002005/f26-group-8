@@ -1,54 +1,166 @@
-// login-status.js remembers whether someone is logged in, so pages can
+// login-status.js remembers WHO is logged in on this browser, so pages can
 // show different things to logged-in people (for example, the About page's
-// top bar shows "Home" and your circle instead of "Log in" and "Sign up").
+// top bar shows "Home" and your circle instead of "Log in" and "Sign up"),
+// and so the Resume builder and the Application tracker can keep each
+// person's things apart (see accountKey below).
 //
-// FOR NOW this is only pretend: the Log in and Sign up pages don't talk to
-// the backend yet, so this just saves "yes" in the browser's localStorage
-// (a small storage space each website gets) when the form is sent, and
-// removes it on Log out.
+// When Supabase logs you in, the page that did it (Log in, Sign up, Reset
+// password) calls markLoggedIn with your account's id: the long code Supabase
+// gives every account, like "1b2c3d4e-...". It's saved in the browser's
+// localStorage (a small storage space each website gets) and removed on Log out.
 //
-// LATER, once Log in calls the backend, the backend sends back a login
-// token. Where to keep that token is Jayden's call (JWT). When that's
-// decided, only this file needs to change: isLoggedIn() would check for
-// the token instead, and the pages that use it stay the same.
+// It also listens to Supabase itself, so the site notices when a login ends
+// some other way: Log out in another tab, or a login that ran out.
 
-// supabase is our shared connection (supabase.js). Logging in with Google
-// makes a real Supabase login, so Log out has to end that too (see markLoggedOut)
+// useSyncExternalStore lets a component redraw when something outside React
+// changes (here: who's logged in). See useLoggedInId at the bottom
+import { useSyncExternalStore } from 'react';
+// supabase is our shared connection (supabase.js). Logging in makes a real
+// Supabase login, so Log out has to end that too (see markLoggedOut)
 import { supabase } from './supabase.js';
 
 // The name it's saved under in localStorage
 const storageKey = 'scoutsearch-logged-in';
 
-// True if someone is logged in.
-// "try/catch": if the browser blocks localStorage (some private windows
-// do), act as if nobody is logged in
+// The same id, also kept in memory. Some browsers block localStorage (a
+// setting like "Don't allow sites to save data"). Then saving the id fails
+// without a sound, but Supabase still logs you in (it keeps its login in
+// memory instead). Without this copy, the login guard (RequireLogin) would
+// think nobody is logged in and send you to Log in, which would see Supabase's
+// login and send you back, over and over, forever. In memory, the copy lasts
+// until the tab is reloaded or closed, like Supabase's own.
+let idInMemory = null;
+
+// The components that want to hear when the login changes (useLoggedInId)
+const listeners = new Set();
+function tellListeners() {
+    for (const listener of listeners) listener();
+}
+
+// The id of the account logged in on this browser, or null if nobody is.
+// "try/catch": if the browser blocks localStorage, reading throws
+export function loggedInId() {
+    if (idInMemory) return idInMemory;
+    try {
+        const saved = localStorage.getItem(storageKey);
+        // Before ids were saved, this was just "yes". That counts as logged out,
+        // so the login guard sends you to Log in, which sees your Supabase login
+        // and saves your id in a split second (no password needed)
+        return saved && saved !== 'yes' ? saved : null;
+    } catch {
+        return null;
+    }
+}
+
+// True if someone is logged in
 export function isLoggedIn() {
-    try {
-        return localStorage.getItem(storageKey) === 'yes';
-    } catch {
-        return false;
-    }
+    return loggedInId() !== null;
 }
 
-// Remembers that someone just logged in (Login.jsx and Signup.jsx run this)
-export function markLoggedIn() {
-    try {
-        localStorage.setItem(storageKey, 'yes');
-    } catch {
-        // If saving is blocked, the site just won't remember the login
-    }
+// The name a page saves someone's things under: the page's own name plus the
+// account id, like "scoutsearch-resume:1b2c3d4e-...". On a shared computer
+// (a school library), the next person to log in gets their OWN resume and
+// tracker, not yours. Logging out doesn't delete yours: it's still there,
+// under your id, when you log back in on this browser.
+export function accountKey(name) {
+    // Only pages behind the login guard save things, so there's always an id.
+    // "guest" is just a safe fallback
+    return name + ':' + (loggedInId() ?? 'guest');
 }
 
-// Forgets the login (the dropdown's "Log out" runs this)
-export function markLoggedOut() {
-    // End the real Google login too. Without this, the Log in page would
-    // still find the old login and send you right back to the feed.
-    // scope: 'local' logs out only this browser, not your other devices.
-    // supabase is null when .env.local is missing, so "?." skips it then
-    supabase?.auth.signOut({ scope: 'local' });
+// Reads someone's saved things, by the page's name ("scoutsearch-resume").
+// Before each account had its own, everyone's were saved under the plain name.
+// The first account to open the page on this browser after that change takes
+// the old copy over, once, so nobody loses a resume they had already made.
+// It can throw if the browser blocks localStorage: the pages that call this
+// already catch that
+export function readAccountItem(name) {
+    const key = accountKey(name);
+    const mine = localStorage.getItem(key);
+    if (mine !== null || !isLoggedIn()) return mine;
+    const old = localStorage.getItem(name);
+    if (old !== null) {
+        localStorage.setItem(key, old);
+        localStorage.removeItem(name);
+    }
+    return old;
+}
+
+// Remembers who just logged in. Log in, Sign up, and Reset password run this
+// with the id Supabase gives back (session.user.id)
+export function markLoggedIn(userId) {
+    idInMemory = userId;
+    try {
+        localStorage.setItem(storageKey, userId);
+    } catch {
+        // Saving is blocked: the copy in memory still works until a reload
+    }
+    tellListeners();
+}
+
+// Forgets the login in this browser (without asking Supabase)
+function forgetLogin() {
+    idInMemory = null;
     try {
         localStorage.removeItem(storageKey);
     } catch {
         // Nothing to forget
     }
+    tellListeners();
+}
+
+// Forgets the login (the dropdown's "Log out" runs this).
+// "async" + "await": it waits for Supabase to finish logging out, so whoever
+// runs this can wait too ("await markLoggedOut()") before opening the Log in page
+export async function markLoggedOut() {
+    // End the real Supabase login too. Without this, the Log in page would
+    // still find the old login and send you right back to Opportunities.
+    // scope: 'local' logs out only this browser, not your other devices.
+    // "await" matters: Supabase only forgets the login AFTER its server answers
+    // (about a third of a second). Without waiting, the Log in page could still
+    // find it in that time. (If the internet is down, Supabase still forgets it
+    // in this browser and hands back an error, so nothing else is needed here)
+    // supabase is null when .env.local is missing, so "if" skips it then
+    if (supabase) {
+        await supabase.auth.signOut({ scope: 'local' });
+    }
+    forgetLogin();
+}
+
+// Supabase tells us when its login ends without our Log out button:
+// - SIGNED_OUT: you logged out in another tab (Supabase tells every open tab),
+//   or the login ran out and couldn't be renewed
+// - INITIAL_SESSION with no session: the site just opened, we thought you were
+//   logged in, but Supabase has no login for you anymore
+// Either way, forget it, so the login guard sends you to Log in instead of
+// showing pages that can't load your things.
+if (supabase) {
+    supabase.auth.onAuthStateChange((event, session) => {
+        const loginEnded = event === 'SIGNED_OUT' || (event === 'INITIAL_SESSION' && !session);
+        if (loginEnded && isLoggedIn()) {
+            forgetLogin();
+        }
+    });
+}
+
+// When ANOTHER tab logs in or out, it changes localStorage, and the browser
+// tells this tab with a "storage" event (event.key null = everything was cleared)
+window.addEventListener('storage', (event) => {
+    if (event.key === storageKey || event.key === null) {
+        // The other tab's answer wins over this tab's copy in memory
+        idInMemory = event.newValue && event.newValue !== 'yes' ? event.newValue : null;
+        tellListeners();
+    }
+});
+
+// A React "hook": gives a component the logged-in id (or null), and redraws
+// that component whenever it changes. RequireLogin uses it, so logging out in
+// another tab sends this tab to Log in too.
+// subscribe adds a listener and gives back a way to remove it
+function subscribe(listener) {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+}
+export function useLoggedInId() {
+    return useSyncExternalStore(subscribe, loggedInId);
 }

@@ -449,18 +449,22 @@ function About() {
                 people know which page they landed on (WCAG) */}
             <title>About | ScoutSearch</title>
 
+            {/* Hidden until you press Tab, then lets keyboard users jump
+                straight past the top bar to the page's content (WCAG).
+                It's the very first thing on the page, so it's the first Tab stop
+                (before the waves' Pause button, which sits in a corner) */}
+            <a className="about-skip-link" href="#main">Skip to main content</a>
+
             {/* The see-through layer the click sparks are drawn on */}
             <ClickSpark />
 
             {/* The flowing lines behind the page (and their Pause button) */}
             <Waves />
 
-            {/* Hidden until you press Tab, then lets keyboard users jump
-                straight past the top bar to the page's content (WCAG) */}
-            <a className="about-skip-link" href="#main">Skip to main content</a>
-
-            {/* The bar at the top of the page */}
-            <header className="about-bar">
+            {/* The bar at the top of the page. "about-bar-band" makes it navy, the
+                same as the band behind the first screen (Log in and Sign up use
+                the same bar without it, so theirs stays light) */}
+            <header className="about-bar about-bar-band">
                 <div className="about-inner about-bar-row">
                     {/* The logo. Clicking it goes back to the top of the page */}
                     <a className="about-logo" href="#main">
@@ -488,9 +492,10 @@ function About() {
                         <ThemeToggle />
                         {loggedIn ? (
                             <>
-                                {/* Logged in: a Home button back to the Feed, and your
-                                    circle with the dropdown (components/AccountMenu.jsx) */}
-                                <Link to="/feed" className="about-button">Home</Link>
+                                {/* Logged in: a Home button back to your home page
+                                    (Opportunities), and your circle with the
+                                    dropdown (components/AccountMenu.jsx) */}
+                                <Link to="/discovery" className="about-button">Home</Link>
                                 <AccountMenu />
                             </>
                         ) : (
@@ -694,6 +699,12 @@ function About() {
                             <li><a href="#questions">Questions</a></li>
                             <li><Link to="/login">Log in</Link></li>
                             <li><Link to="/signup">Sign up</Link></li>
+                            {/* The copyright notices of the code libraries the site is
+                                built with (vite.config.js writes this file on every build).
+                                A plain <a>, because it's a text file, not one of our pages.
+                                With "npm run dev" it shows Page not found: the file is only
+                                made by "npm run build" (it works on the live site) */}
+                            <li><a href="/third-party-licenses.txt">Open-source licenses</a></li>
                         </ul>
                     </nav>
                 </div>

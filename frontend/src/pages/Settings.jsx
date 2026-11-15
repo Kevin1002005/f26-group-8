@@ -1,8 +1,10 @@
 // Settings.jsx is the Settings page (yoursite.com/settings).
 // You get here from the dropdown under your circle in the top bar.
 // It has a column of tabs on the left. Clicking one shows its box on the right:
-//   Account          your name, email, and profile picture (coming soon)
-//   Preferences      the kinds of jobs you want to see (coming soon)
+//   Account          a link to Edit profile, and Change password
+//                    (logged-out people use "Forgot your password?" on Log in instead)
+// (There used to be a "Preferences" tab too. It only said "Coming soon", and
+// the Profile page's "What I'm looking for" card already does that job.)
 //   Appearance       light or dark, the site's colors, and heading style
 //   Privacy & data   who can see your profile and what's on it
 //   Accessibility    font, text size, contrast, spacing, motion, ...
@@ -17,7 +19,8 @@
 import { useRef, useState } from 'react';
 // useLocation tells the page what the web address is, including the "#..." at the end.
 // useNavigate lets the page change the web address.
-import { useLocation, useNavigate } from 'react-router';
+// Link makes a clickable link to another page of our site (the Account tab's "Edit profile").
+import { Link, useLocation, useNavigate } from 'react-router';
 // NavBar is the bar across the top of the page (components/NavBar.jsx).
 import NavBar from '../components/NavBar.jsx';
 // The code that saves the choices and puts them into effect (settings.js)
@@ -25,13 +28,18 @@ import { applySettings, defaultSettings, loadSettings, saveSettings } from '../s
 // useTheme reads and changes Light / Dark / System (theme.js). It's the same
 // choice as the sun/moon button in the top bar, so both always agree
 import { useTheme } from '../theme.js';
+// supabase is our one shared connection to Supabase (supabase.js).
+// The Account tab's "Change password" form uses it to save the new password
+import { supabase } from '../supabase.js';
+
+// The shortest password we accept (the same as the Sign up page)
+const shortestPassword = 8;
 
 // ---------- The tabs ----------
 // The "id" is also the end of the web address: yoursite.com/settings#privacy
-// opens the Privacy & data tab. That's how the dropdown's links open a tab.
+// opens the Privacy & data tab, so a link or bookmark can open a tab directly.
 const tabs = [
     { id: 'account', label: 'Account' },
-    { id: 'preferences', label: 'Preferences' },
     { id: 'appearance', label: 'Appearance' },
     { id: 'privacy', label: 'Privacy & data' },
     { id: 'accessibility', label: 'Accessibility' },
@@ -103,6 +111,143 @@ function Toggle(props) {
     );
 }
 
+// The "Change password" form on the Account tab, for people who are logged in.
+// (Logged-out people who forgot their password use "Forgot your password?"
+// on the Log in page, which emails a link to the account's address.)
+// You're already logged in, so Supabase knows whose password to change and
+// doesn't ask for the old one. People who log in with Google can use this
+// too: it gives them a password, so they can also log in with their email.
+function ChangePassword() {
+    // The red messages under the two boxes ({} means nothing is wrong yet)
+    const [errors, setErrors] = useState({});
+    // The message next to the Save button ("Your password is changed.", ...)
+    const [message, setMessage] = useState('');
+    // true while Supabase saves it, so the button says "Saving..."
+    const [saving, setSaving] = useState(false);
+
+    // Runs when the form is sent (Save is clicked, or Enter is pressed)
+    // "async" lets us "await": wait for Supabase to save it
+    async function handleSubmit(event) {
+        // Normally sending a form reloads the whole page. This stops that.
+        event.preventDefault();
+        // If it's already saving, ignore a second click or Enter
+        if (saving) return;
+        // event.target is the form. form.newPassword is the box with name="newPassword"
+        const form = event.target;
+        const password = form.newPassword.value;
+
+        // The same checks as the Sign up page
+        const newErrors = { newPassword: '', confirmNewPassword: '' };
+        if (password === '') newErrors.newPassword = 'Type a new password.';
+        else if (password.length < shortestPassword) newErrors.newPassword = `Use at least ${shortestPassword} characters.`;
+        if (form.confirmNewPassword.value === '') newErrors.confirmNewPassword = 'Retype your new password.';
+        else if (!newErrors.newPassword && password !== form.confirmNewPassword.value) {
+            newErrors.confirmNewPassword = "The passwords don't match. Please retype them.";
+        }
+        setErrors(newErrors);
+        setMessage('');
+        // If a box has a problem, put the cursor in it, so screen readers
+        // read its red message (WCAG)
+        if (newErrors.newPassword) {
+            form.newPassword.focus();
+            return;
+        }
+        if (newErrors.confirmNewPassword) {
+            form.confirmNewPassword.focus();
+            return;
+        }
+
+        // supabase is null when .env.local is missing (see supabase.js)
+        if (!supabase) {
+            console.error('Change password: VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY is missing from .env.local');
+            setMessage("Couldn't change your password. Please try again later.");
+            return;
+        }
+
+        setSaving(true);
+        // Saves the new password on your account
+        const { error } = await supabase.auth.updateUser({ password: password });
+        setSaving(false);
+
+        if (error) {
+            if (error.code === 'weak_password') {
+                // Supabase's message says what the password needs
+                setErrors({ ...newErrors, newPassword: error.message });
+                form.newPassword.focus();
+            } else if (error.code === 'same_password') {
+                setErrors({ ...newErrors, newPassword: "That's the password you already have. Choose a new one." });
+                form.newPassword.focus();
+            } else if (error.code === 'reauthentication_needed' || error.name === 'AuthSessionMissingError') {
+                // Supabase wants a fresh login before changing a password
+                // (its "Secure password change" setting), or the login ran out
+                setMessage('For your safety, please log out, log back in, and try again.');
+            } else {
+                // Anything else. The real reason goes to the console (F12)
+                console.error('Change password failed:', error);
+                setMessage("Couldn't change your password right now. Please try again.");
+            }
+            return;
+        }
+
+        // It worked. form.reset() empties both boxes
+        form.reset();
+        setMessage('Your password is changed. Use it the next time you log in.');
+    }
+
+    return (
+        // noValidate: our red messages show instead of the browser's bubbles
+        <form className="settings-password-form" onSubmit={handleSubmit} noValidate>
+            {/* htmlFor connects each label to its box, so clicking the label
+                focuses the box and screen readers read it (WCAG). The rule is
+                in the label, so everyone knows it before typing */}
+            <label htmlFor="settings-new-password" className="settings-field-label">
+                New password (at least {shortestPassword} characters)
+            </label>
+            {/* "new-password" tells password managers to suggest a strong one.
+                aria-invalid gives the box its red line when there's a problem,
+                and aria-describedby makes screen readers read the red message */}
+            <input
+                id="settings-new-password"
+                name="newPassword"
+                type="password"
+                autoComplete="new-password"
+                required
+                className="settings-input"
+                onChange={() => setErrors({ ...errors, newPassword: '' })}
+                aria-invalid={Boolean(errors.newPassword)}
+                aria-describedby="settings-new-password-error"
+            />
+            <p id="settings-new-password-error" className="settings-field-error">{errors.newPassword}</p>
+
+            <label htmlFor="settings-confirm-password" className="settings-field-label">
+                Confirm new password
+            </label>
+            <input
+                id="settings-confirm-password"
+                name="confirmNewPassword"
+                type="password"
+                autoComplete="new-password"
+                required
+                className="settings-input"
+                onChange={() => setErrors({ ...errors, confirmNewPassword: '' })}
+                aria-invalid={Boolean(errors.confirmNewPassword)}
+                aria-describedby="settings-confirm-password-error"
+            />
+            <p id="settings-confirm-password-error" className="settings-field-error">{errors.confirmNewPassword}</p>
+
+            <div className="settings-password-actions">
+                {/* aria-disabled (not "disabled") keeps the button reachable with
+                    Tab while it saves, and handleSubmit ignores clicks meanwhile */}
+                <button type="submit" className="settings-button" aria-disabled={saving}>
+                    {saving ? 'Saving...' : 'Change password'}
+                </button>
+                {/* role="status" makes screen readers read the message out (WCAG) */}
+                <p className="settings-message" role="status">{message}</p>
+            </div>
+        </form>
+    );
+}
+
 // Settings is the whole page. It puts the pieces above together.
 function Settings() {
     // All the choices, read from the browser when the page opens.
@@ -117,6 +262,10 @@ function Settings() {
 
     // The tab buttons, so the arrow keys can move the keyboard focus between them
     const tabRefs = useRef([]);
+
+    // true while the text size slider is being dragged with a mouse or finger
+    // (see the slider below). A ref, because changing it shouldn't redraw the page
+    const draggingSlider = useRef(false);
 
     const location = useLocation();
     const navigate = useNavigate();
@@ -153,9 +302,12 @@ function Settings() {
 
     // Changes one choice, then saves all of them and puts them into effect.
     // [name]: value means "the setting called whatever is in name", so
-    // changeSetting('palette', 'mint') sets settings.palette to 'mint'
+    // changeSetting('palette', 'mint') sets settings.palette to 'mint'.
+    // It starts from loadSettings() (what's saved right now), not from this
+    // page's copy: if you changed something in another tab, this page's copy
+    // is old, and saving it would quietly undo that change
     function changeSetting(name, value) {
-        const newSettings = { ...settings, [name]: value };
+        const newSettings = { ...loadSettings(), [name]: value };
         setSettings(newSettings);
         saveSettings(newSettings);
         applySettings(newSettings);
@@ -163,8 +315,9 @@ function Settings() {
     }
 
     // Puts the listed settings back to how they started
+    // (starting from what's saved right now, for the same reason as changeSetting)
     function resetSettings(names) {
-        const newSettings = { ...settings };
+        const newSettings = { ...loadSettings() };
         names.forEach((name) => {
             newSettings[name] = defaultSettings[name];
         });
@@ -185,7 +338,7 @@ function Settings() {
 
                 <div className="settings-layout">
                     {/* The column of tabs. role="tablist" and role="tab" tell screen
-                        readers these are tabs, so they say "tab, 3 of 5" (WCAG).
+                        readers these are tabs, so they say "tab, 3 of 4" (WCAG).
                         Only the open tab is a Tab-key stop (tabIndex 0); the arrow
                         keys move between the others (tabIndex -1) */}
                     <div className="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
@@ -222,32 +375,31 @@ function Settings() {
                             className="settings-panel"
                         >
                             <h2 className="settings-panel-title">Account</h2>
-                            <p className="settings-text">Change your name, email, and password here. Coming soon.</p>
+                            {/* This tab used to only say "Coming soon", so the dropdown's
+                                link here was a dead end. Now it sends you to the page
+                                where you really can change those things */}
+                            <p className="settings-text">Your name, school, bio, and resume are part of your profile.</p>
+                            {/* A Link, not a button, because it goes to another page.
+                                It borrows the pill look of the Reset buttons */}
+                            <Link to="/editprofile" className="settings-button settings-edit-profile-link">
+                                Edit profile
+                            </Link>
 
                             <div className="settings-group">
-                                <h3 className="settings-legend">Profile picture</h3>
-                                <div className="settings-picture-row">
-                                    {/* Your current circle. It's decoration, because the
-                                        text next to it explains it (WCAG) */}
-                                    <div className="feed-post-avatar" aria-hidden="true">RMV</div>
-                                    <p className="settings-text">Uploading a new picture is coming soon. For now, your initials are shown.</p>
-                                </div>
+                                <h3 className="settings-legend">Change password</h3>
+                                <p className="settings-text">
+                                    If you log in with Google, this adds a password, so you can also log in with your email.
+                                </p>
+                                {/* The form itself is the ChangePassword piece above */}
+                                <ChangePassword />
                             </div>
-                        </section>
 
-                        {/* ----- Preferences ----- */}
-                        <section
-                            id="settings-panel-preferences"
-                            role="tabpanel"
-                            aria-labelledby="settings-tab-preferences"
-                            hidden={activeTab !== 'preferences'}
-                            className="settings-panel"
-                        >
-                            <h2 className="settings-panel-title">Preferences</h2>
-                            <p className="settings-text">
-                                Pick the kinds of jobs you want to see (internships, co-ops,
-                                research positions) and how you get notified. Coming soon.
-                            </p>
+                            <div className="settings-group">
+                                <h3 className="settings-legend">Email</h3>
+                                {/* Says plainly what isn't ready, the same way the
+                                    Privacy tab's buttons do */}
+                                <p className="settings-text">Changing your email isn't ready yet.</p>
+                            </div>
                         </section>
 
                         {/* ----- Appearance ----- */}
@@ -442,16 +594,25 @@ function Settings() {
                                         // (This is the only style set in JSX, because it changes
                                         // as you drag. The look itself stays in index.css)
                                         style={{ '--slider-fill': (settings.textSize - 100) / 50 }}
-                                        // While you drag, only the number next to the slider changes.
-                                        // (The slider grows with the page, so changing the size mid-drag
-                                        // would make it jump around under the mouse.)
-                                        // Number() turns the slider's text "125" into the number 125
-                                        onChange={(event) => setSettings({ ...settings, textSize: Number(event.target.value) })}
-                                        // When you let go, or press an arrow key, the new size is saved and put into effect.
+                                        // While you drag with a mouse or finger, only the number next to
+                                        // the slider changes. (The slider grows with the page, so changing
+                                        // the size mid-drag would make it jump around under the mouse.)
+                                        // Anything else (arrow keys, or a screen reader's swipe up or down,
+                                        // which sends no mouse or key events at all) puts the new size into
+                                        // effect right away. Number() turns the slider's text "125" into 125
+                                        onPointerDown={() => { draggingSlider.current = true; }}
+                                        onChange={(event) => {
+                                            if (draggingSlider.current) {
+                                                setSettings({ ...settings, textSize: Number(event.target.value) });
+                                            } else {
+                                                changeSetting('textSize', Number(event.target.value));
+                                            }
+                                        }}
+                                        // When you let go, the new size is saved and put into effect.
                                         // onBlur (leaving the slider) is a backup, in case the mouse was let go somewhere else
-                                        onPointerUp={(event) => changeSetting('textSize', Number(event.target.value))}
-                                        onKeyUp={(event) => changeSetting('textSize', Number(event.target.value))}
-                                        onBlur={(event) => changeSetting('textSize', Number(event.target.value))}
+                                        onPointerUp={(event) => { draggingSlider.current = false; changeSetting('textSize', Number(event.target.value)); }}
+                                        onPointerCancel={() => { draggingSlider.current = false; }}
+                                        onBlur={(event) => { draggingSlider.current = false; changeSetting('textSize', Number(event.target.value)); }}
                                     />
                                     <span className="settings-slider-big-a" aria-hidden="true">A</span>
                                     {/* The size it's on now, like "125%" */}

@@ -7,7 +7,9 @@
 -- it has password hashes and RLS is off, so anyone with the publishable key could read it.
 -- our backend uses the secret key, which skips RLS, so signup/login keep working.
 -- with RLS on and no policies, nobody using the publishable key can read or write it.
-alter table public.users enable row level security;
+-- "if exists": a brand-new Supabase project (or ours, once plans.md S5d drops the table)
+-- has no users table, and without "if exists" this line would stop the whole file.
+alter table if exists public.users enable row level security;
 
 
 -- 2. one row per logged-in person.

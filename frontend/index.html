@@ -7,7 +7,7 @@
          public/ is served from the top of the site, so it's just "/favicon.svg" -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>f26-group-8</title>
+    <title>ScoutSearch</title>
     <!-- Picks light or dark BEFORE anything is drawn, so the page never
          flashes the wrong colors while the rest of the site loads.
          It has to be a plain script right here (not in the React code),
@@ -19,7 +19,12 @@
          index.css. It also sets the Settings page's colors (data-palette,
          Blue / Mint / Lavender) for the same reason.
          try/catch: some private windows block localStorage; then it just
-         follows the computer -->
+         follows the computer.
+         IF YOU CHANGE THIS SCRIPT (even one space): the live site only runs it
+         because vercel.json's Content-Security-Policy lists its fingerprint
+         (the 'sha256-...' after script-src). Make the new one with the command
+         in README.md ("Security headers") and paste it there, or Vercel will
+         block the script and the page will flash the wrong colors -->
     <script>
       (function () {
         var html = document.documentElement;
@@ -42,17 +47,22 @@
     <!-- The page color, before index.css has loaded (while developing, the
          styles arrive a moment after the page appears). var(--bg) takes over
          once index.css is there; the color after the comma is only for that
-         first moment, so it matches --bg in index.css -->
+         first moment, so it matches --bg in index.css.
+         Like the script above, its fingerprint is in vercel.json (after
+         style-src): change one, change the other (README.md, "Security headers") -->
     <style>
-      html { background-color: var(--bg, #dde4ec); }
-      html[data-theme="dark"] { background-color: var(--bg, #0f1927); }
+      html { background-color: var(--bg, #f6f9fc); }
+      html[data-theme="dark"] { background-color: var(--bg, #0a1a2f); }
     </style>
-    <!-- Fonts for the About page, from Google Fonts. They load here, but only
-         the About page uses them (see --font-display and --font-body in index.css).
-         "preconnect" starts connecting to Google early so the fonts show up faster -->
+    <!-- Fonts, from Google Fonts. Inter is the site's font on every page
+         (see --font-body in index.css). Atkinson Hyperlegible ("Easy to read")
+         and Overpass ("Road sign" headings) are choices on the Settings page.
+         "preconnect" starts connecting to Google early so the fonts show up faster.
+         display=swap shows the text right away in a normal font, then swaps in
+         Inter when it arrives, so nobody waits on a blank page -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;700&family=Overpass:wght@700;800&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Atkinson+Hyperlegible+Next:wght@400;600;700&family=Overpass:wght@700;800&display=swap" />
   </head>
   <body>
     <div id="root"></div>

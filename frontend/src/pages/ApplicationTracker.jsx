@@ -16,15 +16,18 @@
 
 // useState lets the page remember a value and redraw itself when it changes.
 // useEffect runs code after the page is drawn (here: saving the board).
-import { useEffect, useState } from "react";
+// useRef remembers something without redrawing (here: which menu to focus).
+import { useEffect, useRef, useState } from "react";
 // Link goes to another page of the site without reloading everything.
 import { Link } from "react-router";
 // NavBar is the bar across the top of the page (components/NavBar.jsx).
 import NavBar from "../components/NavBar.jsx";
-// The job listings (the same ones as on Discovery)
-import { opportunities } from "../data/opportunities.js";
-// Reads and saves which jobs are on the board (shared with Discovery's Save button)
-import { loadTracker, saveTracker } from "../data/tracker.js";
+// isPastDeadline says if a job's deadline has gone by
+import { isPastDeadline } from "../data/opportunities.js";
+// Reads and saves which jobs are on the board (shared with Discovery's Save
+// button). watchTracker hears about changes made in another tab, and
+// trackerJob finds the job behind each saved item (a real job or an example)
+import { loadTracker, saveTracker, trackerJob, watchTracker } from "../data/tracker.js";
 
 // ---------- Icons ----------
 // Small drawings made with SVG. aria-hidden="true" hides them from screen
@@ -114,16 +117,16 @@ function formatDate(date) {
   return new Date(date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// Builds the board from the saved list. The saved list only has each job's
-// id and column, so this looks up the rest (title, company, ...) in the
-// opportunities list.
+// Builds the board from the saved list. trackerJob (tracker.js) finds each
+// item's job: a real job's title, company, and deadline were saved with it,
+// and an example job is looked up in the opportunities list.
 function loadApplications() {
   return (
     loadTracker()
       // For each saved item, find its job and add the column to it.
       // { ...job, stage: item.stage } copies the job and adds its column.
       .map((item) => {
-        const job = opportunities.find((opportunity) => opportunity.id === item.id);
+        const job = trackerJob(item);
         return job ? { ...job, stage: item.stage } : null;
       })
       // Drop any saved id that no longer matches a job (null from above)
@@ -183,10 +186,16 @@ function TrackerCard(props) {
   // A unique id, so the "Move to" menu's label can point at it
   const selectId = "tracker-move-" + app.id;
 
-  // The small line at the bottom of the card changes with the column
-  let note = "Apply by " + formatDate(app.deadline);
+  // The small line at the bottom of the card changes with the column,
+  // and says "Closed" once the deadline has gone by (if you never sent it).
+  // Many real jobs don't list a deadline at all
+  let note = "No deadline listed";
   if (app.stage === "submitted") {
     note = "Application sent";
+  } else if (isPastDeadline(app.deadline)) {
+    note = "Closed " + formatDate(app.deadline);
+  } else if (app.deadline) {
+    note = "Apply by " + formatDate(app.deadline);
   }
 
   return (
@@ -225,7 +234,8 @@ function TrackerCard(props) {
           id={selectId}
           className="tracker-move"
           value={app.stage}
-          onChange={(event) => props.onMove(app.id, event.target.value)}
+          // true at the end means "moved with this menu" (see moveApplication)
+          onChange={(event) => props.onMove(app.id, event.target.value, true)}
         >
           {/* One choice per column, in order */}
           {stages.map((stage) => (
@@ -280,8 +290,12 @@ function StageColumn(props) {
           <span className={"tracker-dot tracker-dot-" + stage.id} aria-hidden="true" />
           {stage.name}
         </h2>
-        <span className="tracker-count" aria-label={props.apps.length + " applications"}>
+        {/* The number, then the word for screen readers only (hidden on
+            screen), so they hear "2 applications", not just "2" (WCAG).
+            (An aria-label on a plain <span> is skipped by many screen readers) */}
+        <span className="tracker-count">
           {props.apps.length}
+          <span className="sr-only">{props.apps.length === 1 ? " application" : " applications"}</span>
         </span>
       </div>
       <p className="tracker-column-hint">{stage.hint}</p>
@@ -324,15 +338,43 @@ function ApplicationTracker() {
   // The sentence screen readers hear after a card moves
   const [announcement, setAnnouncement] = useState("");
 
-  // Every time the board changes, save it (just each job's id and column),
-  // so it's still there after a refresh. [applications] at the end means
-  // "only run this when applications changes".
+  // Every time the board changes, save it: each job's id and column, plus its
+  // title, company, deadline, and initials (a real job can't be looked up
+  // anywhere else yet, see trackerJob in tracker.js), so it's still there after
+  // a refresh. [applications] at the end means "only run this when applications changes".
   useEffect(() => {
-    saveTracker(applications.map((app) => ({ id: app.id, stage: app.stage })));
+    saveTracker(applications.map((app) => ({
+      id: app.id,
+      stage: app.stage,
+      title: app.title,
+      organization: app.organization,
+      deadline: app.deadline,
+      initials: app.initials,
+    })));
   }, [applications]);
 
-  // Moves one card to another column
-  function moveApplication(id, newStage) {
+  // If you save a job on Opportunities in ANOTHER tab while this page is open,
+  // read the board again. Otherwise the next move here would save this tab's
+  // older board over it, and that job would quietly disappear.
+  // watchTracker gives back the clean-up, which stops listening
+  useEffect(() => watchTracker(() => setApplications(loadApplications())), []);
+
+  // The id of the "Move to" menu to put the keyboard focus back on, after a
+  // move (see moveApplication). null when there's nothing to do
+  const focusAfterMove = useRef(null);
+  // A moved card is drawn again in its new column, and the menu you were using
+  // goes with the old one, so the focus would drop to the top of the page.
+  // After each redraw, put it back on the moved card's menu (it has the same id)
+  useEffect(() => {
+    if (focusAfterMove.current) {
+      document.getElementById(focusAfterMove.current)?.focus();
+      focusAfterMove.current = null;
+    }
+  }, [applications]);
+
+  // Moves one card to another column.
+  // fromMenu is true when the card's "Move to" menu did it (not dragging)
+  function moveApplication(id, newStage, fromMenu) {
     // Find the card, so we can say its name in the announcement
     const app = applications.find((item) => item.id === id);
     // Nothing to do if it's already in that column
@@ -341,6 +383,10 @@ function ApplicationTracker() {
     }
     // A new list where only that card's stage is different
     setApplications(applications.map((item) => (item.id === id ? { ...item, stage: newStage } : item)));
+    // Keyboard and screen reader users stay on the card they moved
+    if (fromMenu) {
+      focusAfterMove.current = "tracker-move-" + id;
+    }
     // Find the column's name ("Submitted") for the announcement
     const stage = stages.find((item) => item.id === newStage);
     setAnnouncement("Moved " + app.title + " to " + stage.name + ".");

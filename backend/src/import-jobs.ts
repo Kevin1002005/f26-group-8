@@ -8,7 +8,7 @@ import { fetchGreenhouse } from './job-sources/greenhouse.js';
 import { fetchLever } from './job-sources/lever.js';
 import { fetchJSearch } from './job-sources/jsearch.js';
 import {
-  isForOurStudents, mergeSimilarJobs, jobKey, simplifyUrl,
+  isForOurStudents, mergeSimilarJobs, jobKey, simplifyUrl, storableJob,
   type ImportedJob, type SourceResult,
 } from './job-sources/shared.js';
 
@@ -91,7 +91,10 @@ async function importSource({ name, fetchJobs, aggregator }: Source): Promise<bo
   // has the same job in it twice ("ON CONFLICT DO UPDATE command cannot affect row a second time")
   const byId = new Map<string, ImportedJob>();
   for (const job of jobs) {
-    byId.set(job.external_id, job);
+    // storableJob (shared.ts) removes the characters Postgres can't store. it runs before
+    // the duplicate check, so two ids that only differed by one of them count as one job
+    const clean = storableJob(job);
+    byId.set(clean.external_id, clean);
   }
   const rows = [...byId.values()].map((job) => ({
     ...job,

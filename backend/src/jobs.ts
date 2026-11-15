@@ -67,12 +67,20 @@ router.get('/', async (req, res) => {
   // search words: keep only letters, digits, spaces and hyphens.
   // q goes inside a filter string where commas, dots, brackets, quotes, % and * all have
   // special meanings, so leaving any of them in could break the query or change what it does.
-  // (\p{L} = any letter, including accented ones. \p{N} = any digit)
+  // (\p{L} = any letter, including accented ones. \p{M} = accent marks typed as their own
+  // character, which some languages need too (Hindi's vowel signs). \p{N} = any digit.
+  // \s = any kind of space: a tab, or the no-break space in text pasted from a web page,
+  // so "software engineer" doesn't get glued into "softwareengineer".)
+  // normalize('NFC') first joins a letter with an accent typed separately into one letter,
+  // so "José" typed that way still matches the "José" saved in the database.
+  // Array.from(...).slice counts letters, not code units: a plain .slice(0, 100) can cut a
+  // rare letter in half, and supabase-js can't put half a letter in a web address (it throws)
   const qText = req.query.q ?? '';
   if (typeof qText !== 'string') {
     return res.status(400).json({ error: 'Unknown search' });
   }
-  const q = qText.replace(/[^\p{L}\p{N} -]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  const cleaned = qText.normalize('NFC').replace(/[^\p{L}\p{M}\p{N}\s-]/gu, '').replace(/\s+/g, ' ').trim();
+  const q = Array.from(cleaned).slice(0, 100).join('');
 
   let query = supabase
     .from('jobs')

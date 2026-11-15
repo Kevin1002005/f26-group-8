@@ -20,6 +20,9 @@
 // useRef keeps something around between redraws without redrawing the page.
 // useState remembers something (here: paused or not) and redraws when it changes.
 import { useEffect, useRef, useState } from "react";
+// wantsReducedMotion is true if "reduce motion" is on, on the computer or in
+// our Settings page (settings.js)
+import { wantsReducedMotion } from "../../settings.js";
 
 // How the waves look. Change these numbers to change the effect
 const LINE_GAP = 22;     // space between the up-and-down lines, in pixels
@@ -32,9 +35,10 @@ const MOUSE_EASE = 0.1;  // how quickly the bend follows the mouse (1 = instantl
                          // A bit slow on purpose, so it glides instead of jumping
 
 // True when the waves should stay still: the visitor turned on "reduce
-// motion" in their settings, or the screen is phone-sized (760px or narrower)
+// motion" (on their computer, or in our Settings page: wantsReducedMotion
+// checks both), or the screen is phone-sized (760px or narrower)
 function shouldStayStill() {
-    return window.matchMedia("(prefers-reduced-motion: reduce), (max-width: 760px)").matches;
+    return wantsReducedMotion() || window.matchMedia("(max-width: 760px)").matches;
 }
 
 function Waves() {

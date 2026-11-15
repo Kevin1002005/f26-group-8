@@ -3,9 +3,12 @@
 // conversation you picked, with a box at the bottom to type a message.
 // On phones there's only room for one side, so it shows the list first,
 // then the conversation after you pick one (with a Back button).
-// The conversations come from the backend (see "What the backend sends"
-// below), and messages you send are saved there, so they're still there
+// The conversations will come from the backend (see "What the backend sends"
+// below), and messages you send will be saved there, so they're still there
 // after a refresh and the other person can see them.
+// NOT YET: the backend doesn't have /api/conversations or /api/messages
+// (frontend/plans.md, B13), so for now this page always says
+// "Something went wrong. Try again." That's why the top bar hides its link.
 // The styles for this page are in index.css, under "Messages page".
 
 // useState lets the page remember a value and redraw itself when it changes.
@@ -69,7 +72,9 @@ function showTime(createdAt) {
 function ConversationButton(props) {
     const person = props.conversation;
     // The last message, shown under the name. The list is oldest first,
-    // so the last one is at position length - 1
+    // so the last one is at position length - 1. A conversation that was just
+    // started has no messages yet: then lastMessage is undefined, and the
+    // time and preview below check for that instead of crashing the page
     const lastMessage = person.messages[person.messages.length - 1];
 
     return (
@@ -89,7 +94,7 @@ function ConversationButton(props) {
                 <span className="messages-person-text">
                     <span className="messages-person-top">
                         <span className="messages-person-name">{person.name}</span>
-                        <span className="messages-person-time">{showTime(lastMessage.created_at)}</span>
+                        <span className="messages-person-time">{lastMessage ? showTime(lastMessage.created_at) : ''}</span>
                     </span>
                     <span className="messages-person-preview">
                         {/* The blue dot is only a picture, so screen readers
@@ -97,8 +102,11 @@ function ConversationButton(props) {
                         {person.unread && <span className="messages-unread-dot" aria-hidden="true"></span>}
                         {person.unread && <span className="sr-only">Unread: </span>}
                         <span className="messages-person-preview-text">
-                            {/* If you sent the last message, it starts with "You: " */}
-                            {lastMessage.from === 'me' ? 'You: ' : ''}{lastMessage.text}
+                            {/* If you sent the last message, it starts with "You: ".
+                                With no messages yet, it says so */}
+                            {lastMessage
+                                ? (lastMessage.from === 'me' ? 'You: ' : '') + lastMessage.text
+                                : 'No messages yet'}
                         </span>
                     </span>
                 </span>
@@ -155,13 +163,35 @@ function Messages() {
     // Runs once when the page opens (the empty [] at the end means "only
     // once"): ask the backend for your conversations and open the first one.
     // Then ask again every 5 seconds, so messages other people send you show
-    // up without refreshing the page
+    // up without refreshing the page.
+    // If a check fails (the backend is down, or the internet dropped), the
+    // wait before the next one doubles (10s, 20s, ... up to 1 minute), so a
+    // broken backend isn't asked over and over. It goes back to 5 seconds as
+    // soon as a check works again
     useEffect(() => {
+        // How long to wait before the next check, in milliseconds
+        let delay = 5000;
+        // The timer for the next check, so leaving the page can cancel it
+        let timer = null;
+        // true once you've left the page, so no new check gets started
+        let stopped = false;
+
         function loadConversations() {
             // When this check started (see "lastSentAt" below)
             const startedAt = Date.now();
-            api('/conversations')
+            // "return" hands back the promise, so the next check can wait for this one
+            return api('/conversations')
                 .then((data) => {
+                    // The backend should send a list ([...]). If it sent something
+                    // else, .find() below would crash the page, so treat it as a
+                    // failed check instead ("throw" jumps to .catch below)
+                    if (!Array.isArray(data)) throw new Error('Something went wrong. Try again.');
+                    // Keep only conversations that have a list of messages (it can
+                    // be empty). One without would crash the page when it's drawn,
+                    // and every check after that would crash it again
+                    data = data.filter((conversation) => conversation && typeof conversation === 'object' && Array.isArray(conversation.messages));
+                    // It worked: check again in 5 seconds
+                    delay = 5000;
                     // If you sent a message while this check was waiting for the
                     // backend, this list might be from just before it saved, and
                     // your message would flash away. Skip it; the next check has it
@@ -173,20 +203,40 @@ function Messages() {
                     // "??" means "if current is null, use the part after it"
                     setOpenId((current) => current ?? (data.length > 0 ? data[0].id : null));
                 })
-                .catch((error) => setLoadError(error.message))
+                .catch((error) => {
+                    setLoadError(error.message);
+                    // It failed: wait twice as long next time, but never more than 1 minute
+                    delay = Math.min(delay * 2, 60000);
+                })
                 // .finally runs either way, whether it worked or not
                 .finally(() => setLoading(false));
         }
 
-        loadConversations();
-        // setInterval runs loadConversations again every 5000 milliseconds (5 seconds).
+        // Waits "delay", checks, then plans the check after that.
+        // (setTimeout runs something once after a wait; doing it again after
+        // each check is what lets the wait change between checks)
         // document.hidden is true when this tab isn't the one you're looking
-        // at, so it doesn't keep asking the backend while nobody's watching
-        const timer = setInterval(() => {
-            if (!document.hidden) loadConversations();
-        }, 5000);
+        // at, so it doesn't ask the backend while nobody's watching
+        function planNextCheck() {
+            timer = setTimeout(() => {
+                if (document.hidden) {
+                    planNextCheck();
+                    return;
+                }
+                loadConversations().then(() => {
+                    if (!stopped) planNextCheck();
+                });
+            }, delay);
+        }
+
+        loadConversations().then(() => {
+            if (!stopped) planNextCheck();
+        });
         // When you leave the page, stop checking
-        return () => clearInterval(timer);
+        return () => {
+            stopped = true;
+            clearTimeout(timer);
+        };
     }, []);
 
     // The open conversation. .find() goes through the list and gives back
@@ -301,8 +351,10 @@ function Messages() {
             ));
             setJustSentId(newMessage.id);
 
-            // Empty the box (only now that it's saved, so nothing is lost if it fails)
-            setDrafts((old) => ({ ...old, [sendTo]: '' }));
+            // Empty the box (only now that it's saved, so nothing is lost if it fails).
+            // Only if it still holds what was sent: if you kept typing while it
+            // was on its way, those new words stay instead of vanishing
+            setDrafts((old) => ((old[sendTo] || '').trim() === text ? { ...old, [sendTo]: '' } : old));
         } catch (error) {
             // It didn't save. What they typed stays in the box so they can try again
             setSendError(error.message);
@@ -310,8 +362,9 @@ function Messages() {
 
         setSending(false);
         // Keep the focus in the box so you can type the next message right
-        // away (clicking Send would otherwise move the focus to the button)
-        inputRef.current.focus();
+        // away (clicking Send would otherwise move the focus to the button).
+        // "?." skips it if you already left the page (the box is gone then)
+        inputRef.current?.focus();
     }
 
     // The line under the title: what's happening with the list, if anything

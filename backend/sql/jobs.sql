@@ -38,7 +38,8 @@ create table if not exists public.jobs (
   created_at    timestamptz not null default now(),
 
   -- new columns for JB1a
-  source        text not null check (source in ('employer', 'greenhouse', 'lever', 'usajobs', 'adzuna')),
+  -- (if you add a source here, also add it to step 4 below, which updates the existing table)
+  source        text not null check (source in ('employer', 'greenhouse', 'lever', 'usajobs', 'adzuna', 'jsearch')),
   external_id   text,         -- the job's id on the outside site. null for employer jobs
   -- defaults to 'pending' so a job is hidden unless something deliberately opens it
   status        text not null default 'pending' check (status in ('pending', 'open', 'closed')),
@@ -76,3 +77,35 @@ alter table public.jobs enable row level security;
 alter table public.jobs drop constraint if exists jobs_apply_url_is_web_link;
 alter table public.jobs add constraint jobs_apply_url_is_web_link
   check (apply_url is null or apply_url ~* '^https?://');   -- ~* = matches this pattern, any case
+
+
+-- 4. the list of allowed sources, with 'jsearch' added.
+-- the table already exists, so the new list inside "create table" above isn't applied to it
+-- (see the note at the top). This replaces the old rule on the existing table.
+-- jobs_source_check is the name Postgres gave the "check (source in ...)" rule above
+-- (<table>_<column>_check). drop-then-add makes it safe to run again.
+alter table public.jobs drop constraint if exists jobs_source_check;
+alter table public.jobs add constraint jobs_source_check
+  check (source in ('employer', 'greenhouse', 'lever', 'usajobs', 'adzuna', 'jsearch'));
+
+
+-- 5. only jobs for high schoolers and college undergrads.
+-- a title with PhD, doctoral, postdoc, master's, MBA, graduate, or grad in it is refused,
+-- whether the importer or (later) an employer adds it.
+-- \m and \M mean "start of a word" and "end of a word", so "undergraduate" is still allowed.
+-- '' is how you write one ' inside SQL text, so [''’] means "a ' or a ’".
+-- this is the SAME list as NOT_FOR_OUR_STUDENTS in backend/src/job-sources/shared.ts.
+-- change both together: the importer filters first so one bad job can't fail a whole save.
+-- (descriptions like "currently pursuing a PhD" are only checked by the importer: that's too
+-- fuzzy for a database rule.)
+--
+-- first remove imported jobs already in the table that break the rule, or adding it fails.
+-- Supabase warns that this is destructive: it only deletes imported jobs (never employer
+-- posts), and the importer would skip them anyway, so nothing we want is lost.
+delete from public.jobs
+where source <> 'employer'
+  and title ~* '\m(ph\.?\s?d|doctoral|postdoctoral|post-?docs?|master[''’]?s|mba|graduate|grad)\M';
+
+alter table public.jobs drop constraint if exists jobs_title_for_our_students;
+alter table public.jobs add constraint jobs_title_for_our_students
+  check (title !~* '\m(ph\.?\s?d|doctoral|postdoctoral|post-?docs?|master[''’]?s|mba|graduate|grad)\M');

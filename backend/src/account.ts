@@ -17,16 +17,17 @@ router.use(authenticateToken);
 // GET /api/account/export: a copy of your data (the right to access and to take it with you)
 router.get('/export', async (req, res) => {
   const id = req.user!.id;
-  // three lookups at once (Promise.all waits for all of them)
-  const [profile, applications, resume] = await Promise.all([
+  // four lookups at once (Promise.all waits for all of them)
+  const [profile, studentProfile, applications, resume] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', id).maybeSingle(),
+    supabase.from('student_profiles').select('data, onboarded_at, updated_at').eq('student_id', id).maybeSingle(),
     supabase.from('applications')
-      .select('id, job_id, example_id, title, organization, deadline, status, notes, created_at, updated_at')
+      .select('id, job_id, example_id, title, organization, deadline, status, notes, link, status_detail, applied_on, created_at, updated_at')
       .eq('student_id', id)
       .order('created_at'),
     supabase.from('resumes').select('data, updated_at').eq('student_id', id).maybeSingle(),
   ]);
-  const failed = [profile, applications, resume].find((result) => result.error);
+  const failed = [profile, studentProfile, applications, resume].find((result) => result.error);
   if (failed) {
     console.error('account export failed:', failed.error);
     return res.status(500).json({ error: 'Database error' });
@@ -38,13 +39,15 @@ router.get('/export', async (req, res) => {
     exported_at: new Date().toISOString(),
     account: { id: id, email: req.user!.email },
     profile: profile.data,
+    // what you filled in on the welcome guide and Edit profile
+    student_profile: studentProfile.data,
     applications: applications.data,
     resume: resume.data,
   });
 });
 
 
-// DELETE /api/account: deletes your login in Supabase Auth. Your profile, tracker, and resume
+// DELETE /api/account: deletes your login in Supabase Auth. Your profiles, tracker, and resume
 // go with it: their tables are set to "on delete cascade" (backend/sql/*.sql)
 router.delete('/', async (req, res) => {
   const { error } = await supabase.auth.admin.deleteUser(req.user!.id);

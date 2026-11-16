@@ -33,7 +33,7 @@ import { isDueWithin, isPastDeadline } from "../data/opportunities.js";
 //                     (a move here, a Save in another tab, your account's list arriving)
 //   useTrackerSync    syncs with your account when the page opens, and says how it's going
 //   moveOnTracker     moves a job to another column (and saves that to your account)
-//   saveTrackerNotes  saves a card's notes
+//   saveTrackerNotes / saveTrackerDetails   save a card's notes, or its link, status, and date applied
 //   removeFromTracker / putBackOnTracker   Remove, and its Undo
 //   addOtherJob       adds a job typed in from another site
 //   trackerJob        finds the job behind each saved item (a real job or an example)
@@ -42,6 +42,7 @@ import {
   moveOnTracker,
   putBackOnTracker,
   removeFromTracker,
+  saveTrackerDetails,
   saveTrackerNotes,
   trackerJob,
   useTrackerItems,
@@ -142,11 +143,19 @@ function formatDate(date) {
 function toApplications(items) {
   return (
     items
-      // For each saved item, find its job and add the column and notes to it.
+      // For each saved item, find its job and add the column, notes, and details to it.
       // { ...job, stage: item.stage } copies the job and adds its column.
       .map((item) => {
         const job = trackerJob(item);
-        return job ? { ...job, stage: item.stage, notes: item.notes ?? "" } : null;
+        if (!job) return null;
+        return {
+          ...job,
+          stage: item.stage,
+          notes: item.notes ?? "",
+          link: item.link ?? null,
+          statusDetail: item.statusDetail ?? "",
+          appliedOn: item.appliedOn ?? null,
+        };
       })
       // Drop any saved id that no longer matches a job (null from above)
       .filter((app) => app !== null)
@@ -301,6 +310,114 @@ function TrackerNotes(props) {
   );
 }
 
+// True for a web address that starts with http:// or https:// (the same rule as the
+// backend's), so only real web links become clickable
+function isWebLink(text) {
+  return /^https?:\/\/\S+$/i.test(text ?? "");
+}
+
+// The fold-open Details part of a card: the posting's link, a short status
+// ("Interview Dec 3"), and the date applied. Saved with the "Save details" button.
+// props.app            the application (app.link, app.statusDetail, app.appliedOn)
+// props.onTypingChange tells the card when typing starts and stops (see TrackerCard)
+function TrackerDetails(props) {
+  const app = props.app;
+  const idStart = "tracker-details-" + app.id;
+  // What's typed in each box (filled in from the saved details when it opens)
+  const [link, setLink] = useState("");
+  const [statusDetail, setStatusDetail] = useState("");
+  const [appliedOn, setAppliedOn] = useState("");
+  // The message under the link box when it isn't a web address ("" when it's fine)
+  const [linkError, setLinkError] = useState("");
+  // "Saved." after pressing Save (screen readers hear it too)
+  const [saved, setSaved] = useState("");
+  const hasDetails = Boolean(app.link || app.statusDetail || app.appliedOn);
+
+  // Opening it: start from what's saved now (it may have changed on another device)
+  function handleToggle(event) {
+    if (!event.currentTarget.open) return;
+    setLink(app.link ?? "");
+    setStatusDetail(app.statusDetail ?? "");
+    setAppliedOn(app.appliedOn ?? "");
+    setLinkError("");
+    setSaved("");
+  }
+
+  // "Save details". event.preventDefault() stops the browser from reloading the page
+  function handleSubmit(event) {
+    event.preventDefault();
+    const cleanLink = link.trim();
+    if (cleanLink && !isWebLink(cleanLink)) {
+      // Say what's wrong next to the box, and put the focus there (WCAG)
+      setLinkError("The link has to start with http:// or https://");
+      document.getElementById(idStart + "-link")?.focus();
+      return;
+    }
+    saveTrackerDetails(app.id, { link: cleanLink, statusDetail: statusDetail.trim(), appliedOn: appliedOn });
+    setLinkError("");
+    setSaved("Saved.");
+  }
+
+  return (
+    <details className="tracker-details" onToggle={handleToggle}>
+      <summary className="tracker-notes-summary">{hasDetails ? "Details" : "Add details"}</summary>
+      {/* onFocus/onBlur here hear every box inside, so the card can't be dragged
+          while typing (selecting words with the mouse would pick the card up) */}
+      <form
+        className="tracker-details-form"
+        onSubmit={handleSubmit}
+        onFocus={() => props.onTypingChange(true)}
+        onBlur={() => props.onTypingChange(false)}
+        noValidate
+      >
+        <div className="tracker-add-field">
+          <label htmlFor={idStart + "-status"} className="tracker-add-label">Status</label>
+          <p id={idStart + "-status-hint"} className="tracker-details-hint">Like "Interview Dec 3" or "Waiting to hear back"</p>
+          <input
+            id={idStart + "-status"}
+            className="tracker-add-input"
+            type="text"
+            maxLength={200}
+            value={statusDetail}
+            onChange={(event) => setStatusDetail(event.target.value)}
+            aria-describedby={idStart + "-status-hint"}
+          />
+        </div>
+        <div className="tracker-add-field">
+          <label htmlFor={idStart + "-link"} className="tracker-add-label">Link to the posting</label>
+          {/* aria-invalid and aria-describedby point screen readers at the message (WCAG) */}
+          <input
+            id={idStart + "-link"}
+            className="tracker-add-input"
+            type="url"
+            maxLength={500}
+            value={link}
+            onChange={(event) => setLink(event.target.value)}
+            aria-invalid={linkError ? "true" : "false"}
+            aria-describedby={linkError ? idStart + "-link-error" : undefined}
+          />
+          {linkError && <p id={idStart + "-link-error"} className="tracker-add-error">{linkError}</p>}
+        </div>
+        <div className="tracker-add-field">
+          <label htmlFor={idStart + "-applied"} className="tracker-add-label">Date applied</label>
+          <input
+            id={idStart + "-applied"}
+            className="tracker-add-input"
+            type="date"
+            value={appliedOn}
+            onChange={(event) => setAppliedOn(event.target.value)}
+          />
+        </div>
+        <div className="tracker-details-actions">
+          <button type="submit" className="tracker-add-submit">Save details</button>
+          {/* role="status" reads "Saved." out when it appears (WCAG) */}
+          <p className="tracker-details-saved" role="status">{saved}</p>
+        </div>
+      </form>
+    </details>
+  );
+}
+
 // One card on the board.
 // props.app       the application ({ id, title, ... })
 // props.dragging  true while this card is being dragged (it fades a little)
@@ -311,7 +428,7 @@ function TrackerCard(props) {
   const app = props.app;
   // A unique id, so the "Move to" menu's label can point at it
   const selectId = "tracker-move-" + app.id;
-  // true while typing in this card's notes. The card can't be dragged then:
+  // true while typing in this card's notes or details. The card can't be dragged then:
   // otherwise selecting words in the box with the mouse would pick the whole card up
   const [typingNotes, setTypingNotes] = useState(false);
   // "Due soon": the deadline is in the next 7 days, and it hasn't been sent yet
@@ -322,7 +439,7 @@ function TrackerCard(props) {
   // Many real jobs don't list a deadline at all
   let note = "No deadline listed";
   if (app.stage === "submitted") {
-    note = "Application sent";
+    note = app.appliedOn ? "Applied " + formatDate(app.appliedOn) : "Application sent";
   } else if (isPastDeadline(app.deadline)) {
     note = "Closed " + formatDate(app.deadline);
   } else if (app.deadline) {
@@ -345,6 +462,16 @@ function TrackerCard(props) {
         <div className="tracker-card-words">
           <h3 className="tracker-card-title">{app.title}</h3>
           <p className="tracker-card-org">{app.organization}</p>
+          {/* Where things stand, if you wrote it in Details */}
+          {app.statusDetail && <p className="tracker-card-status">{app.statusDetail}</p>}
+          {/* The posting itself, in a new tab. rel="noopener noreferrer" stops that site
+              from controlling or seeing this tab; the hidden words say which job, and
+              that a new tab opens (WCAG) */}
+          {isWebLink(app.link) && (
+            <a className="tracker-posting-link" href={app.link} target="_blank" rel="noopener noreferrer">
+              Open posting<span className="sr-only">{" for " + app.title + " (opens in a new tab)"}</span>
+            </a>
+          )}
           {/* Only when it's due in the next 7 days ("&&": draw it only if true) */}
           {dueSoon && <p className="tracker-due-tag">Due soon</p>}
         </div>
@@ -379,8 +506,9 @@ function TrackerCard(props) {
         </select>
       </div>
 
-      {/* Notes on the left, Remove on the right */}
+      {/* Details and Notes on the left, Remove on the right */}
       <div className="tracker-card-extras">
+        <TrackerDetails app={app} onTypingChange={setTypingNotes} />
         <TrackerNotes app={app} onTypingChange={setTypingNotes} />
         {/* aria-label starts with the word you see, and says which job (WCAG) */}
         <button
@@ -398,7 +526,7 @@ function TrackerCard(props) {
 
 // "Add a job from another site": a button that opens a small form, for jobs
 // found anywhere (not only on Opportunities).
-// props.onAdd gets { title, organization, deadline, stage } when the form is sent
+// props.onAdd gets { title, organization, deadline, stage, link, statusDetail } when the form is sent
 function AddJob(props) {
   // true while the form is open
   const [open, setOpen] = useState(false);
@@ -407,8 +535,11 @@ function AddJob(props) {
   const [organization, setOrganization] = useState("");
   const [deadline, setDeadline] = useState("");
   const [stage, setStage] = useState("saved");
-  // The message under the title box when it's empty ("" when it's fine)
+  const [link, setLink] = useState("");
+  const [statusDetail, setStatusDetail] = useState("");
+  // The messages under the title and link boxes when something's wrong ("" when fine)
   const [titleError, setTitleError] = useState("");
+  const [linkError, setLinkError] = useState("");
   // The title box, to put the keyboard focus in it (useRef: a handle on it)
   const titleRef = useRef(null);
   // The button that opens the form, to put the focus back on it after Cancel
@@ -426,19 +557,37 @@ function AddJob(props) {
     setOrganization("");
     setDeadline("");
     setStage("saved");
+    setLink("");
+    setStatusDetail("");
     setTitleError("");
+    setLinkError("");
   }
 
   // "Add to tracker". event.preventDefault() stops the browser from reloading the page
   function handleSubmit(event) {
     event.preventDefault();
-    if (title.trim() === "") {
-      // Say what's wrong next to the box, and put the focus there (WCAG)
-      setTitleError("Add the job's title.");
+    // Say what's wrong next to each box, and put the focus on the first one (WCAG)
+    const cleanLink = link.trim();
+    const missingTitle = title.trim() === "";
+    const badLink = cleanLink !== "" && !isWebLink(cleanLink);
+    setTitleError(missingTitle ? "Add the job's title." : "");
+    setLinkError(badLink ? "The link has to start with http:// or https://" : "");
+    if (missingTitle) {
       titleRef.current?.focus();
       return;
     }
-    props.onAdd({ title: title.trim(), organization: organization.trim(), deadline: deadline, stage: stage });
+    if (badLink) {
+      document.getElementById("tracker-add-link")?.focus();
+      return;
+    }
+    props.onAdd({
+      title: title.trim(),
+      organization: organization.trim(),
+      deadline: deadline,
+      stage: stage,
+      link: cleanLink,
+      statusDetail: statusDetail.trim(),
+    });
     close();
   }
 
@@ -527,6 +676,40 @@ function AddJob(props) {
                   </option>
                 ))}
               </select>
+            </div>
+            {/* Optional: the posting's web address, and where things stand */}
+            <div className="tracker-add-field">
+              <label htmlFor="tracker-add-link" className="tracker-add-label">
+                Link to the posting
+              </label>
+              <input
+                id="tracker-add-link"
+                className="tracker-add-input"
+                type="url"
+                maxLength={500}
+                value={link}
+                onChange={(event) => setLink(event.target.value)}
+                aria-invalid={linkError ? "true" : "false"}
+                aria-describedby={linkError ? "tracker-add-link-error" : undefined}
+              />
+              {linkError && (
+                <p id="tracker-add-link-error" className="tracker-add-error">
+                  {linkError}
+                </p>
+              )}
+            </div>
+            <div className="tracker-add-field">
+              <label htmlFor="tracker-add-status" className="tracker-add-label">
+                Status
+              </label>
+              <input
+                id="tracker-add-status"
+                className="tracker-add-input"
+                type="text"
+                maxLength={200}
+                value={statusDetail}
+                onChange={(event) => setStatusDetail(event.target.value)}
+              />
             </div>
           </div>
           <div className="tracker-add-actions">

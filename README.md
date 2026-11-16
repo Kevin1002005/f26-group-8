@@ -40,6 +40,7 @@ safe to run again.
 3. `backend/sql/roles.sql`
 4. `backend/sql/applications.sql` (the Application tracker; needs `jobs.sql` first)
 5. `backend/sql/resumes.sql` (the Resume builder)
+6. `backend/sql/student_profiles.sql` (the welcome guide, Profile, and Edit profile)
 
 **2. Login settings.** In Supabase, go to Authentication → URL Configuration:
 - set the Site URL to `http://localhost:5173`;
@@ -65,13 +66,17 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
 
 ## Backend
 
-- `GET /api/jobs` lists open jobs. It takes `type`, `level`, `setting`, `paid`, `q` (search)
-  and `page` (50 jobs per page).
+- `GET /api/jobs` lists open jobs, newest posted first (`posted_at`, the date the company's job
+  site gives). It takes `type`, `level`, `setting`, `paid`, `q` (search) and `page` (50 jobs per page).
 - `GET /api/jobs/:id` returns one job.
 - `/api/applications` (GET, POST, PATCH `/:id`, DELETE `/:id`) is your Application tracker
   (our jobs, the Feed's examples, and jobs typed in from other sites, with notes), and
   `/api/resumes/me` (GET, PUT) is your resume. Both need you to be logged in, and only ever
   touch your own.
+- `/api/student-profile/me` (GET, PUT) is your profile: what you fill in on the welcome guide
+  (`/welcome`) and Edit profile. New accounts are sent to the guide until they finish or skip it
+  (`onboarded_at`). It's its own table, separate from `profiles`. The Profile page shows it, plus
+  the education, experience, and projects from your resume.
 - `GET /api/account/export` and `DELETE /api/account` are Settings' "Download my data" and
   "Delete my account". Deleting removes the Supabase login, and the profile, tracker, and resume
   go with it (their tables are set to `on delete cascade`).
@@ -80,6 +85,7 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
   took down. JSearch only runs if `JSEARCH_API_KEY` is set. Without it, the importer says it
   skipped JSearch and ends with an error code on purpose: old JSearch jobs aren't closed.
 - The live site shows whatever is in Supabase's `jobs` table, so run the importer before a demo.
+  It also fills in each job's posting date, so run it again after running `jobs.sql` (step 6).
 - The routes, rules and what's planned next are in `backend/plans.md`.
 
 ## Checks
@@ -91,8 +97,14 @@ cd backend && npx tsc --noEmit
 
 ## Where people's things are saved
 
-Your resume and Application tracker are saved with your account (the `resumes` and
-`applications` tables), so they're the same on every device you log in on.
+Your profile, resume, and Application tracker are saved with your account (the
+`student_profiles`, `resumes`, and `applications` tables), so they're the same on every device
+you log in on.
+
+Your profile and resume share a few parts (name, city, first school, skills), kept in step by
+`frontend/src/data/profile-resume-sync.js`: change one in the welcome guide, Edit profile, or the
+Resume builder, and the other updates. The top bar and your Feed posts use your profile's name
+and headline.
 
 Each browser also keeps its own copy (localStorage), under your account's id. That's what
 makes pages open right away, and what keeps them working when the server can't be reached:

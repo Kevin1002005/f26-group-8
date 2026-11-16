@@ -62,7 +62,8 @@ export const services = [
 // sent anywhere by itself. Each is needed for something you asked the site to do.
 // For the team, the real items behind each row (checked 2026-11-16):
 //   login            Supabase's session and its one-time login code; scoutsearch-logged-in
-//   tracker, resume  scoutsearch-applications(-outbox, -server-ids):<id>, scoutsearch-resume(-unsent, -base):<id>
+//   profile, tracker, resume  scoutsearch-profile:<id>, scoutsearch-applications(-outbox, -server-ids):<id>,
+//                    scoutsearch-resume(-unsent, -base):<id>
 //   settings         scoutsearch-settings, scoutsearch-theme
 //   logo             logo-intro-played (sessionStorage)
 // If the site starts saving something new, add it to a row here (or a new row).
@@ -81,7 +82,7 @@ export const browserStorage = [
     lasts: "Until that login finishes.",
   },
   {
-    name: "Copies of your tracker and resume",
+    name: "Copies of your profile, tracker, and resume",
     category: "Functional",
     purpose: "So they open right away and keep working offline, plus any changes not sent to your account yet. Kept separately for each account, so on a shared computer the next person can't see yours.",
     lasts: "Until you delete your account or clear this site's data. Kept after you log out, so they're there when you log back in.",

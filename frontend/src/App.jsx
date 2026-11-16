@@ -39,6 +39,7 @@ const Settings = lazy(() => import("./pages/Settings.jsx"));
 const Discovery = lazy(() => import("./pages/Discovery.jsx"));
 const ApplicationTracker = lazy(() => import("./pages/ApplicationTracker.jsx"));
 const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder.jsx"));
+const Welcome = lazy(() => import("./pages/Welcome.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
 // The Privacy Policy and Cookie Policy files are named DataPolicy and StoragePolicy on purpose:
 // ad blockers block files named like "PrivacyPolicy.js" or "CookiePolicy.js"
@@ -134,6 +135,9 @@ function App() {
               "path" doesn't change the web address; it just puts RequireLogin in
               front of all the pages inside it. Logged out? It sends you to /login */}
           <Route element={<RequireLogin />}>
+            {/* yoursite.com/welcome shows the welcome guide. New accounts are
+                sent here first (see RequireLogin.jsx) */}
+            <Route path="/welcome" element={<Welcome />} />
             {/* yoursite.com/feed shows the Feed page */}
             <Route path="/feed" element={<Feed />} />
             {/* yoursite.com/profile shows the Profile page */}

@@ -79,7 +79,7 @@ const sections = [
     title: "Your content",
     body: (
       <p>
-        Your resume, notes, and tracker are yours. You let us store them and show them to you so the site can
+        Your profile, resume, notes, and tracker are yours. You let us store them and show them to you so the site can
         work, and nothing more. You're responsible for what you put in them. You can download them or delete
         them any time on the <Link to="/settings#privacy">Settings page</Link>.
       </p>

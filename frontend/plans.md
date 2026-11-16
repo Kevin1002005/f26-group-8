@@ -551,6 +551,10 @@ Done outside this plan (2026-11-14)
       (name from Google or from Sign up, else the email) and AccountMenu shows it, instead of
       the made-up "Roemer Mallari". This is the start of F8's hook; F8 makes it ask
       /api/auth/me instead. Profile and Feed still show the example person (Roemer's pages).
+      Update (Kevin, 2026-11-16): Profile and Edit profile now show and save your own profile
+      (/api/student-profile/me, backend/sql/student_profiles.sql), and new accounts go through
+      the welcome guide (/welcome) first. Education, experience, and projects come from the resume.
+      The Feed's posts are still examples from other people.
     - Passwords, both cases (Kevin):
       logged in -> Settings -> Account -> Change password (new + confirm, supabase.auth.updateUser;
       Google users can add a password this way). Logged out -> Log in -> "Forgot your password?"

@@ -1,9 +1,11 @@
 // EditProfile.jsx is the Edit Profile page (yoursite.com/editprofile).
 // It has 2 columns: a list of the profile's parts on the left (you can click
 // one to jump to it), and a card with a form for each part on the right.
-// The "Save all changes" button only prints what you typed in the browser
-// console for now,
-// because the site isn't connected to the backend yet.
+// "Save all changes" saves your profile to your account (data/profile.js)
+// and takes you back to your profile.
+// The boxes are the same ones the welcome guide uses (components/ProfileFields.jsx).
+// Your education, experience, and projects aren't typed here: they come from
+// your resume, so the last card links to the Resume builder.
 // The styles for this page are in index.css, under "EditProfile Page".
 
 // The bar across the top of the page (components/NavBar.jsx)
@@ -11,27 +13,39 @@ import NavBar from "../components/NavBar";
 // useState remembers what you type. useEffect runs code after the page shows up
 import { useEffect, useState } from "react";
 // Link goes to another page of our site. useLocation tells us the page's
-// address, including the "#education" part at the end. useNavigate lets our
+// address, including the "#skills" part at the end. useNavigate lets our
 // code send you to another page (like after you click Save)
 import { Link, useLocation, useNavigate } from "react-router";
+// The boxes for each part of your profile
+import {
+  AboutFields,
+  BasicsFields,
+  LookingForFields,
+  SkillsField,
+} from "../components/ProfileFields.jsx";
+// Your profile, saving it, and "Try again" if the server can't be reached
+import { reloadProfile, saveProfile, useMyProfile } from "../data/profile.js";
+// Copies what you changed (name, city, school, skills) into your resume too
+// (data/profile-resume-sync.js)
+import { copyProfileToResume } from "../data/profile-resume-sync.js";
+// The name on your account, to fill in the Name box if your profile has none yet
+import { useCurrentUser } from "../use-current-user.js";
 
 // ---------- The parts of the profile ----------
 // One item for each card on this page. "id" matches the card's id below,
-// so the list on the left can jump to it (href="#education" finds id="education")
+// so the list on the left can jump to it (href="#skills" finds id="skills")
 const sections = [
   { id: "basics", label: "Basics" },
   { id: "about", label: "About" },
-  { id: "education", label: "Education" },
-  { id: "experience", label: "Experience" },
-  { id: "projects", label: "Projects" },
-  { id: "resume", label: "Resume" },
+  { id: "looking-for", label: "Looking for" },
   { id: "skills", label: "Skills" },
+  { id: "resume", label: "Education & more" },
 ];
 
 // ---------- Pieces of the page ----------
 
 // The list of parts on the left. Each one is a link that jumps to its card.
-// <ol> is a numbered list, so screen readers say "list, 7 items" (WCAG)
+// <ol> is a numbered list, so screen readers say "list, 5 items" (WCAG)
 function EditTracker() {
   return (
     // The box on the left. The title sits in the box but outside the <nav>,
@@ -45,7 +59,7 @@ function EditTracker() {
       <nav aria-label="Profile parts">
         <ol className="edit-tracker-list">
           {/* .map() makes one step for each part. "index" counts from 0,
-            so index + 1 gives the step numbers 1 to 7 */}
+            so index + 1 gives the step numbers 1 to 5 */}
           {sections.map((section, index) => (
             <li key={section.id}>
               <a href={"#" + section.id} className="edit-tracker-steps">
@@ -64,444 +78,69 @@ function EditTracker() {
   );
 }
 
-// Every input below has a <label htmlFor="x"> and an id="x" that match.
-// autoComplete tells the browser what a box is for ("name", or
-// "address-level2", which means a city), so it can offer to fill it in.
-// That connects them: clicking the label puts the cursor in the box, and
-// screen readers say the label when you reach the box (WCAG).
-// (In JSX it's "htmlFor", because "for" means something else in JavaScript.)
-// Each id is unique on the page, like "basics-school" and "education-school".
-
-// The Basic Information card. It doesn't keep its own values anymore:
-// EditProfile (at the bottom) keeps them and hands them in as "props".
-// props.username is the text in the box, and props.setUsername changes it.
-// That way the one Save button at the bottom of the page can see them
-function BasicsInfo(props) {
+// One card: a title, the line under it, and whatever is put between its
+// tags (props.children, here a group of boxes from ProfileFields.jsx).
+// props.id is where the list on the left jumps to
+function EditCard(props) {
   return (
-    // id="basics" is where the "Basics" step on the left jumps to
-    <section className="edit-card" id="basics">
-      <h2 className="edit-card-title">Basic Information</h2>
-      <p className="edit-card-subtitle">Let the world know who you are!</p>
-
-      <label className="edit-label" htmlFor="basics-username">
-        Username
-      </label>
-      <input
-        id="basics-username"
-        className="edit-input"
-        type="text"
-        autoComplete="name"
-        placeholder="e.g. John Doe"
-        value={props.username}
-        onChange={(e) => props.setUsername(e.target.value)}
-      />
-
-      <label className="edit-label" htmlFor="basics-bio">
-        Bio
-      </label>
-      <input
-        id="basics-bio"
-        className="edit-input"
-        type="text"
-        placeholder="e.g. CS student at Northeastern"
-        value={props.bio}
-        onChange={(e) => props.setBio(e.target.value)}
-      />
-
-      <label className="edit-label" htmlFor="basics-school">
-        School
-      </label>
-      <input
-        id="basics-school"
-        className="edit-input"
-        type="text"
-        placeholder="e.g. Northeastern University"
-        value={props.school}
-        onChange={(e) => props.setSchool(e.target.value)}
-      />
-
-      <label className="edit-label" htmlFor="basics-location">
-        Location
-      </label>
-      <input
-        id="basics-location"
-        className="edit-input"
-        type="text"
-        autoComplete="address-level2"
-        placeholder="e.g. Boston, MA"
-        value={props.location}
-        onChange={(e) => props.setLocation(e.target.value)}
-      />
+    <section className="edit-card" id={props.id}>
+      <h2 className="edit-card-title">{props.title}</h2>
+      <p className="edit-card-subtitle">{props.subtitle}</p>
+      {props.children}
     </section>
   );
 }
 
-// The About card. Like Basics, its value lives in EditProfile now and
-// comes in as props (props.about and props.setAbout)
-function AboutInfo(props) {
+// The last card: education, experience, and projects live in your resume,
+// so this sends you there instead of asking for them twice
+function ResumeInfo() {
   return (
-    <section className="edit-card" id="about">
-      <h2 className="edit-card-title">About</h2>
-      <p className="edit-card-subtitle">
-        Share your interests, goals, and what motivates you.
+    <EditCard
+      id="resume"
+      title="Education, experience, and projects"
+      subtitle="These come from your resume, so you only type them once."
+    >
+      <p className="edit-resume-text">
+        Add or change them in the Resume builder, and your profile shows them
+        right away.
       </p>
-
-      <label className="edit-label" htmlFor="about-text">
-        About you
-      </label>
-      <textarea
-        id="about-text"
-        className="edit-input edit-textarea"
-        placeholder="Tell people about yourself..."
-        value={props.about}
-        onChange={(e) => props.setAbout(e.target.value)}
-      />
-    </section>
-  );
-}
-
-// The Education card. Its values come in as props from EditProfile.
-// (EditProfile calls its school "educationSchool", so it doesn't mix up
-// with the Basics card's school. Inside this card it's just props.school)
-function EducationInfo(props) {
-  return (
-    <section className="edit-card" id="education">
-      <h2 className="edit-card-title">Education</h2>
-      <p className="edit-card-subtitle">
-        Add your school and academic background
-      </p>
-
-      <div className="edit-row">
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="education-school">
-            School
-          </label>
-          <input
-            id="education-school"
-            className="edit-input"
-            type="text"
-            placeholder="e.g. Northeastern University"
-            value={props.school}
-            onChange={(e) => props.setSchool(e.target.value)}
-          />
-        </div>
-
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="education-degree">
-            Degree & field of study
-          </label>
-          <input
-            id="education-degree"
-            className="edit-input"
-            type="text"
-            placeholder="e.g. B.S. Computer Science & Business Administration"
-            value={props.degree}
-            onChange={(e) => props.setDegree(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="edit-row">
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="education-dates">
-            Dates attended
-          </label>
-          <input
-            id="education-dates"
-            className="edit-input"
-            type="text"
-            placeholder="e.g. 2026 - Present"
-            value={props.dates}
-            onChange={(e) => props.setDates(e.target.value)}
-          />
-        </div>
-
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="education-gpa">
-            GPA
-          </label>
-          {/* inputMode="decimal" shows a number keyboard on phones */}
-          <input
-            id="education-gpa"
-            className="edit-input"
-            type="text"
-            inputMode="decimal"
-            placeholder="e.g. 4.0"
-            value={props.gpa}
-            onChange={(e) => props.setGpa(e.target.value)}
-          />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// The Experience card. Its values come in as props from EditProfile
-function ExperienceInfo(props) {
-  return (
-    <section className="edit-card" id="experience">
-      <h2 className="edit-card-title">Experience</h2>
-      <p className="edit-card-subtitle">
-        Highlight work, internships, and leadership
-      </p>
-
-      <div className="edit-row">
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="experience-role">
-            Role
-          </label>
-          <input
-            id="experience-role"
-            className="edit-input"
-            type="text"
-            placeholder="e.g. Front End Developer"
-            value={props.role}
-            onChange={(e) => props.setRole(e.target.value)}
-          />
-        </div>
-
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="experience-organization">
-            Organization
-          </label>
-          <input
-            id="experience-organization"
-            className="edit-input"
-            type="text"
-            placeholder="e.g. Oasis"
-            value={props.organization}
-            onChange={(e) => props.setOrganization(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="edit-field">
-        <label className="edit-label" htmlFor="experience-info">
-          What you did
-        </label>
-        <textarea
-          id="experience-info"
-          className="edit-input edit-textarea"
-          placeholder="e.g. Developing ScoutSearch"
-          value={props.info}
-          onChange={(e) => props.setInfo(e.target.value)}
-        />
-      </div>
-    </section>
-  );
-}
-
-// The Projects card. Its values come in as props from EditProfile
-function ProjectInfo(props) {
-  return (
-    <section className="edit-card" id="projects">
-      <h2 className="edit-card-title">Projects</h2>
-      <p className="edit-card-subtitle">
-        Show what you have built, researched, or created!
-      </p>
-
-      <div className="edit-row">
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="projects-name">
-            Project name
-          </label>
-          <input
-            id="projects-name"
-            className="edit-input"
-            type="text"
-            placeholder="e.g. Web Page"
-            value={props.project}
-            onChange={(e) => props.setProject(e.target.value)}
-          />
-        </div>
-
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="projects-link">
-            Project link
-          </label>
-          <input
-            id="projects-link"
-            className="edit-input"
-            type="url"
-            placeholder="e.g. https://github.com/..."
-            value={props.link}
-            onChange={(e) => props.setLink(e.target.value)}
-          />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// The Resume card. Its values come in as props from EditProfile
-function ResumeInfo(props) {
-  return (
-    <section className="edit-card" id="resume">
-      <h2 className="edit-card-title">Resume</h2>
-      <p className="edit-card-subtitle">Show off your resume!</p>
-
-      <div className="edit-row">
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="resume-name">
-            Resume name
-          </label>
-          <input
-            id="resume-name"
-            className="edit-input"
-            type="text"
-            placeholder="e.g. Resume 2026"
-            value={props.resume}
-            onChange={(e) => props.setResume(e.target.value)}
-          />
-        </div>
-
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="resume-link">
-            Resume link
-          </label>
-          {/* The box takes a web address, so the example shows one */}
-          <input
-            id="resume-link"
-            className="edit-input"
-            type="url"
-            placeholder="e.g. https://drive.google.com/..."
-            value={props.link}
-            onChange={(e) => props.setLink(e.target.value)}
-          />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// The Skills card. The list of skills lives in EditProfile (props.skills),
-// because that's what gets saved. What you're typing in the box ("skill")
-// stays here in the card: it's only half-typed, and nothing else needs it
-function SkillsInfo(props) {
-  const [skill, setSkill] = useState(""); // what's being typed right now
-
-  // Runs when you click Add or press Enter in the box.
-  // "event.preventDefault()" stops the browser from reloading the page,
-  // which is what a form normally does when you press Enter
-  function handleAdd(event) {
-    event.preventDefault();
-    // .trim() removes spaces at the start and end, so "  React " becomes "React"
-    const newSkill = skill.trim();
-    if (newSkill === "") return; // don't add blanks
-    // .some() checks if any skill already in the list matches (ignoring
-    // capital letters), so "react" isn't added twice next to "React"
-    const alreadyAdded = props.skills.some(
-      (s) => s.toLowerCase() === newSkill.toLowerCase(),
-    );
-    if (!alreadyAdded) {
-      props.setSkills([...props.skills, newSkill]); // a new list: the old skills + the new one
-    }
-    setSkill(""); // empty the box for the next skill
-  }
-
-  // Takes one skill out of the list.
-  // .filter() keeps every skill that is NOT the one you clicked
-  function handleRemove(skillToRemove) {
-    props.setSkills(props.skills.filter((s) => s !== skillToRemove));
-  }
-
-  return (
-    <section className="edit-card" id="skills">
-      <h2 className="edit-card-title">Skills</h2>
-      <p className="edit-card-subtitle">What are your strengths?</p>
-
-      {/* A <form> lets you press Enter to add a skill, not just click Add */}
-      <form className="edit-row edit-skill-form" onSubmit={handleAdd}>
-        {/* The box had no label before. sr-only hides the label on screen
-            but screen readers still say it (WCAG) */}
-        <label className="sr-only" htmlFor="skills-new">
-          New skill
-        </label>
-        <input
-          id="skills-new"
-          className="edit-input edit-skill-input"
-          type="text"
-          placeholder="e.g. React"
-          value={skill}
-          onChange={(e) => setSkill(e.target.value)}
-        />
-        {/* type="submit" sends the form, which runs handleAdd */}
-        <button type="submit" className="profile-btn-primary">
-          Add
-        </button>
-      </form>
-
-      {/* One tag for each skill, with an × button to take it out */}
-      {props.skills.length > 0 && (
-        <ul className="edit-skills">
-          {props.skills.map((s) => (
-            <li key={s} className="edit-skill-pill">
-              {s}
-              {/* aria-label says which skill the × removes (WCAG) */}
-              <button
-                type="button"
-                className="edit-skill-remove"
-                aria-label={"Remove " + s}
-                onClick={() => handleRemove(s)}
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+      <Link to="/resume" className="edit-resume-link">
+        Open the Resume builder
+      </Link>
+    </EditCard>
   );
 }
 
 // EditProfile is the whole page. It puts the pieces above together.
 function EditProfile() {
-  // The page's web address. If you came from a "+ Add" button on your
-  // profile, it ends with something like "#education".
-  // (It's called "address", not "location", because "location" is the
-  // Basics card's city box below)
+  // The page's web address. If you came from an "Add" button on your
+  // profile, it ends with something like "#skills"
   const address = useLocation();
 
   // navigate("/profile") sends you to your profile, the same as clicking a
   // link to it, but from inside our code (see handleSaveAll below)
   const navigate = useNavigate();
 
+  // Your saved profile, and your account's name
+  const profile = useMyProfile();
+  const me = useCurrentUser();
+
   // ---------- What you've typed ----------
-  // These used to live inside each card. They live here now, so the one
-  // Save button at the bottom can see all of them. Moving them up from a
-  // card to the page is called "lifting state up".
+  // All the cards share one copy of your profile, kept here (not inside each
+  // card), so the one Save button at the bottom can see all of it. Moving it
+  // up from the cards to the page is called "lifting state up".
+  // It's null until you change something: until then, the boxes show what's
+  // saved (with your account's name in the Name box if you haven't saved one)
+  const [draft, setDraft] = useState(null);
+  const shown = draft ?? { ...profile.data, name: profile.data.name || me.name };
+  // The boxes call this with the part that changed, like { city: "Boston" }
+  function change(fields) {
+    setDraft({ ...shown, ...fields });
+  }
 
-  // Basic Information
-  const [username, setUsername] = useState("");
-  const [bio, setBio] = useState("");
-  const [school, setSchool] = useState("");
-  const [location, setLocation] = useState("");
-
-  // About
-  const [about, setAbout] = useState("");
-
-  // Education. Two cards ask for a school, so this one is
-  // "educationSchool" to keep it apart from the Basics "school" above
-  const [educationSchool, setEducationSchool] = useState("");
-  const [degree, setDegree] = useState("");
-  const [dates, setDates] = useState("");
-  const [gpa, setGpa] = useState("");
-
-  // Experience
-  const [role, setRole] = useState("");
-  const [organization, setOrganization] = useState("");
-  const [experienceInfo, setExperienceInfo] = useState("");
-
-  // Projects
-  const [projectName, setProjectName] = useState("");
-  const [projectLink, setProjectLink] = useState("");
-
-  // Resume
-  const [resumeName, setResumeName] = useState("");
-  const [resumeLink, setResumeLink] = useState("");
-
-  // Skills: a list, so it starts as an empty list [] instead of ""
-  const [skills, setSkills] = useState([]);
+  // true while saving (so Save can't be pressed twice), and what went wrong
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
   // Changing pages keeps you scrolled down as far as you were, so before
   // going to your profile we jump to the top. "instant" skips the smooth
@@ -510,31 +149,32 @@ function EditProfile() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  // The one Save button for the whole page. For now it prints everything
-  // in the browser console, grouped by card, until the backend is connected.
-  // After that, it takes you to your profile
-  function handleSaveAll() {
-    console.log({
-      basics: { username, bio, school, location },
-      about,
-      education: { school: educationSchool, degree, dates, gpa },
-      experience: { role, organization, info: experienceInfo },
-      project: { name: projectName, link: projectLink },
-      resume: { name: resumeName, link: resumeLink },
-      skills,
-    });
-
-    // Then go back to your profile, at the top (see scrollToTop below)
-    scrollToTop();
-    navigate("/profile");
+  // The one Save button for the whole page. It saves your profile to your
+  // account (and the parts your resume shares), then takes you to your
+  // profile. If it can't, it stays here and says why, so nothing you typed is lost
+  async function handleSaveAll() {
+    setSaving(true);
+    setMessage("");
+    try {
+      await saveProfile(shown);
+      // Then the same changes on your resume (if that doesn't work, your
+      // profile is still saved)
+      await copyProfileToResume(profile.data, shown, me.email).catch(() => {});
+      scrollToTop();
+      navigate("/profile");
+    } catch (error) {
+      setMessage("Couldn't save your changes: " + error.message);
+      setSaving(false);
+    }
   }
 
   // After the page shows up, jump to the card named after the "#", and put
   // the cursor in its first box, so you can start typing right away.
-  // [address.hash] means "run this again only if the # part changes"
+  // It runs again if the # part changes, or once the cards show up
+  // (they wait for your profile to load the first time)
   useEffect(() => {
-    if (address.hash === "") return;
-    // .slice(1) drops the "#", so "#education" becomes "education"
+    if (address.hash === "" || !profile.known) return;
+    // .slice(1) drops the "#", so "#skills" becomes "skills"
     const card = document.getElementById(address.hash.slice(1));
     if (card === null) return;
     card.scrollIntoView({ block: "start" });
@@ -543,7 +183,7 @@ function EditProfile() {
       // preventScroll stops the page from jumping again for the cursor
       firstBox.focus({ preventScroll: true });
     }
-  }, [address.hash]);
+  }, [address.hash, profile.known]);
 
   return (
     <>
@@ -562,63 +202,62 @@ function EditProfile() {
           </Link>
           <EditTracker />
         </aside>
-        <div className="edit-section">
-          {/* Basics gets its values and their "set" functions as props */}
-          <BasicsInfo
-            username={username}
-            setUsername={setUsername}
-            bio={bio}
-            setBio={setBio}
-            school={school}
-            setSchool={setSchool}
-            location={location}
-            setLocation={setLocation}
-          />
-          <AboutInfo about={about} setAbout={setAbout} />
-          {/* The name on the left (school) is what the card calls it.
-              The name on the right (educationSchool) is what EditProfile
-              calls it. They don't have to match */}
-          <EducationInfo
-            school={educationSchool}
-            setSchool={setEducationSchool}
-            degree={degree}
-            setDegree={setDegree}
-            dates={dates}
-            setDates={setDates}
-            gpa={gpa}
-            setGpa={setGpa}
-          />
-          <ExperienceInfo
-            role={role}
-            setRole={setRole}
-            organization={organization}
-            setOrganization={setOrganization}
-            info={experienceInfo}
-            setInfo={setExperienceInfo}
-          />
-          <ProjectInfo
-            project={projectName}
-            setProject={setProjectName}
-            link={projectLink}
-            setLink={setProjectLink}
-          />
-          <ResumeInfo
-            resume={resumeName}
-            setResume={setResumeName}
-            link={resumeLink}
-            setLink={setResumeLink}
-          />
-          <SkillsInfo skills={skills} setSkills={setSkills} />
 
-          {/* The one Save button for the whole page */}
-          <button
-            type="button"
-            className="profile-btn-primary edit-save-all"
-            onClick={handleSaveAll}
-          >
-            Save all changes
-          </button>
-        </div>
+        {profile.known ? (
+          <div className="edit-section">
+            <EditCard id="basics" title="Basic Information" subtitle="Let the world know who you are!">
+              <BasicsFields profile={shown} onChange={change} />
+            </EditCard>
+            <EditCard id="about" title="About" subtitle="Share your interests, goals, and what motivates you.">
+              <AboutFields profile={shown} onChange={change} />
+            </EditCard>
+            <EditCard id="looking-for" title="What I'm looking for" subtitle="The first thing employers check when you apply.">
+              <LookingForFields profile={shown} onChange={change} />
+            </EditCard>
+            <EditCard id="skills" title="Skills" subtitle="What are your strengths?">
+              <SkillsField profile={shown} onChange={change} />
+            </EditCard>
+            <ResumeInfo />
+
+            {/* role="alert" reads the problem out as soon as it shows up (WCAG) */}
+            {message && (
+              <p className="edit-save-error" role="alert">
+                {message}
+              </p>
+            )}
+            {/* The one Save button for the whole page */}
+            <button
+              type="button"
+              className="profile-btn-primary edit-save-all"
+              onClick={handleSaveAll}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save all changes"}
+            </button>
+          </div>
+        ) : (
+          // The first time on this browser, until the server answers.
+          // The form waits, so it never saves over your profile with empty boxes.
+          // role="status" lets screen readers hear it (WCAG)
+          <div className="edit-section" role="status">
+            {profile.state === "offline" ? (
+              <section className="edit-card">
+                <p className="edit-resume-text">
+                  Couldn't load your profile. Check your internet and try again.
+                </p>
+                <button
+                  type="button"
+                  className="profile-btn-primary edit-try-again"
+                  onClick={reloadProfile}
+                >
+                  Try again
+                </button>
+              </section>
+            ) : (
+              <p className="edit-resume-text">Loading your profile...</p>
+            )}
+          </div>
+        )}
       </main>
     </>
   );

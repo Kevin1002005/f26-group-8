@@ -2,7 +2,7 @@
 // one company per call.
 // docs: https://github.com/lever/postings-api
 import {
-  fetchJson, isInternTitle, guessType, htmlToText, listItems, isWebLink,
+  fetchJson, isInternTitle, guessType, htmlToText, listItems, isWebLink, toTime,
   type ImportedJob, type SourceResult,
 } from './shared.js';
 
@@ -20,6 +20,7 @@ type LeverJob = {
   id: string;
   text: string;                  // the job title
   hostedUrl: string;             // the posting's page on jobs.lever.co
+  createdAt?: number;            // when it was posted, in milliseconds since 1970
   categories: { location?: string } | null;
   workplaceType?: string;        // 'onsite' | 'hybrid' | 'remote' | 'unspecified'
   salaryRange?: { min: number; max: number; currency: string; interval: string };
@@ -104,6 +105,7 @@ function toImportedJob(job: LeverJob, organization: string): ImportedJob {
     description: description || null,
     requirements: listItems(requirementsList?.content),
     apply_url: job.hostedUrl,
+    posted_at: toTime(job.createdAt),
   };
 }
 

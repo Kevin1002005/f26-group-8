@@ -4,6 +4,7 @@ import jobsRouter from './jobs.js';
 import applicationsRouter from './applications.js';
 import resumesRouter from './resumes.js';
 import accountRouter from './account.js';
+import studentProfileRouter from './student-profile.js';
 
 const app: Express = express();
 // by default Express adds "X-Powered-By: Express" to every answer, which tells attackers
@@ -26,6 +27,8 @@ app.use('/api/jobs', jobsRouter);
 // their account. Both need you to be logged in (they use authenticateToken themselves)
 app.use('/api/applications', applicationsRouter);
 app.use('/api/resumes', resumesRouter);
+// each student's own profile (the welcome guide, Edit profile, and the Profile page)
+app.use('/api/student-profile', studentProfileRouter);
 
 // Download my data, and Delete my account (the Settings page, and the Privacy Policy)
 app.use('/api/account', accountRouter);

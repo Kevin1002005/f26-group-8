@@ -11,8 +11,11 @@
 // account once, the first time a page with the tracker opens.
 //
 // One item in the list:
-//   { id, stage, title, organization, deadline, initials, notes, custom? }
+//   { id, stage, title, organization, deadline, initials, notes,
+//     link, statusDetail, appliedOn, custom? }
 // "stage" is the column: "saved", "preparing", or "submitted".
+// link is the posting's web address, statusDetail a short line like "Interview Dec 3",
+// and appliedOn the day you applied (set when the card moves to Submitted).
 // "id" is one of:
 //   a number   a made-up example job in opportunities.js (the Feed's posts)
 //   a uuid     a real job from Opportunities (its id in the jobs table), or,
@@ -85,13 +88,14 @@ function cleanList(list) {
 
 // The outbox: this device's changes the account doesn't have yet, oldest first:
 //   { key, type: "add", id, stage, details }   put a job on the tracker
-//   { key, type: "move", id, stage }           move it to another column
+//   { key, type: "move", id, stage, appliedOn? }  move it to another column
 //   { key, type: "notes", id, notes }          change its notes
+//   { key, type: "details", id, details }      change its link, status, or date applied
 //   { key, type: "remove", id }                take it off
 // "key" names that one change, so it can be crossed off after it's sent
 function readOutbox(account) {
   const outbox = readSaved(outboxName, account);
-  const types = ["add", "move", "notes", "remove"];
+  const types = ["add", "move", "notes", "details", "remove"];
   return Array.isArray(outbox) ? outbox.filter((change) => change && types.includes(change.type)) : [];
 }
 
@@ -109,6 +113,12 @@ function newUuid() {
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // the "variant" mark every uuid has
   const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-" + hex.slice(16, 20) + "-" + hex.slice(20);
+}
+
+// Today's date on this computer, like "2026-11-16" (the "en-CA" way of writing
+// dates happens to be year-month-day, the same as the database)
+function today() {
+  return new Date().toLocaleDateString("en-CA");
 }
 
 
@@ -186,11 +196,11 @@ export function trackerJob(item) {
 }
 
 // Puts a change in the outbox, then starts sending. Only where a job ends up
-// matters, so a newer "move" (or "notes") of a job replaces an older one, and a
-// "remove" replaces both
+// matters, so a newer "move" (or "notes", or "details") of a job replaces an older
+// one, and a "remove" replaces all of them
 function queueChange(account, change) {
-  const replaced = (old) => old.id === change.id
-    && (change.type === "remove" ? old.type === "move" || old.type === "notes" : old.type === change.type && change.type !== "add");
+  const replaced = (old) => old.id === change.id && old.type !== "add" && old.type !== "remove"
+    && (change.type === "remove" || old.type === change.type);
   const outbox = readOutbox(account).filter((old) => !replaced(old));
   writeSaved(outboxName, account, [...outbox, { ...change, key: newUuid() }]);
   // a new change: an old "couldn't save" sentence is about something else
@@ -210,37 +220,37 @@ function addItem(item, extra = {}) {
   if (account) queueChange(account, { type: "add", id: id, stage: stage, details: details, ...extra });
 }
 
-// Changes one field of one item ("stage" or "notes") and queues it
-function changeItem(id, field, value) {
+// Changes some fields of one item (like { notes }) and queues "change" for the
+// account. Nothing happens if they're all the same already
+function changeItem(id, fields, change) {
   const account = loggedInId();
   const list = currentItems();
   const item = list.find((each) => each.id === id);
-  if (!item || (item[field] ?? "") === value) return;
-  setItems(account, list.map((each) => (each.id === id ? { ...each, [field]: value } : each)));
-  if (!account) return;
-  queueChange(account, field === "stage" ? { type: "move", id: id, stage: value } : { type: "notes", id: id, notes: value });
+  if (!item || Object.entries(fields).every(([key, value]) => (item[key] ?? "") === (value ?? ""))) return;
+  setItems(account, list.map((each) => (each.id === id ? { ...each, ...fields } : each)));
+  if (account) queueChange(account, { ...change, id: id });
 }
 
 // Save (Discovery, Feed): the job goes in "Saved". details is what the tracker
-// shows for a real job: { title, organization, deadline, initials }
+// shows for a real job: { title, organization, deadline, initials, link }
 export function addToTracker(id, details = {}) {
   addItem({ ...details, id: id, stage: "saved" });
 }
 
-// Apply (Discovery's pop-up): the job goes in "Submitted", whether it was on the
-// tracker already or not. "mustBe": if the account had it in another column
-// (saved on another device, before that list arrived here), it's moved too
+// Apply (Discovery's pop-up): the job goes in "Submitted", dated today, whether it
+// was on the tracker already or not. "mustBe": if the account had it in another
+// column (saved on another device, before that list arrived here), it's moved too
 export function markApplied(id, details = {}) {
   if (currentItems().some((item) => item.id === id)) {
     moveOnTracker(id, "submitted");
   } else {
-    addItem({ ...details, id: id, stage: "submitted" }, { mustBe: true });
+    addItem({ ...details, id: id, stage: "submitted", appliedOn: today() }, { mustBe: true });
   }
 }
 
 // A job found on another site, typed in on the tracker page. job is
-// { title, organization, deadline, stage }. Its id is made here, so its card
-// works before the server has answered; the server keeps the same id
+// { title, organization, deadline, stage, link, statusDetail }. Its id is made
+// here, so its card works before the server has answered; the server keeps the same id
 export function addOtherJob(job) {
   const id = newUuid();
   addItem({
@@ -250,22 +260,38 @@ export function addOtherJob(job) {
     organization: job.organization,
     deadline: job.deadline || null,
     initials: initialsOf(job.organization),
+    link: job.link || null,
+    statusDetail: job.statusDetail || "",
+    // added straight to Submitted: that's the day you applied
+    appliedOn: job.stage === "submitted" ? today() : null,
     custom: true,
   });
   return id;
 }
 
-// Undo after Remove: puts the item back exactly as it was (column, notes...)
+// Undo after Remove: puts the item back exactly as it was (column, notes, details...)
 export function putBackOnTracker(item) {
   addItem(item);
 }
 
+// Moves a job to another column. Moving it to Submitted also dates it today, unless
+// it already has a date applied (the move carries the date, so the account gets it)
 export function moveOnTracker(id, stage) {
-  if (stageNames.includes(stage)) changeItem(id, "stage", stage);
+  const item = currentItems().find((each) => each.id === id);
+  if (!item || !stageNames.includes(stage)) return;
+  const appliedOn = stage === "submitted" ? item.appliedOn || today() : undefined;
+  changeItem(id, appliedOn ? { stage: stage, appliedOn: appliedOn } : { stage: stage }, { type: "move", stage: stage, appliedOn: appliedOn });
 }
 
 export function saveTrackerNotes(id, notes) {
-  changeItem(id, "notes", notes);
+  changeItem(id, { notes: notes }, { type: "notes", notes: notes });
+}
+
+// The card's details: { link, statusDetail, appliedOn } (the Details form on the
+// tracker). Empty ones are saved as nothing
+export function saveTrackerDetails(id, details) {
+  const fields = { link: details.link || null, statusDetail: details.statusDetail || "", appliedOn: details.appliedOn || null };
+  changeItem(id, fields, { type: "details", details: fields });
 }
 
 export function removeFromTracker(id) {
@@ -298,13 +324,17 @@ async function sendChange(account, change) {
       body = { job_id: change.id };
     }
     body.status = change.stage;
-    if (details.notes) body.notes = details.notes; // Undo puts notes back too
+    // notes and details come along too (Undo puts them back)
+    if (details.notes) body.notes = details.notes;
+    if (details.link) body.link = details.link;
+    if (details.statusDetail) body.status_detail = details.statusDetail;
+    if (details.appliedOn) body.applied_on = details.appliedOn;
     const { application } = await send("/applications", "POST", body);
     writeSaved(serverIdsName, account, { ...readServerIds(account), [change.id]: application.id });
     // It was on the account already, in another column: usually that column
     // wins (your other device chose it), but Apply means "it's submitted"
     if (change.mustBe && application.status !== change.stage) {
-      await send("/applications/" + application.id, "PATCH", { status: change.stage });
+      await send("/applications/" + application.id, "PATCH", { status: change.stage, applied_on: details.appliedOn ?? null });
     }
     return;
   }
@@ -313,9 +343,16 @@ async function sendChange(account, change) {
   // job (adding it was refused), so there's nothing to do
   const rowId = readServerIds(account)[change.id];
   if (!rowId) return;
+  // What a PATCH sends for each kind of change (the server's names for the fields)
+  const patchBody = () => {
+    if (change.type === "move") return change.appliedOn ? { status: change.stage, applied_on: change.appliedOn } : { status: change.stage };
+    if (change.type === "notes") return { notes: change.notes };
+    const d = change.details ?? {};
+    return { link: d.link ?? null, status_detail: d.statusDetail ?? "", applied_on: d.appliedOn ?? null };
+  };
   try {
     if (change.type === "remove") await send("/applications/" + rowId, "DELETE");
-    else await send("/applications/" + rowId, "PATCH", change.type === "move" ? { status: change.stage } : { notes: change.notes });
+    else await send("/applications/" + rowId, "PATCH", patchBody());
   } catch (error) {
     // 404: it was taken off on another device, so there's nothing left to change
     if (error.status !== 404) throw error;
@@ -356,6 +393,9 @@ function itemFromRow(row) {
     deadline: row.deadline,
     initials: initialsOf(row.organization),
     notes: row.notes ?? "",
+    link: row.link ?? null,
+    statusDetail: row.status_detail ?? "",
+    appliedOn: row.applied_on ?? null,
   };
   if (row.example_id === null && row.job_id === null) item.custom = true;
   return item;
@@ -368,9 +408,10 @@ function withOutbox(items, outbox) {
   for (const change of outbox) {
     if (change.type === "add" && !list.some((item) => item.id === change.id)) {
       list = [...list, { ...change.details, id: change.id, stage: change.stage }];
-    } else if (change.type === "move" || change.type === "notes") {
-      const field = change.type === "move" ? { stage: change.stage } : { notes: change.notes };
-      list = list.map((item) => (item.id === change.id ? { ...item, ...field } : item));
+    } else if (change.type === "move" || change.type === "notes" || change.type === "details") {
+      const fields = change.type === "move" ? { stage: change.stage, ...(change.appliedOn ? { appliedOn: change.appliedOn } : {}) }
+        : change.type === "notes" ? { notes: change.notes } : change.details;
+      list = list.map((item) => (item.id === change.id ? { ...item, ...fields } : item));
     } else if (change.type === "remove") {
       list = list.filter((item) => item.id !== change.id);
     }

@@ -2,7 +2,7 @@
 // but each call only covers one company.
 // docs: https://developers.greenhouse.io/job-board.html
 import {
-  fetchJson, isInternTitle, guessType, guessSetting, toDate, htmlToText, isWebLink,
+  fetchJson, isInternTitle, guessType, guessSetting, toDate, toTime, htmlToText, isWebLink,
   type ImportedJob, type SourceResult,
 } from './shared.js';
 
@@ -23,6 +23,7 @@ type GreenhouseJob = {
   location: { name: string } | null;
   content: string | null;               // the description, as HTML with < > written as &lt; &gt;
   application_deadline: string | null;  // usually null
+  first_published?: string | null;      // when the company first posted it
 };
 
 
@@ -89,5 +90,7 @@ function toImportedJob(job: GreenhouseJob, board: string): ImportedJob {
     description: htmlToText(job.content, { escaped: true }),   // escaped: see htmlToText in shared.ts
     requirements: [],
     apply_url: job.absolute_url,
+    // first_published, not updated_at: updated_at changes every time the company edits the post
+    posted_at: toTime(job.first_published),
   };
 }

@@ -7,7 +7,7 @@
 // free Basic plan). The free plan only allows about 200 requests A MONTH, and every
 // search below is one request, so keep SEARCHES short and run the importer by hand.
 import {
-  fetchJson, isInternTitle, guessType, guessSetting, guessLevel, toDate, isWebLink,
+  fetchJson, isInternTitle, guessType, guessSetting, guessLevel, toDate, toTime, isWebLink,
   type ImportedJob, type SourceResult,
 } from './shared.js';
 
@@ -32,6 +32,7 @@ type JSearchJob = {
   job_state: string | null;
   job_is_remote: boolean | null;
   job_offer_expiration_datetime_utc: string | null;
+  job_posted_at_datetime_utc?: string | null;  // when it was posted
   job_min_salary: number | null;
   job_max_salary: number | null;
   job_salary_period: string | null;           // "HOUR", "YEAR"...
@@ -131,6 +132,7 @@ function toImportedJob(job: JSearchJob, applyUrl: string): ImportedJob {
     description,
     requirements: qualifications(job),
     apply_url: applyUrl,
+    posted_at: toTime(job.job_posted_at_datetime_utc),
   };
 }
 

@@ -6,7 +6,8 @@
 // (There used to be a "Preferences" tab too. It only said "Coming soon", and
 // the Profile page's "What I'm looking for" card already does that job.)
 //   Appearance       light or dark, the site's colors, and heading style
-//   Privacy & data   who can see your profile and what's on it
+//   Privacy & data   who can see your profile and what's on it, and "Your data":
+//                    Download my data, Delete my account (backend/src/account.ts)
 //   Accessibility    font, text size, contrast, spacing, motion, ...
 // Appearance and Accessibility work right away, on every page. The choices
 // are saved in this browser (see settings.js). Privacy is saved too, but it
@@ -31,6 +32,10 @@ import { useTheme } from '../theme.js';
 // supabase is our one shared connection to Supabase (supabase.js).
 // The Account tab's "Change password" form uses it to save the new password
 import { supabase } from '../supabase.js';
+// api() talks to our backend (api.js). The "Your data" buttons use it
+import { api } from '../api.js';
+// Whose account this is, and how to log out after deleting it (login-status.js)
+import { loggedInId, markLoggedOut } from '../login-status.js';
 
 // The shortest password we accept (the same as the Sign up page)
 const shortestPassword = 8;
@@ -314,6 +319,50 @@ function Settings() {
         setMessage('');
     }
 
+    // "Download my data": everything your account has saved (backend/src/account.ts),
+    // plus this browser's settings, as one file. A Blob is a file made in the browser,
+    // and a link with "download" saves it instead of opening it
+    async function downloadData() {
+        setMessage('Getting your data...');
+        try {
+            const data = await api('/account/export');
+            const file = new Blob([JSON.stringify({ ...data, settings_in_this_browser: loadSettings() }, null, 2)], { type: 'application/json' });
+            const name = 'scoutsearch-data-' + new Date().toISOString().slice(0, 10) + '.json';
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(file);
+            link.download = name;
+            link.click();
+            URL.revokeObjectURL(link.href);
+            setMessage('Downloaded ' + name + '.');
+        } catch (error) {
+            setMessage("Couldn't get your data: " + error.message);
+        }
+    }
+
+    // "Delete my account": after checking (it can't be undone), deletes the account and
+    // everything saved with it, removes this browser's copies too, then logs out
+    async function deleteAccount() {
+        if (!window.confirm('Delete your account and everything saved with it (your tracker and resume)? This can\'t be undone.')) return;
+        const id = loggedInId();
+        setMessage('Deleting your account...');
+        try {
+            await api('/account', { method: 'DELETE' });
+        } catch (error) {
+            setMessage("Couldn't delete your account: " + error.message);
+            return;
+        }
+        // this browser's copies of your things are saved under your account id ("...:<id>")
+        try {
+            for (const key of Object.keys(localStorage)) {
+                if (id && key.endsWith(':' + id)) localStorage.removeItem(key);
+            }
+        } catch {
+            // storage is off: there's nothing saved to remove
+        }
+        await markLoggedOut();
+        navigate('/about', { replace: true });
+    }
+
     // Puts the listed settings back to how they started
     // (starting from what's saved right now, for the same reason as changeSetting)
     function resetSettings(names) {
@@ -517,16 +566,19 @@ function Settings() {
                                 </div>
                             </fieldset>
 
-                            {/* Your data. These buttons only show a message for now,
-                                because the data lives on the backend */}
+                            {/* Your data: a copy of everything saved with your account, or
+                                delete it all (the Privacy Policy's "Your rights" points here) */}
                             <div className="settings-group">
                                 <h3 className="settings-legend">Your data</h3>
-                                <p className="settings-hint">Get a copy of everything ScoutSearch has saved about you, or delete your account.</p>
+                                <p className="settings-hint">
+                                    Get a copy of everything ScoutSearch has saved about you, or delete your account and
+                                    everything saved with it. See the <Link to="/privacy-policy">Privacy Policy</Link>.
+                                </p>
                                 <div className="settings-footer">
-                                    <button type="button" className="settings-button" onClick={() => setMessage('Downloading your data will work once the site is connected to the backend.')}>
+                                    <button type="button" className="settings-button" onClick={downloadData}>
                                         Download my data
                                     </button>
-                                    <button type="button" className="settings-button settings-button-danger" onClick={() => setMessage('Deleting your account will work once the site is connected to the backend.')}>
+                                    <button type="button" className="settings-button settings-button-danger" onClick={deleteAccount}>
                                         Delete my account
                                     </button>
                                 </div>

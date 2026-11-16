@@ -544,6 +544,15 @@ function Signup() {
                     </div>
                 </div>
 
+                {/* What signing up means, before anyone does it: the rules, the youngest
+                    age allowed (COPPA: no accounts for children under 13), and how we
+                    handle their information. Under the box, so it shows on both steps */}
+                <p className="signup-legal">
+                    By signing up, you agree to the <Link to="/terms-of-service">Terms of Service</Link> and
+                    confirm you're 13 or older. See how we handle your information in the{' '}
+                    <Link to="/privacy-policy">Privacy Policy</Link>.
+                </p>
+
                 {/* For people who already have an account. It's under the box, so it
                     shows on both steps. It fades smoothly to the Login page */}
                 <p className="signup-switch">

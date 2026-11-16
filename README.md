@@ -72,6 +72,9 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
   (our jobs, the Feed's examples, and jobs typed in from other sites, with notes), and
   `/api/resumes/me` (GET, PUT) is your resume. Both need you to be logged in, and only ever
   touch your own.
+- `GET /api/account/export` and `DELETE /api/account` are Settings' "Download my data" and
+  "Delete my account". Deleting removes the Supabase login, and the profile, tracker, and resume
+  go with it (their tables are set to `on delete cascade`).
 - To pull in real internships, run `cd backend && npm run import-jobs` by hand, on a computer
   with `backend/secrets.env`. It saves them to the `jobs` table and closes the ones a company
   took down. JSearch only runs if `JSEARCH_API_KEY` is set. Without it, the importer says it
@@ -102,6 +105,22 @@ Resume builder each have a line saying "Saved to your account." (or why not yet)
   automatically, the first time you open the page.
 - If your resume was saved on another device since this one last saved it, the Resume
   builder doesn't save over it. It asks which version to keep.
+
+## Privacy and legal pages
+
+`/privacy-policy`, `/cookie-policy`, and `/terms-of-service` are open to everyone, and every
+page links to them in its footer. They describe only what the site really does (checked
+2026-11-16): **no cookies, no analytics, no ads, no trackers**, and fonts hosted by the site
+itself (`frontend/public/fonts/`), so visitors' browsers only ever contact our own site and
+Supabase. That's also why there's no cookie banner: there's nothing optional to agree to.
+
+The facts they're built from are in **`frontend/src/data/legal.js`**: who runs the site, the
+contact email, the services we use, and the full list of what's saved in the browser. Anything
+still `null` there shows on the pages as a highlighted **[To fill in: ...]**, under a "Draft"
+note that disappears once everything is filled in. Paragraphs marked "Needs legal review" need
+someone who knows the law. **If the site starts storing something new, or adds a service (above
+all analytics or ads), update `legal.js` and the pages first**: anything optional would need a
+real consent choice before it loads.
 
 ## Deploy
 
@@ -200,5 +219,6 @@ Replace the old ones in `vercel.json`. Otherwise Vercel blocks the theme script,
 briefly show the wrong colors.
 
 Read them from `dist/`, not the source: the build compacts the `<style>`, so its fingerprint
-changes there. If the Supabase project ever moves to a custom domain, add that domain to
+changes there. Fonts may only come from the site itself (`font-src 'self'`), so a font added
+from Google Fonts or another site would be blocked: put its files in `frontend/public/fonts/`. If the Supabase project ever moves to a custom domain, add that domain to
 `connect-src` in the same header.

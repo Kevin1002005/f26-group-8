@@ -705,6 +705,13 @@ function About() {
                                 With "npm run dev" it shows Page not found: the file is only
                                 made by "npm run build" (it works on the live site) */}
                             <li><a href="/third-party-licenses.txt">Open-source licenses</a></li>
+                            {/* The legal pages (the same links as the footer on every
+                                other page, components/SiteFooter.jsx) */}
+                            <li><Link to="/privacy-policy">Privacy Policy</Link></li>
+                            <li><Link to="/cookie-policy">Cookie Policy</Link></li>
+                            <li><Link to="/terms-of-service">Terms of Service</Link></li>
+                            <li><Link to="/privacy-policy#your-rights">Privacy requests</Link></li>
+                            <li><Link to="/cookie-policy#what-we-store">Cookie settings</Link></li>
                         </ul>
                     </nav>
                 </div>

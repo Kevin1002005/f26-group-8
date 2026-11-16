@@ -21,6 +21,8 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 // Each page lives in its own file inside the pages folder.
 // The About page loads right away, because it's the first page everyone sees.
 import About from "./pages/About.jsx";
+// SiteFooter is the row of legal links at the bottom of every page (components/SiteFooter.jsx)
+import SiteFooter from "./components/SiteFooter.jsx";
 // Every other page only downloads when someone opens it. Without lazy(),
 // opening the About page downloaded the code for all 11 pages at once.
 // import("...") with parentheses means "fetch this file later, when asked".
@@ -38,6 +40,11 @@ const Discovery = lazy(() => import("./pages/Discovery.jsx"));
 const ApplicationTracker = lazy(() => import("./pages/ApplicationTracker.jsx"));
 const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
+// The Privacy Policy and Cookie Policy files are named DataPolicy and StoragePolicy on purpose:
+// ad blockers block files named like "PrivacyPolicy.js" or "CookiePolicy.js"
+const DataPolicy = lazy(() => import("./pages/DataPolicy.jsx"));
+const StoragePolicy = lazy(() => import("./pages/StoragePolicy.jsx"));
+const TermsOfService = lazy(() => import("./pages/TermsOfService.jsx"));
 
 // The path of the page PageChange last handled, like "/discovery". null until
 // the first page opens. Only the path counts: jumping to a section of the
@@ -117,6 +124,11 @@ function App() {
               link lands. It's out here (not inside RequireLogin) because people
               who forgot their password aren't logged in */}
           <Route path="/reset-password" element={<ResetPassword />} />
+          {/* The legal pages: open to everyone, since people should be able to
+              read them before signing up */}
+          <Route path="/privacy-policy" element={<DataPolicy />} />
+          <Route path="/cookie-policy" element={<StoragePolicy />} />
+          <Route path="/terms-of-service" element={<TermsOfService />} />
 
           {/* Every page inside here needs you to be logged in. A Route with no
               "path" doesn't change the web address; it just puts RequireLogin in
@@ -147,6 +159,10 @@ function App() {
               home, instead of a blank page */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        {/* The legal links at the bottom of every page. Inside Suspense, so it
+            doesn't flash at the top while a page is still downloading. The About
+            page has its own footer with the same links */}
+        {location.pathname !== "/about" && <SiteFooter />}
       </Suspense>
     </ErrorBoundary>
   );

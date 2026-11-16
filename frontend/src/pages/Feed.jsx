@@ -29,6 +29,8 @@ import { addToTracker, removeFromTracker, trackerJob, useTrackerItems, useTracke
 // Who is logged in (src/use-current-user.js), so your own posts and comments
 // show your name instead of the made-up example person
 import { useCurrentUser } from "../use-current-user.js";
+// Your profile (data/profile.js): its headline goes on your posts
+import { useMyProfile } from "../data/profile.js";
 
 // ---------- Sample data ----------
 // These lists hold the made-up content shown on the page.
@@ -314,6 +316,8 @@ function PostComposer(props) {
   const me = useCurrentUser();
   const myName = me.name || me.email || "You";
   const myInitials = me.initials || "You";
+  // Your profile, for the headline under your name on your posts (data/profile.js)
+  const profile = useMyProfile();
   // What's typed in the box. Starts empty.
   const [text, setText] = useState("");
   // The chosen photo, as a web address the browser made for it (or null if none)
@@ -367,7 +371,8 @@ function PostComposer(props) {
       id: Date.now(),
       author: myName,
       initials: myInitials,
-      headline: "Student",
+      // The headline from your profile, or "Student" if you haven't written one
+      headline: profile.data.headline.trim() || "Student",
       time: "Just now",
       kind: "Update",
       color: "blue",

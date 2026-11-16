@@ -342,7 +342,7 @@ function Settings() {
     // "Delete my account": after checking (it can't be undone), deletes the account and
     // everything saved with it, removes this browser's copies too, then logs out
     async function deleteAccount() {
-        if (!window.confirm('Delete your account and everything saved with it (your tracker and resume)? This can\'t be undone.')) return;
+        if (!window.confirm('Delete your account and everything saved with it (your profile, tracker, and resume)? This can\'t be undone.')) return;
         const id = loggedInId();
         setMessage('Deleting your account...');
         try {

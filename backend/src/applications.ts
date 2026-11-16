@@ -2,7 +2,8 @@
 //   GET    /api/applications        your list                  -> { applications: [Application] }
 //   POST   /api/applications        put a job on it (one of ours, an example, or one
 //                                   from another site)         -> 201 { application } (200 if it was there already)
-//   PATCH  /api/applications/:id    move it to another column  -> { application }
+//   PATCH  /api/applications/:id    move it, or change its notes
+//                                   or details                 -> { application }
 //   DELETE /api/applications/:id    take it off                -> 204
 //
 // Every route needs you to be logged in (authenticateToken), and only ever touches YOUR rows.
@@ -18,7 +19,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // what's sent back for each row (the shared contract's Application)
-const COLUMNS = 'id, job_id, example_id, title, organization, deadline, status, notes, created_at, updated_at';
+const COLUMNS = 'id, job_id, example_id, title, organization, deadline, status, notes, link, status_detail, applied_on, created_at, updated_at';
 
 // decision D8 (2026-11-15): the tracker's 3 columns. The same list as the check in
 // backend/sql/applications.sql
@@ -45,6 +46,35 @@ function readDate(value: unknown): string | null {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000')) return null;
   const day = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(day.getTime()) && day.toISOString().startsWith(value) ? value : null;
+}
+
+// A card's extra details, checked (the same limits as applications.sql):
+//   link           a web address starting with http:// or https://
+//   status_detail  a short line, like "Interview Dec 3"
+//   applied_on     a date
+// Only the ones in the request are included, and null (or "") clears one.
+// Gives back { details } or { problem } (a message for a 400)
+function readDetails(body: Record<string, unknown>): { details: Record<string, unknown> } | { problem: string } {
+  const details: Record<string, unknown> = {};
+  if (body.link !== undefined) {
+    const link = body.link === null || body.link === '' ? null : readText(body.link, 500);
+    if (link !== null && !/^https?:\/\/\S+$/i.test(link)) {
+      return { problem: 'The link has to be a web address starting with http:// or https://' };
+    }
+    if (body.link !== null && body.link !== '' && link === null) return { problem: 'The link is too long' };
+    details.link = link;
+  }
+  if (body.status_detail !== undefined) {
+    const statusDetail = readText(body.status_detail ?? '', 200);
+    if (statusDetail === null) return { problem: 'The status can be at most 200 letters' };
+    details.status_detail = statusDetail;
+  }
+  if (body.applied_on !== undefined) {
+    const appliedOn = body.applied_on === null || body.applied_on === '' ? null : readDate(body.applied_on);
+    if (body.applied_on !== null && body.applied_on !== '' && appliedOn === null) return { problem: 'Check the date applied' };
+    details.applied_on = appliedOn;
+  }
+  return { details };
 }
 
 
@@ -76,11 +106,13 @@ function readTypedJob(body: Record<string, unknown>): { title: string; organizat
 }
 
 // POST /api/applications: put a job on your tracker.
-// body for a real job:            { job_id, status?, notes? }   (title, company, and deadline come from the jobs table)
-// body for an example job:        { example_id, title, organization?, deadline?, status?, notes? }
-// body for a job from another site: { title, organization?, deadline?, status?, notes?, id? }
+// body for a real job:            { job_id, status? }   (title, company, deadline, and link come from the jobs table)
+// body for an example job:        { example_id, title, organization?, deadline?, status? }
+// body for a job from another site: { title, organization?, deadline?, status?, id? }
 //   id lets the browser pick the row's id (a uuid) itself, so it can show the card and
 //   keep moving it before the server has answered (src/data/tracker.js)
+// Any of them can also have notes, link, status_detail, and applied_on (Undo puts a job
+// back with all of its details)
 router.post('/', async (req, res) => {
   const body = req.body ?? {};
   const studentId = req.user!.id;
@@ -93,6 +125,10 @@ router.post('/', async (req, res) => {
   const notes = body.notes === undefined ? '' : readText(body.notes, 5000);
   if (notes === null) {
     return res.status(400).json({ error: 'Notes can be at most 5,000 letters' });
+  }
+  const extra = readDetails(body);
+  if ('problem' in extra) {
+    return res.status(400).json({ error: extra.problem });
   }
 
   // the row to save, filled in below
@@ -107,7 +143,7 @@ router.post('/', async (req, res) => {
     }
     const { data: job, error } = await supabase
       .from('jobs')
-      .select('title, organization, deadline')
+      .select('title, organization, deadline, apply_url')
       .eq('id', body.job_id)
       .neq('status', 'pending')
       .maybeSingle();
@@ -118,7 +154,8 @@ router.post('/', async (req, res) => {
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
-    row = { student_id: studentId, job_id: body.job_id, title: job.title, organization: job.organization, deadline: job.deadline, status, notes };
+    row = { student_id: studentId, job_id: body.job_id, title: job.title, organization: job.organization, deadline: job.deadline, status, notes,
+      ...extra.details, link: job.apply_url };
   } else if ((body.example_id !== undefined && body.example_id !== null) || body.title !== undefined) {
     // a made-up example job (opportunities.js), or one the student found on another site
     // and typed in. The server doesn't know those, so the card's words come from the
@@ -133,7 +170,7 @@ router.post('/', async (req, res) => {
     if (!typed) {
       return res.status(400).json({ error: 'Check the job\'s title, company, and deadline' });
     }
-    row = { student_id: studentId, ...typed, status, notes };
+    row = { student_id: studentId, ...typed, status, notes, ...extra.details };
     if (exampleId !== null) row.example_id = exampleId;
     else if (body.id !== undefined) row.id = body.id;
   } else {
@@ -193,7 +230,8 @@ router.post('/', async (req, res) => {
 
 
 // PATCH /api/applications/:id: move a job to another column ({ status }) and/or change
-// its notes ({ notes }). Only your own: anyone else's id is "not found"
+// its notes ({ notes }) or details ({ link, status_detail, applied_on }).
+// Only your own: anyone else's id is "not found"
 router.patch('/:id', async (req, res) => {
   const { id } = req.params;
   if (!UUID.test(id)) {
@@ -211,6 +249,9 @@ router.patch('/:id', async (req, res) => {
     if (notes === null) return res.status(400).json({ error: 'Notes can be at most 5,000 letters' });
     changes.notes = notes;
   }
+  const extra = readDetails(body);
+  if ('problem' in extra) return res.status(400).json({ error: extra.problem });
+  Object.assign(changes, extra.details);
   if (Object.keys(changes).length === 0) {
     return res.status(400).json({ error: 'Nothing to change' });
   }

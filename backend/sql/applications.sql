@@ -49,3 +49,16 @@ create table if not exists public.applications (
 -- routes only ever touch the logged-in student's own rows. With no policy, the publishable
 -- key in the browser can't read or change anyone's tracker through <SUPABASE_URL>/rest/v1.
 alter table public.applications enable row level security;
+
+
+-- 3. Added 2026-11-16: more details on each card (the tracker's "Details").
+-- "add column if not exists", so running this whole file again on a database that
+-- already has the table adds just these (and skips them if they're there).
+--   link           the job posting's web address (copied from jobs.apply_url for our jobs)
+--   status_detail  a short line about where things stand, like "Interview Dec 3"
+--   applied_on     the day you applied (filled in when a card moves to Submitted)
+alter table public.applications add column if not exists link text
+  check (link is null or (char_length(link) <= 500 and link ~* '^https?://'));
+alter table public.applications add column if not exists status_detail text not null default ''
+  check (char_length(status_detail) <= 200);
+alter table public.applications add column if not exists applied_on date;

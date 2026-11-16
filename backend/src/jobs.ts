@@ -11,7 +11,7 @@ const router = express.Router();
 // external_id and last_seen_at are only for the importer, so they stay out.
 const JOB_COLUMNS =
   'id, title, organization, type, level, location, setting, paid, pay_text, deadline, ' +
-  'description, requirements, apply_url, posted_by, created_at, source, status';
+  'description, requirements, apply_url, posted_by, created_at, posted_at, source, status';
 
 const PAGE_SIZE = 50;
 
@@ -109,9 +109,12 @@ router.get('/', async (req, res) => {
 
   const from = (page - 1) * PAGE_SIZE;
   const { data: jobs, error } = await query
-    // newest first. every job saved by the same import has the exact same created_at,
-    // so id breaks the tie. without it, the order among them could change between
-    // requests, and the same job could show up on page 1 AND page 2.
+    // newest first, by when the company posted it (posted_at, jobs.sql step 6). Jobs whose
+    // site didn't say go after the ones that did, newest found first. every job saved by the
+    // same import has the exact same created_at, so id breaks the last tie. without it, the
+    // order among them could change between requests, and the same job could show up on
+    // page 1 AND page 2.
+    .order('posted_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
     .order('id')
     // range counts from 0 and includes both ends: page 1 = rows 0 to 49

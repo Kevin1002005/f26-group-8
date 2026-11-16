@@ -37,7 +37,7 @@ const sections = [
         <p>ScoutSearch sets no cookies, and no other company's cookies are set on our pages. By kind:</p>
         <ul>
           <li><strong>Strictly necessary:</strong> no cookies. A few items in your browser's storage keep you logged in (listed below).</li>
-          <li><strong>Functional:</strong> no cookies. Storage items remember your settings and keep copies of your tracker and resume (listed below).</li>
+          <li><strong>Functional:</strong> no cookies. Storage items remember your settings and keep copies of your profile, tracker, and resume (listed below).</li>
           <li><strong>Analytics:</strong> none. We don't measure visitors.</li>
           <li><strong>Advertising and marketing:</strong> none. There are no ads, tracking pixels, or retargeting.</li>
         </ul>
@@ -100,7 +100,7 @@ const sections = [
         <ul>
           <li><strong>Log out</strong> (the menu under your circle) to remove the login items.</li>
           <li><strong>Delete your account</strong> on the <Link to="/settings#privacy">Settings page</Link> to remove your information and this browser's copies of it.</li>
-          <li><strong>Clear this site's data</strong> in your browser's settings (usually under Privacy, "Cookies and site data") to remove everything above. You'll be logged out, and this browser's copies of your tracker and resume will be gone (your account still has them).</li>
+          <li><strong>Clear this site's data</strong> in your browser's settings (usually under Privacy, "Cookies and site data") to remove everything above. You'll be logged out, and this browser's copies of your profile, tracker, and resume will be gone (your account still has them).</li>
         </ul>
         <p>
           Nothing here relies on your consent, so there's no consent to withdraw. If we ever add something

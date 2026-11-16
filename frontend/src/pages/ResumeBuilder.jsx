@@ -37,6 +37,9 @@ import {
     watchAccountResume,
     watchOtherTabs,
 } from '../resume-storage.js';
+// Copies your name, location, first school, and skills to your profile when you
+// change them here, so the Profile page matches (data/profile-resume-sync.js)
+import { copyResumeToProfile } from '../data/profile-resume-sync.js';
 
 // ---------- The repeating sections ----------
 // Education, Projects, and Experience all work the same way: a list of
@@ -428,7 +431,10 @@ function ResumeBuilder() {
 
     // Every change goes through here: it redraws the page and saves.
     // (The example isn't saved until you change something, so it stays an example)
-    function update(newResume) {
+    // It also sends what you changed to your profile, except for "Start from
+    // scratch" (copyToProfile: false): clearing your resume shouldn't clear your profile
+    function update(newResume, copyToProfile = true) {
+        if (copyToProfile) copyResumeToProfile(resume, newResume);
         setResume(newResume);
         // saveResume gives back false if it couldn't save ("!" flips it to true)
         setSaveFailed(!saveResume(newResume));
@@ -504,7 +510,7 @@ function ResumeBuilder() {
     // "Start from scratch": an empty resume (after checking, since it can't be undone)
     function startOver() {
         if (!window.confirm('Clear everything and start from scratch?')) return;
-        update(blankResume);
+        update(blankResume, false);
         setMessage('Cleared. Start typing on the left.');
     }
 

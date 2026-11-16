@@ -5,8 +5,11 @@
 // "RMV"), so a real person who logged in with Google saw someone else's name
 // as their own.
 //
-// FOR NOW it reads the login Supabase keeps in the browser (no backend needed).
-// Google gives Supabase your name and email when you log in with it.
+// The name comes from your profile (what you typed in the welcome guide or on
+// Edit profile, data/profile.js), so changing it there changes it everywhere:
+// the top bar, your Feed posts, and so on. Until your profile has a name, it's
+// the one on your login: Google gives Supabase your name and email when you log
+// in with it, and Sign up saves the name you typed.
 // LATER (task F8 in frontend/plans.md): ask the backend instead, with
 // api('/auth/me'), which will also say your role (student, employer, ...).
 // Pages that use this hook won't need to change when that happens.
@@ -23,6 +26,8 @@ import { useEffect, useState } from 'react';
 // supabase is our one shared connection (supabase.js). It's null when
 // .env.local is missing
 import { supabase } from './supabase.js';
+// Your profile, for the name you gave it (data/profile.js)
+import { useMyProfile } from './data/profile.js';
 
 // Turns a name into 1 or 2 capital letters for the circle:
 //   'Kevin Liu' -> 'KL', 'Maya' -> 'M', 'kevin@example.com' -> 'K', '' -> ''
@@ -39,6 +44,8 @@ export function initialsFor(name) {
 export function useCurrentUser() {
     // The Supabase user, or null while we don't know (or nobody is logged in)
     const [user, setUser] = useState(null);
+    // Your profile (its name wins over the login's, see the top of this file)
+    const profile = useMyProfile();
 
     useEffect(() => {
         // No Supabase set up (no .env.local): nothing to read
@@ -57,12 +64,13 @@ export function useCurrentUser() {
         return () => data.subscription.unsubscribe();
     }, []);
 
-    // Google puts the name in user_metadata as full_name (or sometimes name).
-    // If there's no name at all, the email is the next best thing to show.
+    // Your profile's name first. Then the login's: Google puts the name in
+    // user_metadata as full_name (or sometimes name). If there's no name at
+    // all, pages show the email instead.
     // "||" means "use the first one that isn't empty"
     const metadata = user?.user_metadata ?? {};
     const email = user?.email ?? '';
-    const name = metadata.full_name || metadata.name || '';
+    const name = profile.data.name.trim() || metadata.full_name || metadata.name || '';
 
     return {
         name: name,

@@ -110,3 +110,13 @@ where source <> 'employer'
 alter table public.jobs drop constraint if exists jobs_title_for_our_students;
 alter table public.jobs add constraint jobs_title_for_our_students
   check (title !~* '\m(ph\.?\s?d|doctoral|postdoctoral|post-?docs?|master[''’]?s|mba|graduate|grad)\M');
+
+-- 6. Added 2026-11-16: when each job was posted, so students can see how new a listing is.
+-- imported jobs: the date the company's job site gives (Greenhouse's first_published, Lever's
+-- createdAt, JSearch's posted date). The importer fills it in on its next run, so run it after this.
+-- null = the site didn't say (the Opportunities page then shows when ScoutSearch found the job).
+-- employer jobs: when they were posted on ScoutSearch. That's their created_at, so the update
+-- copies it for the ones already here, and "default now()" fills it in for new ones.
+alter table public.jobs add column if not exists posted_at timestamptz;
+update public.jobs set posted_at = created_at where source = 'employer' and posted_at is null;
+alter table public.jobs alter column posted_at set default now();

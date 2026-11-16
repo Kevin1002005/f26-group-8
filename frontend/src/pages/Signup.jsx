@@ -271,9 +271,9 @@ function Signup() {
             // a Home button instead of "Log in" and "Sign up" (and your resume
             // and tracker are kept under your own account, see login-status.js)
             markLoggedIn(data.session.user.id);
-            // Go to Opportunities, the home page, after signing up.
-            // replace: Back from Opportunities skips the finished Sign up form
-            navigate('/discovery', { replace: true });
+            // Go to the welcome guide, to set up your profile (pages/Welcome.jsx).
+            // replace: Back from the guide skips the finished Sign up form
+            navigate('/welcome', { replace: true });
             return;
         }
 

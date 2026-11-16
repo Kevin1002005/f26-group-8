@@ -383,6 +383,22 @@ async function syncResume() {
     return null;
 }
 
+// Changes your resume from outside the Resume builder (profile-resume-sync.js
+// uses it when you save your profile, so your name, school, and skills show up
+// in the builder too). It first gets in step with your account, so it changes
+// your newest resume, not an old copy. change(resume) is given the resume (or
+// null if you don't have one yet) and gives back the new one, or null for "no
+// change". The new one is saved the same way the builder saves: here right
+// away, and to your account a moment later
+export async function updateResume(change) {
+    const account = loggedInId();
+    if (!account) return;
+    await syncResume();
+    if (loggedInId() !== account) return;
+    const changed = change(loadResume(account));
+    if (changed) saveResume(changed);
+}
+
 // "Keep this device's version" (after a clash): save this browser's resume over
 // the other device's. resume is what the page shows now. It's sent as starting
 // from the other copy, so it goes through (unless a third save came in meanwhile:

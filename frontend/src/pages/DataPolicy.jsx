@@ -47,7 +47,8 @@ const sections = [
         <h3>What you give us</h3>
         <ul>
           <li><strong>Your account:</strong> your email address and password. Supabase, our login service, stores your password only as a scrambled "hash" that can't be turned back into the password. If you use "Continue with Google", Google also gives us your name and profile picture.</li>
-          <li><strong>Your Application tracker:</strong> the jobs you save, which column each one is in, your notes on them, and any jobs you add from other websites.</li>
+          <li><strong>Your profile:</strong> what you fill in on the welcome guide or on Edit profile: your name, pronouns, school, class year, city, headline, About, what kind of position you're looking for, and your skills.</li>
+          <li><strong>Your Application tracker:</strong> the jobs you save, which column each one is in, your notes and details on them (a link, a short status, the date you applied), and any jobs you add from other websites.</li>
           <li><strong>Your resume:</strong> whatever you type into the Resume builder, like your name, contact details, education, experience, projects, and skills. Please don't put very sensitive information (like a Social Security number) in it: a resume never needs it.</li>
         </ul>
         <h3>What's collected automatically</h3>
@@ -75,7 +76,7 @@ const sections = [
     body: (
       <>
         <ul>
-          <li>To run your account and the features you use: logging in, saving your tracker and resume, and showing them on any device you log in on.</li>
+          <li>To run your account and the features you use: logging in, saving your profile, tracker, and resume, and showing them on any device you log in on.</li>
           <li>To send emails you ask for, like a password reset link (Supabase sends these).</li>
           <li>To keep the site secure and working, for example by finding and stopping misuse.</li>
         </ul>
@@ -118,7 +119,7 @@ const sections = [
           you go to the employer's own site, and their privacy policy applies there.
         </p>
         <p>
-          Employers on ScoutSearch can't see your tracker or your resume. We'd only share information if the
+          Employers on ScoutSearch can't see your profile, your tracker, or your resume. We'd only share information if the
           law requires it, for example a valid court order.
         </p>
       </>
@@ -143,7 +144,7 @@ const sections = [
     title: "How long we keep it",
     body: (
       <ul>
-        <li>Your account, tracker, and resume: until you delete your account. Deleting it removes your profile, tracker, and resume from our database right away.</li>
+        <li>Your account, profile, tracker, and resume: until you delete your account. Deleting it removes your profile, tracker, and resume from our database right away.</li>
         <li>Hosting logs: for as long as each hosting company keeps them (see their privacy policies above).</li>
         <li>What's saved in your browser: until you log out, delete your account, or clear this site's data (the <Link to="/cookie-policy">Cookie Policy</Link> says which is which).</li>
       </ul>
@@ -201,8 +202,8 @@ const sections = [
         <p>You can do most of this yourself, right away, on the <Link to="/settings#privacy">Settings page (Privacy &amp; data)</Link>:</p>
         <ul>
           <li><strong>See and take your information:</strong> "Download my data" gives you a file with everything saved with your account.</li>
-          <li><strong>Delete it:</strong> "Delete my account" deletes your account, tracker, and resume.</li>
-          <li><strong>Correct it:</strong> change your resume and tracker any time. To change your account's email, contact us.</li>
+          <li><strong>Delete it:</strong> "Delete my account" deletes your account, profile, tracker, and resume.</li>
+          <li><strong>Correct it:</strong> change your profile, resume, and tracker any time. To change your account's email, contact us.</li>
         </ul>
         <p>
           For anything else (for example, if you can't log in, you object to how we use your information, or

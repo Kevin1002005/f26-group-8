@@ -2,8 +2,12 @@
 // It's a student's profile on a job board: who you are at the top,
 // then the facts an employer needs when you apply (what you're looking for,
 // education, experience, projects, resume, skills).
-// Everything on it is made-up sample data for now, because the site
-// doesn't have a backend (server and database) hooked up to it yet.
+// It shows YOUR information, from two places:
+//   - your profile (data/profile.js): what you filled in on the welcome guide
+//     or Edit profile (name, school, headline, About, what you're looking for, skills)
+//   - your resume (resume-storage.js): your education, experience, and
+//     projects, so you only type them once, in the Resume builder
+// Anything you haven't filled in yet shows a short "add this" note instead.
 // The styles for this page are in index.css, under "Profile page".
 
 // The bar across the top of the page. It lives in its own file
@@ -11,107 +15,53 @@
 import NavBar from "../components/NavBar.jsx";
 // Link moves to another page of our site without reloading it
 import { Link } from "react-router";
-
-// ---------- Sample data ----------
-// These lists hold the made-up content shown on the page.
-// Later, this data would come from the backend instead.
+// useState remembers your resume. useEffect keeps it in step with your account
+import { useEffect, useState } from "react";
+// Your profile, and "Try again" for when the server can't be reached
+import { reloadProfile, useMyProfile } from "../data/profile.js";
+// Your resume: this browser's copy right away, then your account's
+import { loadResume, watchAccountResume } from "../resume-storage.js";
+// Your account's name (a fallback until your profile has one), and the
+// letters for the circle
+import { initialsFor, useCurrentUser } from "../use-current-user.js";
 
 // true = you're looking at your own profile (shows Edit profile, the Add
 // buttons, and the "Ready to apply?" checklist).
 // false = someone else's (shows Message and Connect instead).
-// Later, this would come from checking who's logged in.
-// It's up here, outside every function, so every piece of the page can use it
+// For now you can only see your own. It's up here, outside every function,
+// so every piece of the page can use it
 const isOwnProfile = true;
 
-// Who this profile belongs to. The name and initials are written once here
-// and used everywhere on the page (the header, the resume, the browser tab),
-// so they can never disagree. Later, this would come from the backend
-const person = {
-  name: "Roemer Mallari",
-  initials: "RMV",
-  pronouns: "he / him",
-};
+// ---------- Helpers ----------
 
-// How many connections you have (shown in the row under your name).
-// It's a number, not words, so the page can format it ("1,234") and
-// say "1 connection" instead of "1 connections"
-const connections = 222;
+// The Resume builder starts every section with one empty entry, so this keeps
+// only the entries that have something typed in at least one of "boxes"
+function filledIn(list, boxes) {
+  return list.filter((entry) => boxes.some((box) => entry[box].trim() !== ""));
+}
 
-// What you want next. An employer reads this first when you apply.
-// "roles" is a list because you can want more than one kind of job
-const lookingFor = {
-  roles: ["Internship", "Co-op"],
-  when: "Summer 2027",
-  where: "Boston, MA or remote",
-  pay: "Paid positions",
-};
+// The bullet points of a job or project: one per line, without blank lines
+function bulletsOf(entry) {
+  return entry.bullets
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+}
 
-// Your school, for the Education card
-const education = {
-  initials: "NU",
-  school: "Northeastern University",
-  attendance: "2026 - 2030",
-  major: "Computer Science & Business Administration",
-};
+// Resume links are often typed without "https://" ("github.com/you"). Without
+// it, the browser would treat the link as a page on OUR site
+function webAddress(link) {
+  return /^https?:\/\//i.test(link) ? link : "https://" + link;
+}
 
-// The jobs and clubs in the "Experience" card.
-// Each one has: a unique number (id), the letters for its square (initials),
-// the role (title), where (company), when (dates), and a sentence about it.
-const experiences = [
-  {
-    id: 1,
-    initials: "OA",
-    title: "Front End Developer",
-    company: "Oasis @ Northeastern",
-    dates: "Sep 2026 - Present",
-    description:
-      "Building the Profile, Feed, and Edit Profile pages of ScoutSearch in React.",
-  },
-  {
-    id: 2,
-    initials: "NF",
-    title: "Sabre Fencer",
-    company: "Northeastern Club Fencing",
-    dates: "Sep 2026 - Present",
-    description:
-      "Compete in sabre for the club team and train four days a week.",
-  },
-];
+// "2030" becomes "Class of 2030". Anything else ("Class of 2028", "Senior")
+// is shown the way you typed it
+function classYearText(classYear) {
+  return /^\d{4}$/.test(classYear) ? "Class of " + classYear : classYear;
+}
 
-// The things you've built. Each one gets a colored box on top with big
-// letters (badge), a kind of project (category), and one real number (stat).
-// "color" picks the box color: "blue", "dark", or "navy".
-// "link" is the web address the arrow button opens (Google for now, as a
-// stand-in until each project has its own page)
-const projects = [
-  {
-    id: 1,
-    badge: "SS",
-    category: "Web app",
-    color: "dark",
-    name: "ScoutSearch",
-    description:
-      "A job board that helps high school and college students find internships, co-ops, and research positions.",
-    stat: "8 pages",
-    link: "https://www.google.com",
-  },
-];
-
-// The skills in the "Skills" card.
-// This is a plain list of words, so there's no { } for each item
-const skills = ["React", "CSS", "Excel", "TypeScript"];
-
-// The "Ready to apply?" checklist. Each step is done (true) or not (false).
-// skills.length is how many skills are in the list, so the last step
-// checks itself: it's done once you have 5 or more skills
-const checklist = [
-  { id: 1, label: "Say what you're looking for", done: true },
-  { id: 2, label: "Add your education", done: true },
-  { id: 3, label: "Add an experience", done: experiences.length > 0 },
-  { id: 4, label: "Add a project", done: projects.length > 0 },
-  { id: 5, label: "Upload your resume", done: true },
-  { id: 6, label: "List 5 or more skills", done: skills.length >= 5 },
-];
+// The project tiles take turns between the three colors
+const tileColors = ["dark", "blue", "navy"];
 
 // ---------- Small icons ----------
 // Each icon is a tiny drawing (SVG) on a 24 by 24 grid.
@@ -224,8 +174,19 @@ function CheckIcon() {
 // Each function below is a component: one piece of the page.
 // The Profile component at the bottom puts all the pieces together.
 
-// The big box at the top: your picture, name, details, and buttons
-function ProfileHeader() {
+// The big box at the top: your picture, name, details, and buttons.
+// props.name and props.initials are worked out in Profile (below), and
+// props.profile is everything from your profile
+function ProfileHeader(props) {
+  const profile = props.profile;
+  // The facts in the row under your headline. .filter(Boolean) drops the
+  // ones you haven't filled in, so there's never an empty " · " between them
+  const facts = [
+    profile.city,
+    profile.school,
+    profile.classYear ? classYearText(profile.classYear) : "",
+  ].filter(Boolean);
+
   return (
     // "profile-header" is the box around everything below
     <div className="profile-header">
@@ -237,7 +198,7 @@ function ProfileHeader() {
           {/* Your initials stand in for a photo. Your name is right next
               to it, so screen readers skip the letters (WCAG) */}
           <div className="profile-avatar" aria-hidden="true">
-            {person.initials}
+            {props.initials}
           </div>
         </div>
 
@@ -246,45 +207,45 @@ function ProfileHeader() {
           {/* Your name with your pronouns next to it */}
           <div className="profile-name-row">
             {/* The page's one <h1> (WCAG) */}
-            <h1 className="profile-name">{person.name}</h1>
-            <span className="profile-pronouns">{person.pronouns}</span>
+            <h1 className="profile-name">{props.name}</h1>
+            {profile.pronouns && (
+              <span className="profile-pronouns">{profile.pronouns}</span>
+            )}
           </div>
 
-          {/* One sentence about you */}
-          <p className="profile-bio">
-            Computer Science & Business Administration student building tools
-            that help students find their first opportunity.
-          </p>
+          {/* Your headline: one sentence about you */}
+          {profile.headline && <p className="profile-bio">{profile.headline}</p>}
 
           {/* Where you are and where you go to school */}
-          <p className="profile-info">
-            {/* Map pin icon (decoration, WCAG) */}
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-              <circle cx="12" cy="10" r="3" />
-            </svg>
-            {/* Each piece is kept together with the dot after it, so when the
-                row wraps on a narrow screen, a line ends with a dot instead of
-                starting with one. The dots only separate the words, so screen
-                readers skip them */}
-            <span className="profile-info-item">
-              Torrance, CA<span aria-hidden="true"> ·</span>
-            </span>
-            <span className="profile-info-item">
-              Northeastern University<span aria-hidden="true"> ·</span>
-            </span>
-            <span className="profile-info-item">Class of 2030</span>
-          </p>
+          {facts.length > 0 && (
+            <p className="profile-info">
+              {/* Map pin icon (decoration, WCAG) */}
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              {/* Each piece is kept together with the dot after it, so when the
+                  row wraps on a narrow screen, a line ends with a dot instead of
+                  starting with one. The dots only separate the words, so screen
+                  readers skip them. The last piece has no dot */}
+              {facts.map((fact, index) => (
+                <span key={index} className="profile-info-item">
+                  {fact}
+                  {index < facts.length - 1 && <span aria-hidden="true"> ·</span>}
+                </span>
+              ))}
+            </p>
+          )}
         </div>
 
         {/* Column 3: the buttons on the right */}
@@ -347,16 +308,10 @@ function ProfileHeader() {
         </div>
       </div>
 
-      {/* The row along the bottom of the box: your connections, then links
-          that jump down to each card. <nav> tells screen readers it's a set
-          of links, and aria-label names it (WCAG) */}
+      {/* The row along the bottom of the box: links that jump down to each
+          card. <nav> tells screen readers it's a set of links, and
+          aria-label names it (WCAG) */}
       <nav className="profile-tabs" aria-label="Profile sections">
-        <p className="profile-connections">
-          {/* toLocaleString() adds commas to big numbers (1234 → "1,234").
-              "? :" picks "connection" for exactly 1, "connections" otherwise */}
-          <strong>{connections.toLocaleString()}</strong>{" "}
-          {connections === 1 ? "connection" : "connections"}
-        </p>
         {/* href="#education" jumps to the card with id="education" */}
         <a href="#education" className="profile-tab">
           Education
@@ -378,7 +333,7 @@ function ProfileHeader() {
 // A reusable card: a box with a title on top, an optional Add or Update
 // button next to the title, and whatever you put between its tags underneath.
 // "props" holds the info passed in. For example,
-// <ProfileSection id="education" title="Education" action="Add">
+// <ProfileSection id="education" title="Education" action="Add" to="/resume">
 // makes props.title equal "Education" and props.action equal "Add".
 // props.children is a special one: it's everything you put between
 // <ProfileSection> and </ProfileSection>. That's how one card can hold
@@ -394,16 +349,15 @@ function ProfileSection(props) {
         <h2 className="profile-card-title">{props.title}</h2>
 
         {/* Only on your own profile, and only if this card has an action.
-            It goes to the Edit profile page, where you can change this part.
             aria-label says the whole thing ("Add education") so screen
             readers can tell the Add buttons apart. It starts with the
             visible word, so voice control users can still say "Add" (WCAG) */}
         {isOwnProfile && props.action && (
-          // props.edit is the card to open on the Edit profile page, like
-          // "education" → /editprofile#education. Cards without one just
-          // open the top of the page
+          // props.to is the page where you change this part: Edit profile
+          // (like "/editprofile#skills", which opens its Skills card) or
+          // the Resume builder
           <Link
-            to={"/editprofile" + (props.edit ? "#" + props.edit : "")}
+            to={props.to}
             className="profile-card-action"
             aria-label={props.action + " " + props.title.toLowerCase()}
           >
@@ -422,57 +376,83 @@ function ProfileSection(props) {
 
 // "What I'm looking for": the facts an employer checks first.
 // <dl> is a "description list": pairs of a name (<dt>) and its answer (<dd>).
-// Screen readers read each pair together (WCAG)
-function LookingForCard() {
+// Screen readers read each pair together (WCAG).
+// Only the facts you've filled in are shown
+function LookingForCard(props) {
+  const lookingFor = props.lookingFor;
+  const isEmpty =
+    lookingFor.kinds.length === 0 && !lookingFor.when && !lookingFor.where && !lookingFor.paidOnly;
+
   return (
-    <ProfileSection title="What I'm looking for" action="Update">
-      <dl className="profile-facts">
-        <div className="profile-fact">
-          <dt className="profile-fact-name">Kind of job</dt>
-          <dd>
-            {/* One tag for each role in the list. The word itself is the key */}
-            <ul className="profile-tags">
-              {lookingFor.roles.map((role) => (
-                <li key={role} className="profile-tag">
-                  {role}
-                </li>
-              ))}
-            </ul>
-          </dd>
-        </div>
-        <div className="profile-fact">
-          <dt className="profile-fact-name">When</dt>
-          <dd className="profile-fact-answer">{lookingFor.when}</dd>
-        </div>
-        <div className="profile-fact">
-          <dt className="profile-fact-name">Where</dt>
-          <dd className="profile-fact-answer">{lookingFor.where}</dd>
-        </div>
-        <div className="profile-fact">
-          <dt className="profile-fact-name">Pay</dt>
-          <dd className="profile-fact-answer">{lookingFor.pay}</dd>
-        </div>
-      </dl>
+    <ProfileSection
+      title="What I'm looking for"
+      action={isEmpty ? "Add" : "Update"}
+      to="/editprofile#looking-for"
+    >
+      {isEmpty ? (
+        <p className="profile-empty">
+          Say what kind of position you want, and when.
+        </p>
+      ) : (
+        <dl className="profile-facts">
+          {lookingFor.kinds.length > 0 && (
+            <div className="profile-fact">
+              <dt className="profile-fact-name">Kind of job</dt>
+              <dd>
+                {/* One tag for each kind. The word itself is the key */}
+                <ul className="profile-tags">
+                  {lookingFor.kinds.map((kind) => (
+                    <li key={kind} className="profile-tag">
+                      {kind}
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          )}
+          {lookingFor.when && (
+            <div className="profile-fact">
+              <dt className="profile-fact-name">When</dt>
+              <dd className="profile-fact-answer">{lookingFor.when}</dd>
+            </div>
+          )}
+          {lookingFor.where && (
+            <div className="profile-fact">
+              <dt className="profile-fact-name">Where</dt>
+              <dd className="profile-fact-answer">{lookingFor.where}</dd>
+            </div>
+          )}
+          {lookingFor.paidOnly && (
+            <div className="profile-fact">
+              <dt className="profile-fact-name">Pay</dt>
+              <dd className="profile-fact-answer">Paid positions only</dd>
+            </div>
+          )}
+        </dl>
+      )}
     </ProfileSection>
   );
 }
 
-// "Ready to apply?": a checklist of what's done and what's left,
-// with one sky-blue button that takes you to finish it.
-// Only you see this card (see where it's used in Profile below)
-function ReadyChecklist() {
+// "Ready to apply?": a checklist of what's done and what's left, with one
+// button that takes you to the first thing left to do.
+// props.steps comes from Profile (below). Only you see this card
+function ReadyChecklist(props) {
+  const steps = props.steps;
+  // .find() gives the first step that isn't done (or undefined if they all are)
+  const nextStep = steps.find((step) => !step.done);
   // .filter() keeps only the steps that are done, and .length counts them
-  const doneCount = checklist.filter((step) => step.done).length;
+  const doneCount = steps.filter((step) => step.done).length;
 
   return (
     <ProfileSection title="Ready to apply?">
       {/* "5 of 6 done" */}
       <p className="profile-checklist-count">
-        {doneCount} of {checklist.length} done
+        {doneCount} of {steps.length} done
       </p>
 
       <ul className="profile-checklist">
-        {checklist.map((step) => (
+        {steps.map((step) => (
           // Done steps get an extra class, so the CSS can fill in the circle
           <li
             key={step.id}
@@ -495,8 +475,8 @@ function ReadyChecklist() {
       </ul>
 
       {/* The one next step. If everything is done, say so instead */}
-      {doneCount < checklist.length ? (
-        <Link to="/editprofile" className="profile-next-step">
+      {nextStep ? (
+        <Link to={nextStep.to} className="profile-next-step">
           Finish your profile
         </Link>
       ) : (
@@ -509,85 +489,111 @@ function ReadyChecklist() {
 }
 
 // The "About" card: a few sentences in your own words
-function AboutCard() {
-  return (
-    <ProfileSection title="About" action="Update" edit="about">
-      <p className="profile-about-text">
-        I'm a first-year student who likes building things people actually use.
-        Right now I'm learning React by helping build ScoutSearch, and I fence
-        sabre for the club team. I'm looking for a summer internship where I can
-        ship real features and learn from experienced engineers.
-      </p>
-    </ProfileSection>
-  );
-}
-
-// The Education card: your school's initials, the school and dates,
-// and your major in a column with a thin line on its left
-function EducationCard() {
+function AboutCard(props) {
   return (
     <ProfileSection
-      id="education"
-      title="Education"
-      action="Add"
-      edit="education"
+      title="About"
+      action={props.about ? "Update" : "Add"}
+      to="/editprofile#about"
     >
-      <div className="profile-education">
-        {/* The square with your school's initials (decoration, WCAG) */}
-        <div className="profile-logo" aria-hidden="true">
-          {education.initials}
-        </div>
-
-        {/* Your school and when you go there */}
-        <div>
-          <h3 className="profile-row-title">{education.school}</h3>
-          <p className="profile-row-date">{education.attendance}</p>
-        </div>
-
-        {/* Your major */}
-        <div className="profile-education-detail">
-          <p className="profile-education-label">Major</p>
-          <p className="profile-education-value">{education.major}</p>
-        </div>
-      </div>
+      {props.about ? (
+        <p className="profile-about-text">{props.about}</p>
+      ) : (
+        <p className="profile-empty">
+          Tell employers a little about yourself: what you study, and what you
+          want to do next.
+        </p>
+      )}
     </ProfileSection>
   );
 }
 
-// The Experience card: one row for each item in the experiences list.
+// The Education card: one row per school on your resume, each with the
+// school's initials, the school and dates, and the degree in a column with a
+// thin line on its left
+function EducationCard(props) {
+  return (
+    <ProfileSection id="education" title="Education" action="Add" to="/resume">
+      {props.education.length === 0 ? (
+        <p className="profile-empty">
+          Add your school in the Resume builder, and it shows up here.
+        </p>
+      ) : (
+        // <ul> because it's a list of schools (WCAG)
+        <ul className="profile-rows">
+          {props.education.map((school) => (
+            <li key={school.id} className="profile-education">
+              {/* The square with your school's initials (decoration, WCAG) */}
+              <div className="profile-logo" aria-hidden="true">
+                {initialsFor(school.school || school.degree)}
+              </div>
+
+              {/* Your school and when you go there */}
+              <div>
+                <h3 className="profile-row-title">{school.school}</h3>
+                {school.dates && (
+                  <p className="profile-row-date">{school.dates}</p>
+                )}
+              </div>
+
+              {/* Your degree */}
+              {school.degree && (
+                <div className="profile-education-detail">
+                  <p className="profile-education-label">Degree</p>
+                  <p className="profile-education-value">{school.degree}</p>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </ProfileSection>
+  );
+}
+
+// The Experience card: one row for each job on your resume.
 // It uses the same row look as Projects and Resume
-function ExperienceCard() {
+function ExperienceCard(props) {
   return (
     <ProfileSection
       id="experience"
       title="Work Experience"
       action="Add"
-      edit="experience"
+      to="/resume"
     >
       {/* If the list is empty, say so instead of showing a blank card.
           "? :" means "if ... then show this, otherwise show that" */}
-      {experiences.length === 0 ? (
+      {props.experience.length === 0 ? (
         <p className="profile-empty">
-          {isOwnProfile
-            ? "Add a job, club, team, or volunteer role. It all counts."
-            : "No experience listed yet."}
+          Add a job, club, team, or volunteer role in the Resume builder. It
+          all counts.
         </p>
       ) : (
         /* <ul> because it's a list of jobs (WCAG).
            "profile-experience" adds a line above the first row */
         <ul className="profile-rows profile-experience">
-          {experiences.map((experience) => (
-            <li key={experience.id} className="profile-row">
+          {props.experience.map((job) => (
+            <li key={job.id} className="profile-row">
               {/* The square with the group's initials (decoration, WCAG) */}
               <div className="profile-logo" aria-hidden="true">
-                {experience.initials}
+                {initialsFor(job.organization || job.role)}
               </div>
               <div>
                 {/* <h3> is one level under the card's <h2> (WCAG) */}
-                <h3 className="profile-row-title">{experience.title}</h3>
-                <p className="profile-row-subtitle">{experience.company}</p>
-                <p className="profile-row-date">{experience.dates}</p>
-                <p className="profile-row-text">{experience.description}</p>
+                <h3 className="profile-row-title">{job.role || job.organization}</h3>
+                {job.role && job.organization && (
+                  <p className="profile-row-subtitle">{job.organization}</p>
+                )}
+                {job.dates && <p className="profile-row-date">{job.dates}</p>}
+                {/* What you did, one bullet point per line on your resume */}
+                {bulletsOf(job).length > 0 && (
+                  <ul className="profile-row-bullets">
+                    {/* "place" (0, 1, 2...) is the key: two lines could be the same */}
+                    {bulletsOf(job).map((line, place) => (
+                      <li key={place}>{line}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </li>
           ))}
@@ -619,24 +625,23 @@ function resetTilt(event) {
   event.currentTarget.style.removeProperty("--tilt-y");
 }
 
-// The Projects card: one tile for each project, side by side.
-// Each tile has a colored box on top, then the name, a sentence about it,
-// and a row with one number and an arrow button that opens the project.
-// The whole tile is clickable: the CSS stretches the arrow's link over it
-function ProjectsCard() {
+// The Projects card: one tile for each project on your resume, side by side.
+// Each tile has a colored box on top, then the name, its first bullet point,
+// and a row with its dates and (if it has a link) an arrow button that opens it.
+// The whole tile is clickable then: the CSS stretches the arrow's link over it
+function ProjectsCard(props) {
   return (
-    <ProfileSection id="projects" title="Projects" action="Add" edit="projects">
+    <ProfileSection id="projects" title="Projects" action="Add" to="/resume">
       {/* If the list is empty, say so instead of showing a blank card */}
-      {projects.length === 0 ? (
+      {props.projects.length === 0 ? (
         <p className="profile-empty">
-          {isOwnProfile
-            ? "Add something you've built, for class or for fun."
-            : "No projects listed yet."}
+          Add something you've built, for class or for fun, in the Resume
+          builder.
         </p>
       ) : (
         // <ul> because it's a list of projects (WCAG)
         <ul className="profile-projects">
-          {projects.map((project) => (
+          {props.projects.map((project, index) => (
             <li
               key={project.id}
               className="profile-project"
@@ -645,19 +650,21 @@ function ProjectsCard() {
               onPointerCancel={resetTilt}
             >
               {/* The colored box on top. "profile-project-top-dark" (or -blue,
-                  -navy) picks its color from project.color */}
+                  -navy) picks its color. "%" (remainder) goes 0, 1, 2, 0, 1, 2...
+                  so the tiles take turns */}
               <div
                 className={
-                  "profile-project-top profile-project-top-" + project.color
+                  "profile-project-top profile-project-top-" +
+                  tileColors[index % tileColors.length]
                 }
               >
                 {/* The big letters are decoration; the name below says the
                     same thing, so screen readers skip them (WCAG) */}
                 <span className="profile-project-badge" aria-hidden="true">
-                  {project.badge}
+                  {initialsFor(project.name)}
                 </span>
                 <span className="profile-project-category">
-                  {project.category}
+                  {project.context || "Project"}
                 </span>
               </div>
 
@@ -665,28 +672,30 @@ function ProjectsCard() {
               <div className="profile-project-body">
                 {/* <h3> is one level under the card's <h2> (WCAG) */}
                 <h3 className="profile-project-name">{project.name}</h3>
-                <p className="profile-project-text">{project.description}</p>
+                {bulletsOf(project).length > 0 && (
+                  <p className="profile-project-text">{bulletsOf(project)[0]}</p>
+                )}
 
-                {/* The bottom row: the number on the left, the arrow on the right */}
+                {/* The bottom row: the dates on the left, the arrow on the right */}
                 <div className="profile-project-footer">
-                  <p className="profile-project-stat">{project.stat}</p>
+                  <p className="profile-project-stat">{project.dates}</p>
                   {/* The arrow opens the project in a new tab. The CSS stretches
                       it over the whole tile, so clicking anywhere on the tile works.
                       target="_blank" opens a new tab, and rel="noreferrer" is a
                       safety setting for links to other websites.
                       It has no words, so aria-label says what it does,
                       including that it opens a new tab (WCAG) */}
-                  <a
-                    href={project.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="profile-project-link"
-                    aria-label={
-                      "View " + project.name + " (opens in a new tab)"
-                    }
-                  >
-                    <ArrowIcon />
-                  </a>
+                  {project.link && (
+                    <a
+                      href={webAddress(project.link)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="profile-project-link"
+                      aria-label={"View " + project.name + " (opens in a new tab)"}
+                    >
+                      <ArrowIcon />
+                    </a>
+                  )}
                 </div>
               </div>
             </li>
@@ -697,53 +706,59 @@ function ProjectsCard() {
   );
 }
 
-// The Resume card: the file and when it was last updated.
-// Employers get your resume when you apply, so there's no Download button
-// here yet. You can update it from the Edit profile page
-function ResumeCard() {
+// The Resume card: a link to your resume in the Resume builder, where you
+// can change it or save it as a PDF
+function ResumeCard(props) {
   return (
-    <ProfileSection id="resume" title="Resume" action="Update" edit="resume">
-      <div className="profile-row">
-        {/* The square with the file icon (decoration, WCAG) */}
-        <div className="profile-logo" aria-hidden="true">
-          <FileIcon />
+    <ProfileSection
+      id="resume"
+      title="Resume"
+      action={props.hasResume ? "Update" : "Add"}
+      to="/resume"
+    >
+      {props.hasResume ? (
+        <div className="profile-row">
+          {/* The square with the file icon (decoration, WCAG) */}
+          <div className="profile-logo" aria-hidden="true">
+            <FileIcon />
+          </div>
+          <div>
+            <h3 className="profile-row-title">
+              <Link to="/resume" className="profile-resume-link">
+                {props.title}
+                {/* The small arrow after the name (decoration, WCAG) */}
+                <ArrowIcon />
+              </Link>
+            </h3>
+            <p className="profile-row-date">
+              Change it, or save it as a PDF, in the Resume builder
+            </p>
+          </div>
         </div>
-        <div>
-          <h3 className="profile-row-title">
-            {/* The resume's name is a link. It goes to Google for now, as a
-                stand-in until the real file is uploaded. target="_blank"
-                opens a new tab, and rel="noreferrer" is a safety setting
-                for links to other websites */}
-            <a
-              href="https://www.google.com"
-              target="_blank"
-              rel="noreferrer"
-              className="profile-resume-link"
-            >
-              {person.name} - Resume
-              {/* The small arrow after the name (decoration, WCAG) */}
-              <ArrowIcon />
-              {/* Screen readers hear that it opens a new tab (WCAG) */}
-              <span className="sr-only"> (opens in a new tab)</span>
-            </a>
-          </h3>
-          <p className="profile-row-date">PDF · Updated Oct 2026</p>
-        </div>
-      </div>
+      ) : (
+        <p className="profile-empty">
+          Build your resume once, and it fills in your education, experience,
+          and projects here too.
+        </p>
+      )}
     </ProfileSection>
   );
 }
 
 // The Skills card: one tag for each skill
-function SkillsCard() {
+function SkillsCard(props) {
   return (
-    <ProfileSection title="Skills" action="Add" edit="skills">
+    <ProfileSection
+      title="Skills"
+      action="Add"
+      to="/editprofile#skills"
+    >
       {/* If the list is empty, say so instead of showing a blank card */}
-      {skills.length === 0 ? (
+      {props.skills.length === 0 ? (
         <p className="profile-empty">No skills listed yet.</p>
       ) : (
         <ul className="profile-tags">
-          {skills.map((skill) => (
+          {props.skills.map((skill) => (
             <li key={skill} className="profile-tag">
               {skill}
             </li>
@@ -756,6 +771,43 @@ function SkillsCard() {
 
 // Profile is the whole page. It puts all the pieces above together.
 function Profile() {
+  const profile = useMyProfile();
+  const me = useCurrentUser();
+  const data = profile.data;
+
+  // Your resume: this browser's copy right away (or null if you haven't
+  // made one), then your account's copy if it's different
+  const [resume, setResume] = useState(() => loadResume());
+  // watchAccountResume gives back its own clean-up, so useEffect can stop it
+  useEffect(() => watchAccountResume(setResume), []);
+
+  // Only the parts of the resume that have something typed in
+  const education = resume ? filledIn(resume.education, ["school", "degree"]) : [];
+  const experience = resume ? filledIn(resume.experience, ["role", "organization"]) : [];
+  const projects = resume ? filledIn(resume.projects, ["name"]) : [];
+  const hasResume =
+    resume !== null &&
+    (education.length > 0 ||
+      experience.length > 0 ||
+      projects.length > 0 ||
+      Object.values(resume.contact).some((box) => box.trim() !== ""));
+
+  // Your name: from your profile, or your account until you've saved one
+  const realName = data.name || me.name;
+  const name = realName || "Your profile";
+  const initials = initialsFor(realName || me.email);
+
+  // The "Ready to apply?" checklist. Each step is done (true) or not (false),
+  // and "to" is where you go to do it
+  const checklist = [
+    { id: 1, label: "Say what you're looking for", done: data.lookingFor.kinds.length > 0, to: "/editprofile#looking-for" },
+    { id: 2, label: "Write a short About", done: data.about.trim() !== "", to: "/editprofile#about" },
+    { id: 3, label: "Add your education", done: education.length > 0, to: "/resume" },
+    { id: 4, label: "Add an experience", done: experience.length > 0, to: "/resume" },
+    { id: 5, label: "Add a project", done: projects.length > 0, to: "/resume" },
+    { id: 6, label: "List 5 or more skills", done: data.skills.length >= 5, to: "/editprofile#skills" },
+  ];
+
   return (
     // <> </> is a "fragment": an invisible wrapper that groups
     // the top bar and the page together
@@ -763,7 +815,7 @@ function Profile() {
       {/* The name on the browser tab. React puts <title> in the right place
           for you. It helps people with many tabs open, and screen readers
           read it first (WCAG) */}
-      <title>{person.name + " | ScoutSearch"}</title>
+      <title>{name + " | ScoutSearch"}</title>
 
       {/* The top bar (from components/NavBar.jsx) */}
       <NavBar />
@@ -771,25 +823,53 @@ function Profile() {
           "profile-page" splits it into the 2 columns */}
       <main className="profile-page">
         {/* The big box at the top. It stretches across both columns */}
-        <ProfileHeader />
+        <ProfileHeader name={name} initials={initials} profile={data} />
 
-        {/* Left column (the wide one): your story, top to bottom */}
-        <div className="profile-main">
-          <AboutCard />
-          <EducationCard />
-          <ProjectsCard />
-          <ExperienceCard />
-          <ResumeCard />
-        </div>
+        {profile.known ? (
+          <>
+            {/* Left column (the wide one): your story, top to bottom */}
+            <div className="profile-main">
+              <AboutCard about={data.about} />
+              <EducationCard education={education} />
+              <ProjectsCard projects={projects} />
+              <ExperienceCard experience={experience} />
+              <ResumeCard
+                hasResume={hasResume}
+                title={realName ? realName + " - Resume" : "Your resume"}
+              />
+            </div>
 
-        {/* Right column (the thin one): the quick facts for applying.
-            <aside> means side content */}
-        <aside className="profile-side">
-          <LookingForCard />
-          {/* Only you see your checklist */}
-          {isOwnProfile && <ReadyChecklist />}
-          <SkillsCard />
-        </aside>
+            {/* Right column (the thin one): the quick facts for applying.
+                <aside> means side content */}
+            <aside className="profile-side">
+              <LookingForCard lookingFor={data.lookingFor} />
+              {/* Only you see your checklist */}
+              {isOwnProfile && <ReadyChecklist steps={checklist} />}
+              <SkillsCard skills={data.skills} />
+            </aside>
+          </>
+        ) : (
+          // The first time on this browser, until the server answers.
+          // role="status" lets screen readers hear it (WCAG)
+          <div className="profile-main" role="status">
+            {profile.state === "offline" ? (
+              <>
+                <p className="profile-empty">
+                  Couldn't load your profile. Check your internet and try again.
+                </p>
+                <button
+                  type="button"
+                  className="profile-btn-primary profile-try-again"
+                  onClick={reloadProfile}
+                >
+                  Try again
+                </button>
+              </>
+            ) : (
+              <p className="profile-empty">Loading your profile...</p>
+            )}
+          </div>
+        )}
       </main>
     </>
   );

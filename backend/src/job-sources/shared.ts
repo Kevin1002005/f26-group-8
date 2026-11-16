@@ -21,6 +21,7 @@ export type ImportedJob = {
   description: string | null;   // plain text, never HTML
   requirements: string[];
   apply_url: string;            // the original posting, so students apply on the real site
+  posted_at: string | null;     // when the company posted it (an ISO time, from toTime), or null
 };
 
 // what each source's fetch function hands back to import-jobs.ts.
@@ -82,6 +83,20 @@ export function toDate(value: unknown): string | null {
   if (!match || match[0].startsWith('0000')) return null;
   const day = new Date(`${match[0]}T00:00:00Z`);
   return !Number.isNaN(day.getTime()) && day.toISOString().startsWith(match[0]) ? match[0] : null;
+}
+
+// when the company posted a job, as an ISO time like "2026-09-09T14:50:29.000Z", or null.
+// Greenhouse and JSearch send text ("2026-09-09T10:50:29-04:00"); Lever sends a number
+// (milliseconds since 1970). Anything that isn't a real time, or is far off (before 2000, or
+// more than a day from now), becomes null, so one odd value can't stop the save or make
+// the Opportunities page say "Posted in 2099"
+export function toTime(value: unknown): string | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const time = new Date(value);
+  const ms = time.getTime();
+  if (Number.isNaN(ms) || ms < Date.UTC(2000, 0, 1) || ms > Date.now() + 24 * 60 * 60 * 1000) return null;
+  return time.toISOString();
 }
 
 
@@ -300,6 +315,9 @@ export function mergeSimilarJobs(jobs: ImportedJob[]): ImportedJob[] {
       pay_text: group.find((job) => job.pay_text)?.pay_text ?? null,
       deadline: group.find((job) => job.deadline)?.deadline ?? null,
       description: group.find((job) => job.description)?.description ?? null,
+      // the earliest copy is when the job was first posted. ISO times in the same
+      // format sort by text, so .sort() puts the earliest first
+      posted_at: group.map((job) => job.posted_at).filter((t): t is string => !!t).sort()[0] ?? null,
     };
   });
 }

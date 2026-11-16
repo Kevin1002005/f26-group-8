@@ -85,6 +85,10 @@ function toOpportunity(job) {
     requirements: job.requirements,
     applyUrl: job.apply_url, // the original posting; Apply opens it
     source: sourceNames[job.source] ?? job.source,
+    // When the company posted it (an ISO time), or null if its job site didn't say.
+    // addedAt is when ScoutSearch first saved it, shown only when postedAt is missing
+    postedAt: job.posted_at ?? null,
+    addedAt: job.created_at ?? null,
   };
 }
 
@@ -103,6 +107,31 @@ async function fetchOpportunities() {
 // The "T00:00" means midnight, so the date doesn't slip back a day in some time zones.
 function formatDate(date, options) {
   return new Date(date + "T00:00").toLocaleDateString("en-US", options);
+}
+
+// How long ago a time was, in words: "today", "yesterday", "3 days ago",
+// "2 weeks ago", "4 months ago", or "over a year ago". It counts calendar days
+// where you are, so a job posted at 11pm last night says "yesterday".
+// Math.round handles the days that are 23 or 25 hours long (clocks changing)
+function timeAgo(time) {
+  const dayOf = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const days = Math.round((dayOf(new Date()) - dayOf(new Date(time))) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return days + " days ago";
+  if (days < 30) return Math.floor(days / 7) === 1 ? "1 week ago" : Math.floor(days / 7) + " weeks ago";
+  if (days < 365) return Math.floor(days / 30) === 1 ? "1 month ago" : Math.floor(days / 30) + " months ago";
+  return "over a year ago";
+}
+
+// When an opportunity was posted, for its row and its pop-up:
+// { label: "Posted", time } from the company's job site, or, if the site didn't
+// say, { label: "Added to ScoutSearch", time } (when we found it), so it never
+// claims a job is newer than it is. null if neither is known
+function postedOf(opportunity) {
+  if (opportunity.postedAt) return { label: "Posted", time: opportunity.postedAt };
+  if (opportunity.addedAt) return { label: "Added to ScoutSearch", time: opportunity.addedAt };
+  return null;
 }
 
 // Puts opportunities in order of deadline, soonest first.
@@ -376,6 +405,8 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApp
   const titleId = "discovery-dialog-title-" + opportunity.id;
   // true once the deadline has gone by: Apply then turns off (see the bottom)
   const closed = isPastDeadline(opportunity.deadline);
+  // When it was posted (see postedOf above)
+  const posted = postedOf(opportunity);
 
   // Clicking the dark area around the pop-up closes it. The <dialog> has no
   // padding of its own, so a click whose target is the <dialog> itself (not
@@ -427,9 +458,21 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApp
         {/* The quick facts, as labels and values (dl = description list).
             Real jobs often leave pay or a deadline out, so each one only shows
             when the job has it. "&&" means: only draw the part on the right if
-            the left side is there. The whole list is left out if both are missing. */}
-        {(opportunity.pay || opportunity.deadline) && (
+            the left side is there. The whole list is left out if all are missing. */}
+        {(posted || opportunity.pay || opportunity.deadline) && (
           <dl className="discovery-dialog-facts-grid">
+            {/* "Posted Nov 3, 2026" with "2 weeks ago" under it */}
+            {posted && (
+              <div>
+                <dt>{posted.label}</dt>
+                <dd>
+                  <time dateTime={posted.time}>
+                    {new Date(posted.time).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </time>
+                  <span className="discovery-dialog-ago">{timeAgo(posted.time)}</span>
+                </dd>
+              </div>
+            )}
             {opportunity.pay && (
               <div>
                 <dt>Pay</dt>
@@ -547,6 +590,8 @@ const typeTagClass = {
 function OpportunityRow(props) {
   // A shorter name, so we can write opportunity.title instead of props.opportunity.title.
   const opportunity = props.opportunity;
+  // When it was posted (see postedOf near the top of this file)
+  const posted = postedOf(opportunity);
 
   // The Save button (on/off) is "on" while this job is on the Application
   // tracker. It reads the tracker's list instead of remembering its own, so it
@@ -568,6 +613,7 @@ function OpportunityRow(props) {
       organization: opportunity.organization,
       deadline: opportunity.deadline,
       initials: opportunity.initials,
+      link: opportunity.applyUrl ?? null,
     });
     setApplied(true);
   }
@@ -588,6 +634,7 @@ function OpportunityRow(props) {
         organization: opportunity.organization,
         deadline: opportunity.deadline,
         initials: opportunity.initials,
+        link: opportunity.applyUrl ?? null,
       });
     }
     // (No more to do: the list changed, so this button and "On your tracker"
@@ -643,6 +690,12 @@ function OpportunityRow(props) {
             <span className="discovery-role-org">
               {opportunity.organization} · via {opportunity.source}
             </span>
+            {/* "Posted 3 days ago". <time> holds the exact time for computers */}
+            {posted && (
+              <span className="discovery-role-posted">
+                {posted.label} <time dateTime={posted.time}>{timeAgo(posted.time)}</time>
+              </span>
+            )}
           </span>
         </span>
       </td>

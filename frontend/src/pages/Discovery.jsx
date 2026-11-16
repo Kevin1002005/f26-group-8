@@ -32,10 +32,13 @@ import NavBar from "../components/NavBar.jsx";
 import { api } from "../api.js";
 // isPastDeadline says if a job's deadline has gone by (it then says "Closed").
 // (The made-up example jobs in that file are still used by the Feed page.)
-import { isPastDeadline } from "../data/opportunities.js";
-// The helpers that add a job to (or take it off) the Application tracker, and
-// trackerJob, which finds the job behind each saved item. See src/data/tracker.js.
-import { addToTracker, isOnTracker, loadTracker, removeFromTracker, trackerJob } from "../data/tracker.js";
+// isDueWithin says if it's due in the next few days, and initialsOf makes the "GL" for a logo.
+import { initialsOf, isDueWithin, isPastDeadline } from "../data/opportunities.js";
+// The Application tracker's list, saved with your account (src/data/tracker.js):
+// the helpers that add a job to it (or take it off, or mark it applied), useTrackerItems (the list,
+// redrawing the page when it changes), useTrackerSync (syncs with your account
+// when the page opens), and trackerJob, which finds the job behind each saved item.
+import { addToTracker, markApplied, removeFromTracker, trackerJob, useTrackerItems, useTrackerSync } from "../data/tracker.js";
 
 // The tabs across the page. "All" shows everything; the rest match the
 // "type" of each opportunity (the same four types the database allows).
@@ -70,12 +73,7 @@ function toOpportunity(job) {
   return {
     id: job.id,
     // "Greenline Labs" -> "GL", for the square logo
-    initials: job.organization
-      .split(/\s+/)
-      .map((word) => word[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase(),
+    initials: initialsOf(job.organization),
     title: job.title,
     organization: job.organization,
     type: typeNames[job.type],
@@ -365,13 +363,15 @@ function CloseIcon() {
 //                      (In React 19, "ref" can be passed in like any other prop.)
 //   saved, toggleSave  the same Save on/off as the row's button, and the
 //                      function that flips it (and updates the tracker)
+//   applied, onApply   true once Apply was pressed, and what Apply runs (it
+//                      moves the job to Submitted on the tracker)
 //
-// { opportunity, ref, saved, toggleSave } below "unpacks" the props: it's a
+// { opportunity, ref, saved, ... } below "unpacks" the props: it's a
 // shorter way of writing props.opportunity, props.ref, and so on. It's
 // needed here because React's rules check that a ref is never read while
 // the page is being drawn, and keeping it separate from the other props
 // makes that clear.
-function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
+function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApply }) {
   // A unique id for the title, so the dialog can be named by it (WCAG)
   const titleId = "discovery-dialog-title-" + opportunity.id;
   // true once the deadline has gone by: Apply then turns off (see the bottom)
@@ -477,7 +477,15 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
       {/* The bottom: a note on the left, Save and Apply on the right.
           It stays put while the middle scrolls. */}
       <div className="discovery-dialog-bottom">
-        <p className="discovery-dialog-message">You'll apply on {opportunity.organization}'s own site.</p>
+        {/* After Apply, it says where the job went on your tracker. role="status"
+            makes screen readers read that out (WCAG). It's inside the pop-up
+            because while it's open, the page behind it is shut off, and screen
+            readers don't hear messages from there */}
+        <p className="discovery-dialog-message" role="status">
+          {applied
+            ? "Moved to Submitted on My applications. (Didn't send it? Move it back there.)"
+            : "You'll apply on " + opportunity.organization + "'s own site."}
+        </p>
         <div className="discovery-actions">
           {/* aria-label starts with the word you see ("Save" or "Saved"),
               so voice control users can say what's on the button (WCAG) */}
@@ -511,6 +519,8 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
                 rel="noopener noreferrer"
                 className="discovery-solid-button"
                 aria-label={"Apply to " + opportunity.title + " (opens in a new tab)"}
+                // the posting opens, and the job goes in Submitted on your tracker
+                onClick={onApply}
               >
                 Apply
                 <ArrowIcon />
@@ -521,16 +531,6 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
       </div>
     </dialog>
   );
-}
-
-// True if a deadline is within the next "days" days (and not already past).
-// Used for the "Due soon" tag (7 days) and the summary box (14 days).
-// A job with no deadline (null) is never "due".
-// 1000 * 60 * 60 * 24 is the number of milliseconds in one day.
-function isDueWithin(deadline, days) {
-  if (!deadline) return false;
-  const msLeft = new Date(deadline + "T23:59") - new Date();
-  return msLeft >= 0 && msLeft <= days * 1000 * 60 * 60 * 24;
 }
 
 // The colored tag for each kind of job. Each kind has its own color, and
@@ -548,22 +548,41 @@ function OpportunityRow(props) {
   // A shorter name, so we can write opportunity.title instead of props.opportunity.title.
   const opportunity = props.opportunity;
 
-  // Each row remembers its own Save button (on/off), like Feed's Like button.
+  // The Save button (on/off) is "on" while this job is on the Application
+  // tracker. It reads the tracker's list instead of remembering its own, so it
+  // stays right when the list changes some other way: your account's list
+  // arriving (a job you saved on another device), or Save in another tab.
   // The pop-up uses the same one, so saving in either place saves both.
-  // It starts as "on" if this job is already on the Application tracker, so
-  // a job you saved before still says "Saved" when you come back.
-  // (useState(() => ...) runs that check only once, when the row first appears.)
-  const [saved, setSaved] = useState(() => isOnTracker(opportunity.id));
+  const trackerItems = useTrackerItems();
+  const saved = trackerItems.some((item) => item.id === opportunity.id);
+  // What screen readers hear after Save is pressed (see the end of the row)
+  const [announcement, setAnnouncement] = useState("");
+  // true once Apply was pressed in the pop-up (it then says where the job went)
+  const [applied, setApplied] = useState(false);
+
+  // Apply was pressed: the posting opens in a new tab (the link does that),
+  // and the job goes in the tracker's "Submitted" column, saved or not
+  function apply() {
+    markApplied(opportunity.id, {
+      title: opportunity.title,
+      organization: opportunity.organization,
+      deadline: opportunity.deadline,
+      initials: opportunity.initials,
+    });
+    setApplied(true);
+  }
 
   // Runs when Save is pressed, in the row or in the pop-up.
   // Saving puts the job in the tracker's "Saved" column; pressing again
-  // ("Saved") takes it off the tracker.
-  // The title, company, deadline, and initials are saved with it, because the
-  // Application tracker page can't look real jobs up anywhere else yet
+  // ("Saved") takes it off the tracker. Either way, it's saved to your account.
+  // The title, company, deadline, and initials are kept with it, so the
+  // tracker can show the job right away (and when the server can't be reached)
   function toggleSave() {
     if (saved) {
       removeFromTracker(opportunity.id);
+      setAnnouncement("");
     } else {
+      setAnnouncement("Saved to My applications.");
       addToTracker(opportunity.id, {
         title: opportunity.title,
         organization: opportunity.organization,
@@ -571,10 +590,8 @@ function OpportunityRow(props) {
         initials: opportunity.initials,
       });
     }
-    setSaved(!saved);
-    // Tells the Discovery page, so "On your tracker" at the top updates
-    // right away (not only after a refresh)
-    props.onSaveChange();
+    // (No more to do: the list changed, so this button and "On your tracker"
+    // at the top redraw by themselves)
   }
   // A reference to this row's pop-up, so "View" can open it
   const dialogRef = useRef(null);
@@ -695,13 +712,22 @@ function OpportunityRow(props) {
           </button>
         </span>
 
-        {/* Hidden on screen. Screen readers hear it when Save is pressed (WCAG) */}
+        {/* Hidden on screen. Screen readers hear it when Save is pressed (WCAG).
+            Only then: not when "saved" changes by itself (your account's list
+            arriving would otherwise make every saved row speak at once) */}
         <span className="sr-only" role="status">
-          {saved ? "Saved to My applications." : ""}
+          {announcement}
         </span>
 
         {/* The pop-up. It's on the page all the time but hidden until it's opened. */}
-        <OpportunityDialog opportunity={opportunity} ref={dialogRef} saved={saved} toggleSave={toggleSave} />
+        <OpportunityDialog
+          opportunity={opportunity}
+          ref={dialogRef}
+          saved={saved}
+          toggleSave={toggleSave}
+          applied={applied}
+          onApply={apply}
+        />
       </td>
     </tr>
   );
@@ -789,8 +815,6 @@ function ResultsSection(props) {
                   // true only for the job the Feed page linked to (see Discovery below)
                   openOnArrival={opportunity.id === props.openJobId}
                   onOpened={props.onOpened}
-                  // runs after Save is pressed (see Discovery below)
-                  onSaveChange={props.onSaveChange}
                 />
               ))}
             </tbody>
@@ -819,12 +843,6 @@ function ProfileTip() {
       </Link>
     </p>
   );
-}
-
-// How many items on the tracker have a job behind them (trackerJob), so the
-// number at the top matches what the Application tracker page shows
-function trackerTotal() {
-  return loadTracker().filter((item) => trackerJob(item)).length;
 }
 
 // Discovery is the whole page. It puts the pieces above together, and it
@@ -914,14 +932,14 @@ function Discovery() {
   // next 2 weeks (soonest first), and how many jobs are on your tracker.
   const openCount = opportunities.filter((o) => !isPastDeadline(o.deadline)).length;
   const dueSoon = sortByDeadline(opportunities.filter((o) => isDueWithin(o.deadline, 14)));
-  // The tracker count is state, so the page redraws when it changes. Each row's
-  // Save button runs updateTrackerCount (through ResultsSection) after saving.
-  // Before, it was only read when the page opened, so it stayed at the old
-  // number until a refresh
-  const [trackerCount, setTrackerCount] = useState(trackerTotal);
-  function updateTrackerCount() {
-    setTrackerCount(trackerTotal());
-  }
+  // The tracker count: how many items on the tracker have a job behind them
+  // (trackerJob), so it matches what the Application tracker page shows.
+  // useTrackerItems redraws the page whenever the list changes (a Save, or
+  // your account's list arriving), so the number is always up to date.
+  // useTrackerSync syncs with your account when the page opens
+  const trackerItems = useTrackerItems();
+  useTrackerSync();
+  const trackerCount = trackerItems.filter((item) => trackerJob(item)).length;
 
   // Of the ones that pass the search, keep only the picked tab's:
   // "All" is picked, or its type is the picked one ("||" means "or")
@@ -979,7 +997,6 @@ function Discovery() {
           showAll={showAll}
           openJobId={openJobId}
           onOpened={clearOpenJob}
-          onSaveChange={updateTrackerCount}
         />
 
         <ProfileTip />

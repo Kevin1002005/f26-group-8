@@ -19,11 +19,13 @@ import { Link } from "react-router";
 // The jobs, for the listing posts and the right column. They're the same list
 // as the Discovery page uses (src/data/opportunities.js), so clicking one can
 // open that exact job there. isPastDeadline says if a job's deadline has gone by.
-import { isPastDeadline, opportunities } from "../data/opportunities.js";
+import { isDueWithin, isPastDeadline, opportunities } from "../data/opportunities.js";
 // The Application tracker's list (src/data/tracker.js): Save on a listing post
 // adds the job to it, and "Due soon" reads it (trackerJob finds each item's job,
 // real or example)
-import { addToTracker, isOnTracker, loadTracker, removeFromTracker, trackerJob } from "../data/tracker.js";
+// useTrackerItems gives the list and redraws when it changes (a Save, or your
+// account's list arriving); useTrackerSync syncs with your account when the page opens
+import { addToTracker, removeFromTracker, trackerJob, useTrackerItems, useTrackerSync } from "../data/tracker.js";
 // Who is logged in (src/use-current-user.js), so your own posts and comments
 // show your name instead of the made-up example person
 import { useCurrentUser } from "../use-current-user.js";
@@ -699,13 +701,6 @@ function shortDate(date) {
   return new Date(date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// True if a deadline is in the next "days" days (and not already past).
-// 1000 * 60 * 60 * 24 is the number of milliseconds in one day.
-function isDueWithin(deadline, days) {
-  const msLeft = new Date(deadline + "T23:59") - new Date();
-  return msLeft >= 0 && msLeft <= days * 1000 * 60 * 60 * 24;
-}
-
 // The colored tag for each kind of job (the same colors as the Opportunities page)
 const jobTagClass = {
   Internship: "feed-kind-tag feed-kind-tag-purple",
@@ -722,18 +717,22 @@ function ListingPost(props) {
   const job = opportunities.find((item) => item.id === props.post.jobId);
 
   // Save, the same on/off as the Opportunities page: it adds the job to (or
-  // takes it off) the Application tracker. It starts "on" if it's already there
-  const [saved, setSaved] = useState(() => isOnTracker(job.id));
+  // takes it off) the Application tracker. It's "on" while the job is there,
+  // read from the tracker's list, so it's right on any device
+  const trackerItems = useTrackerItems();
+  const saved = trackerItems.some((item) => item.id === job.id);
+  // What screen readers hear after Save is pressed (see the end of the post)
+  const [announcement, setAnnouncement] = useState("");
 
+  // The list changes, so this button and the "Due soon" box redraw by themselves
   function toggleSave() {
     if (saved) {
       removeFromTracker(job.id);
+      setAnnouncement("");
     } else {
       addToTracker(job.id);
+      setAnnouncement("Saved to My applications.");
     }
-    setSaved(!saved);
-    // Tells the Feed page, so the "Due soon" box updates right away
-    props.onSaveChange();
   }
 
   return (
@@ -799,9 +798,10 @@ function ListingPost(props) {
               <span aria-hidden="true"> →</span>
             </Link>
           </div>
-          {/* Hidden on screen. Screen readers hear it when Save is pressed (WCAG) */}
+          {/* Hidden on screen. Screen readers hear it when Save is pressed (WCAG).
+              Only then: not when "saved" changes because your account's list arrived */}
           <p className="sr-only" role="status">
-            {saved ? "Saved to My applications." : ""}
+            {announcement}
           </p>
         </div>
       </div>
@@ -966,13 +966,11 @@ function Feed() {
   // near the top), plus the ones you post. (New posts are only kept until the
   // page is refreshed, because there's no backend to save them yet.)
   const [allPosts, setAllPosts] = useState(feedItems);
-  // The Application tracker's list, for the "Due soon" box. It's state, so
-  // the box redraws when a listing's Save button changes it (updateTracker
-  // runs after each Save). Before, the box only read it when the page opened
-  const [tracker, setTracker] = useState(() => loadTracker());
-  function updateTracker() {
-    setTracker(loadTracker());
-  }
+  // The Application tracker's list, for the "Due soon" box. The box redraws
+  // whenever it changes (a listing's Save, or your account's list arriving).
+  // useTrackerSync syncs it with your account when the page opens
+  const tracker = useTrackerItems();
+  useTrackerSync();
 
   // Runs when the post box sends a new post: puts it at the top of the list.
   // [newPost, ...allPosts] makes a new list: the new post, then all the old ones.
@@ -1020,7 +1018,7 @@ function Feed() {
             // into the Post component, where it becomes props.author
             // A listing post gets its own piece (ListingPost); the rest are normal posts
             shownPosts.map((post) => post.type === "listing" ? (
-              <ListingPost key={post.id} post={post} onSaveChange={updateTracker} />
+              <ListingPost key={post.id} post={post} />
             ) : (
               <Post
                 key={post.id}

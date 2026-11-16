@@ -62,10 +62,13 @@ export function isLoggedIn() {
 // (a school library), the next person to log in gets their OWN resume and
 // tracker, not yours. Logging out doesn't delete yours: it's still there,
 // under your id, when you log back in on this browser.
-export function accountKey(name) {
+// id is whose: leave it out for whoever is logged in now. (tracker.js and
+// resume-storage.js pass it, to finish saving for the account that made a
+// change even if someone else has logged in since)
+export function accountKey(name, id = loggedInId()) {
     // Only pages behind the login guard save things, so there's always an id.
     // "guest" is just a safe fallback
-    return name + ':' + (loggedInId() ?? 'guest');
+    return name + ':' + (id ?? 'guest');
 }
 
 // Reads someone's saved things, by the page's name ("scoutsearch-resume").
@@ -73,11 +76,11 @@ export function accountKey(name) {
 // The first account to open the page on this browser after that change takes
 // the old copy over, once, so nobody loses a resume they had already made.
 // It can throw if the browser blocks localStorage: the pages that call this
-// already catch that
-export function readAccountItem(name) {
-    const key = accountKey(name);
+// already catch that. id is whose, like in accountKey
+export function readAccountItem(name, id = loggedInId()) {
+    const key = accountKey(name, id);
     const mine = localStorage.getItem(key);
-    if (mine !== null || !isLoggedIn()) return mine;
+    if (mine !== null || id === null) return mine;
     const old = localStorage.getItem(name);
     if (old !== null) {
         localStorage.setItem(key, old);

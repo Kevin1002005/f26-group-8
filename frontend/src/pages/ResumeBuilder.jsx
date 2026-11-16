@@ -3,7 +3,9 @@
 // updates as you type. "Download PDF" saves it to your computer.
 //   - It opens with a made-up example (clearly labeled), so you can see how
 //     a finished resume looks. "Start from scratch" empties it.
-//   - Everything saves in this browser as you type (resume-storage.js).
+//   - Everything saves to your account as you type, so it's there on any
+//     device. It's kept in this browser too, for when the server can't be
+//     reached (resume-storage.js).
 //   - "Download PDF" opens the browser's print window, where you pick
 //     "Save as PDF". index.css (under "Printing and Save as PDF") makes the
 //     printed page only the resume, on a letter-size page.
@@ -18,9 +20,23 @@
 import { useEffect, useRef, useState } from 'react';
 // NavBar is the bar across the top of the page (components/NavBar.jsx).
 import NavBar from '../components/NavBar.jsx';
-// The saved resume, the example, and the empty one (resume-storage.js)
-// (and watchOtherTabs, which keeps two open tabs showing the same resume)
-import { blankResume, exampleResume, loadResume, saveResume, watchOtherTabs } from '../resume-storage.js';
+// The saved resume, the example, and the empty one (resume-storage.js), and:
+//   watchOtherTabs       keeps two open tabs showing the same resume
+//   watchAccountResume   gets your account's resume (saved on another device, maybe)
+//   useResumeSync        whether it's saved to your account yet
+//   keepThisResume / takeOtherResume   the two answers when another device
+//                        saved a different one first
+import {
+    blankResume,
+    exampleResume,
+    keepThisResume,
+    loadResume,
+    saveResume,
+    takeOtherResume,
+    useResumeSync,
+    watchAccountResume,
+    watchOtherTabs,
+} from '../resume-storage.js';
 
 // ---------- The repeating sections ----------
 // Education, Projects, and Experience all work the same way: a list of
@@ -349,6 +365,53 @@ function ResumeBuilder() {
         return stopWatching;
     }, []);
 
+    // Your account's resume: when the page opens, and whenever you come back
+    // to this tab. If it's different from this browser's (you edited it on
+    // another device), show it. If you've typed here and it hasn't reached your
+    // account yet, your typing wins instead, and nothing is replaced.
+    // (Runs once; the "return" stops it when you leave the page)
+    useEffect(() => {
+        return watchAccountResume((fromAccount) => {
+            setResume(fromAccount);
+            setShowingExample(false);
+        });
+    }, []);
+
+    // How saving to your account is going ({ state, message }, resume-storage.js)
+    const sync = useResumeSync();
+    // The line under the sentence at the top. It only changes when this really
+    // changes (not on every letter), so screen readers aren't talked over
+    let syncMessage = '';
+    if (sync.state === 'saved') {
+        syncMessage = 'Saved to your account.';
+    } else if (sync.state === 'offline') {
+        syncMessage = "Not saved to your account yet: the server can't be reached. It's kept in this browser and will be sent when the server is back.";
+    } else if (sync.state === 'problem') {
+        syncMessage = "Couldn't save to your account: " + sync.message;
+    }
+
+    // When another device saved a different resume first (sync.state "clash"),
+    // a box asks which one to keep. Nothing is lost until you pick: this
+    // browser has this one, and your account has the other.
+    // "Keep this device's version": save this one over the other
+    function keepMine() {
+        keepThisResume(resume);
+        setMessage("Keeping this device's version.");
+    }
+    // "Use the other version": show the other device's one instead
+    function useOther() {
+        const theirs = takeOtherResume();
+        if (theirs) {
+            setResume(theirs);
+            setShowingExample(false);
+            setMessage("Switched to the version from your other device.");
+        }
+    }
+    // When the other one was saved, like "Nov 15, 3:42 PM"
+    const otherSavedAt = sync.otherSavedAt
+        ? new Date(sync.otherSavedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        : '';
+
     // Keyboard users: after Move, Remove, or Add, the button they pressed can
     // move or disappear, and the focus would jump back to the top of the page.
     // focusNext holds the id of where the focus should go instead, and the
@@ -475,15 +538,38 @@ function ResumeBuilder() {
                             {showingExample && <span className="resume-example-tag">Example</span>}
                         </h1>
                         <p className="resume-head-text">
-                            Fill in the form and your resume updates as you type. It saves in this browser.
+                            Fill in the form and your resume updates as you type. It saves to your account.
                             When it's ready, download it as a PDF.
                         </p>
-                        {/* Only has words when saving failed (see "saveFailed" above).
-                            role="alert" makes screen readers read it right away, since
-                            your changes would be lost on refresh (WCAG) */}
+                        {/* Whether it's saved to your account (see syncMessage above).
+                            role="status" makes screen readers read it when it changes (WCAG) */}
+                        <p className="resume-sync" role="status">{syncMessage}</p>
+                        {/* Only when another device saved a different one first.
+                            role="alert" makes screen readers read it right away,
+                            since nothing more is saved until you pick (WCAG) */}
+                        {sync.state === 'clash' && (
+                            <div className="resume-clash">
+                                <p role="alert">
+                                    Your resume was changed on another device ({otherSavedAt}) since this
+                                    device last saved it. Which version do you want to keep?
+                                </p>
+                                <div className="resume-clash-actions">
+                                    <button type="button" className="resume-button resume-button-main" onClick={keepMine}>
+                                        Keep this device's version
+                                    </button>
+                                    <button type="button" className="resume-button" onClick={useOther}>
+                                        Use the other version
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        {/* Only has words when saving failed (see "saveFailed" above)
+                            AND your account doesn't have it either, since then your
+                            changes would be lost on refresh. role="alert" makes screen
+                            readers read it right away (WCAG) */}
                         <p className="resume-save-warning" role="alert">
-                            {saveFailed
-                                ? "This browser isn't saving your resume (its storage is full or turned off). Download a PDF before you leave, so you don't lose your changes."
+                            {saveFailed && sync.state !== 'saved'
+                                ? "This browser isn't saving your resume (its storage is full or turned off), and neither is your account right now. Download a PDF before you leave, so you don't lose your changes."
                                 : ''}
                         </p>
                     </div>

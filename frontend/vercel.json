@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://backend-address-goes-here.invalid/api/$1" },
+    { "source": "/api/(.*)", "destination": "https://scoutsearch-4grg.onrender.com/api/$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "headers": [

@@ -135,25 +135,16 @@ first visit afterward takes up to a minute.
 
 ### 2. Connect the site to the backend
 
-`frontend/vercel.json` already has the rule that passes `/api/...` to the backend. It's the
-first one in `rewrites`:
+`frontend/vercel.json` has the rule that passes `/api/...` to the backend. It's the first one
+in `rewrites`, and points at our Render service:
 
 ```json
-{ "source": "/api/(.*)", "destination": "https://backend-address-goes-here.invalid/api/$1" }
+{ "source": "/api/(.*)", "destination": "https://scoutsearch-4grg.onrender.com/api/$1" }
 ```
 
-Replace `backend-address-goes-here.invalid` with your backend's address, like
-`scoutsearch-api.onrender.com` (no `https://`, nothing after it), then commit and push.
-Vercel redeploys by itself.
-
-Until then the live site can't reach the backend: Opportunities says "Couldn't load
-opportunities", and the tracker and Resume builder say "Not saved to your account yet" (they
-still work in the browser). The placeholder ends in `.invalid` on purpose: that ending is
-reserved and can never belong to anyone. A made-up name on `onrender.com` could be claimed by a
-stranger, who would then receive everyone's login tokens.
-
-JSON doesn't allow comments, so that rule can't explain itself inside the file. This section
-is where it's explained.
+If the backend ever moves, change that address (keep `https://` and `/api/$1`), then commit
+and push: Vercel redeploys by itself. Only ever put an address we own there: Vercel sends
+everyone's login tokens to it. (JSON doesn't allow comments, so this section explains the rule.)
 
 ### 3. Frontend (Vercel)
 

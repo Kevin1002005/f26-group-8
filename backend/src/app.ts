@@ -3,6 +3,7 @@ import authRouter from './auth.js';
 import jobsRouter from './jobs.js';
 import applicationsRouter from './applications.js';
 import resumesRouter from './resumes.js';
+import accountRouter from './account.js';
 
 const app: Express = express();
 // by default Express adds "X-Powered-By: Express" to every answer, which tells attackers
@@ -25,6 +26,9 @@ app.use('/api/jobs', jobsRouter);
 // their account. Both need you to be logged in (they use authenticateToken themselves)
 app.use('/api/applications', applicationsRouter);
 app.use('/api/resumes', resumesRouter);
+
+// Download my data, and Delete my account (the Settings page, and the Privacy Policy)
+app.use('/api/account', accountRouter);
 
 // catch-all error handler: has to come after all the routes so it catches their errors.
 // Express knows this is an error handler because it takes 4 arguments (err comes first),

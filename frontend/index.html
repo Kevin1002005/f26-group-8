@@ -54,15 +54,9 @@
       html { background-color: var(--bg, #f6f9fc); }
       html[data-theme="dark"] { background-color: var(--bg, #0a1a2f); }
     </style>
-    <!-- Fonts, from Google Fonts. Inter is the site's font on every page
-         (see --font-body in index.css). Atkinson Hyperlegible ("Easy to read")
-         and Overpass ("Road sign" headings) are choices on the Settings page.
-         "preconnect" starts connecting to Google early so the fonts show up faster.
-         display=swap shows the text right away in a normal font, then swaps in
-         Inter when it arrives, so nobody waits on a blank page -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Atkinson+Hyperlegible+Next:wght@400;600;700&family=Overpass:wght@700;800&display=swap" />
+    <!-- Fonts: the site has its own copies (public/fonts/), loaded by index.css
+         (the "Fonts" section at the top). Nothing is downloaded from Google Fonts,
+         so visitors' browsers never tell Google they're here -->
   </head>
   <body>
     <div id="root"></div>

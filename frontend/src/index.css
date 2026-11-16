@@ -17,6 +17,66 @@
    styles (like big bold headings and blue links), which is why every
    heading size below is set by hand. */
 @import 'tailwindcss';
+/* ---------- Fonts ----------
+   The site's own copies of its 3 fonts, in public/fonts/ (served from /fonts/...),
+   so visitors' browsers never contact Google Fonts (which would see their IP address).
+   Inter is the font on every page; Atkinson Hyperlegible Next ("Easy to read") and
+   Overpass ("Road sign" headings) are choices on the Settings page.
+   Each font has two files: "latin" (English) and "latin-ext" (accented letters, like
+   in names). unicode-range tells the browser which letters each file has, so it only
+   downloads the second one when a page needs those letters.
+   One file holds every weight (a "variable" font), so font-weight is a range.
+   font-display: swap shows the text right away in a normal font until the file arrives.
+   The fonts are free to share (SIL Open Font License): their licenses are next to the files */
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/atkinson-hyperlegible-next-latin-ext-400-700.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/atkinson-hyperlegible-next-latin-400-700.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/fonts/inter-latin-ext-400-800.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/fonts/inter-latin-400-800.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Overpass';
+  font-style: normal;
+  font-weight: 700 800;
+  font-display: swap;
+  src: url('/fonts/overpass-latin-ext-700-800.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Overpass';
+  font-style: normal;
+  font-weight: 700 800;
+  font-display: swap;
+  src: url('/fonts/overpass-latin-700-800.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 
 /* Colors used across the whole site. Change one here and it updates everywhere.
    These are "variables": you use one by writing var(--name).
@@ -5960,6 +6020,26 @@ html:has(.feed-nav) :focus {
   background-color: var(--about-panel);
 }
 
+/* "By signing up, you agree to the Terms..." above it: a little smaller and quieter */
+.signup-legal {
+  max-width: 44ch;            /* wraps into a short, centered block */
+  margin: 18px auto 0;        /* space above, centered */
+  font-size: 14px;            /* small print, but still readable */
+  line-height: 1.5;
+  color: var(--about-ink-2);  /* the same blue as the line under it (7.3:1 on the page) */
+}
+
+/* Its links: underlined and the darker blue, like "Log in" */
+.signup-legal a {
+  color: var(--link);         /* darker blue (5.8:1 on the page) */
+  text-decoration: underline;
+}
+
+.signup-legal a:focus-visible {
+  outline: 2px solid var(--focus-ring);  /* the site's blue focus outline (WCAG) */
+  outline-offset: 2px;
+}
+
 /* ---------- Log in page: "Forgot your password?" ----------
    The small link under the password box, and the reset form it opens.
    The reset form shows up in the same box on the Log in page (Login.jsx)
@@ -6313,6 +6393,13 @@ html:has(.feed-nav) :focus {
   margin-bottom: 10px;     /* space before the choices */
   font-size: 15px;         /* small text */
   color: var(--subtle);    /* soft blue (6.1:1 on the box) */
+}
+
+/* A link inside that small text ("Privacy Policy"): blue AND underlined, so it
+   doesn't rely on color alone to look like a link (WCAG) */
+.settings-hint a {
+  color: var(--primary-text);     /* the site's blue words (5.9:1 light / 8:1 dark) */
+  text-decoration: underline;
 }
 
 /* The choices in a group, in a grid that fits as many per row as there's room for */
@@ -9120,6 +9207,7 @@ html:has(.discovery-dialog[open]) {
   /* Take the rest of the page out completely (not just hidden): hidden
      things still take up room, and the printout would get extra blank pages */
   body:has(.resume-page) .feed-nav,
+  body:has(.resume-page) .site-footer,
   .resume-head,
   .resume-switch,
   .resume-form,
@@ -9177,6 +9265,236 @@ html:has(.discovery-dialog[open]) {
   .resume-paper-heading {
     break-after: avoid;
   }
+}
+
+/* ---------- Legal pages ----------
+   The Privacy Policy, Cookie Policy, and Terms of Service (components/LegalPage.jsx
+   lays them out). One readable column, a table of contents, and highlighted
+   [To fill in: ...] placeholders for what the team still has to decide */
+
+/* The whole page: the gray-blue background (navy in dark mode) */
+.legal-page {
+  min-height: 100vh;                     /* at least the height of the screen */
+  background-color: var(--bg);
+}
+
+/* The bar at the top: the logo on the left, the sun/moon button on the right */
+.legal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px clamp(16px, 4vw, 32px);  /* space around, more on wide screens */
+}
+
+/* The logo link (to Opportunities, or About when logged out) */
+.legal-logo {
+  display: inline-flex;
+  align-items: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);                    /* navy "Search" */
+  text-decoration: none;
+  border-radius: 6px;                    /* rounded corners for the keyboard outline */
+}
+
+/* The column of text: about 75 letters wide, which is easiest to read */
+.legal-main {
+  max-width: 760px;
+  margin: 0 auto;                        /* centered */
+  padding: 16px 16px 64px;               /* 16px at the sides on phones */
+}
+
+/* "Privacy Policy" */
+.legal-title {
+  font-size: clamp(28px, 5vw, 38px);     /* 28px on phones, up to 38px */
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--text);                    /* navy */
+}
+
+/* "Effective: ... · Version ..." under the title */
+.legal-meta {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--subtle);                  /* small gray-blue text (6:1, WCAG) */
+}
+
+/* The amber box saying it's still a draft */
+.legal-draft {
+  margin-top: 16px;
+  padding: 12px 14px;                    /* space inside */
+  border: 1px solid var(--tag-amber-text);
+  border-radius: 10px;
+  background-color: var(--tag-amber-bg); /* the site's light amber */
+  color: var(--tag-amber-text);          /* dark amber words (the tag pair, WCAG) */
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* "On this page": the list of sections, each a link that jumps to it */
+.legal-toc {
+  margin-top: 24px;
+  padding: 16px 20px;                    /* space inside */
+  border: 1px solid var(--line);         /* thin line around it */
+  border-radius: 12px;
+  background-color: var(--card);         /* the box color */
+}
+
+.legal-toc-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.legal-toc ol {
+  display: grid;
+  gap: 4px;                              /* a little space between the links */
+  margin-top: 8px;
+  padding-left: 22px;                    /* room for the numbers */
+  list-style: decimal;                   /* 1. 2. 3. (the reset removes them) */
+  font-size: 15px;
+  color: var(--subtle);                  /* the numbers */
+}
+
+/* One section ("1. Who we are") */
+.legal-section {
+  margin-top: 36px;                      /* clear space between sections */
+  scroll-margin-top: 16px;               /* a little room above it after a "jump to" link */
+}
+
+.legal-section h2 {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.legal-section h3 {
+  margin-top: 18px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* The words: a comfortable size and line spacing for reading a lot of text */
+.legal-section p,
+.legal-section li {
+  margin-top: 10px;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--muted);                   /* gray-blue (7.4:1, WCAG) */
+}
+
+/* Lists of points inside a section */
+.legal-section ul {
+  padding-left: 22px;                    /* room for the dots */
+  list-style: disc;                      /* the dots (the reset removes them) */
+}
+
+/* Links in the text and the table of contents: blue AND underlined, so they don't
+   rely on color alone (WCAG) */
+.legal-toc a,
+.legal-section a,
+.legal-intro a {
+  color: var(--primary-text);            /* the site's blue words (5.9:1 / 8:1) */
+  text-decoration: underline;
+}
+
+/* The paragraph under the draft box */
+.legal-intro {
+  margin-top: 20px;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+/* [To fill in: ...]: something the team still has to decide */
+.legal-todo {
+  padding: 0 4px;
+  border-radius: 4px;
+  background-color: var(--tag-amber-bg);
+  color: var(--tag-amber-text);
+  font-weight: 700;                      /* bold, so it doesn't rely on color alone */
+}
+
+/* "Needs legal review: ..." */
+.legal-section .legal-review {
+  padding: 8px 12px;
+  border-left: 3px solid var(--tag-amber-text);  /* an amber line down the left */
+  background-color: var(--card);
+  font-size: 14px;
+}
+
+/* Tables (the list of what's stored in your browser). The wrapper scrolls sideways on
+   phones, so the page itself never does */
+.legal-table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.legal-table {
+  width: 100%;
+  border-collapse: collapse;             /* one line between cells, not two */
+  font-size: 14px;
+}
+
+.legal-table th,
+.legal-table td {
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* The headings: the top row, and the first cell of each row ("Your login") */
+.legal-table th {
+  background-color: var(--card);
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* ---------- Site footer ----------
+   The links at the bottom of every page (components/SiteFooter.jsx). The About page
+   has its own bigger footer with the same legal links */
+.site-footer {
+  padding: 24px clamp(16px, 4vw, 32px);  /* space around, more on wide screens */
+  border-top: 1px solid var(--line);     /* a thin line above it */
+  background-color: var(--bg);
+}
+
+.site-footer-links {
+  display: flex;
+  flex-wrap: wrap;                       /* the links wrap onto more lines on phones */
+  justify-content: center;
+  gap: 8px 20px;                         /* space between: up/down, left/right */
+  font-size: 14px;
+}
+
+.site-footer-links a {
+  color: var(--subtle);                  /* small gray-blue text (6:1, WCAG) */
+  text-decoration: underline;            /* looks like a link without color (WCAG) */
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .site-footer-links a:hover,
+  .legal-logo:hover {
+    color: var(--text);
+  }
+}
+
+/* Keyboard outlines (WCAG) */
+.legal-logo:focus-visible,
+.legal-toc a:focus-visible,
+.legal-section a:focus-visible,
+.legal-intro a:focus-visible,
+.site-footer-links a:focus-visible,
+.settings-hint a:focus-visible {
+  outline: 2px solid var(--focus-ring);  /* the site's blue focus outline */
+  outline-offset: 2px;
 }
 
 /* ---------- Error pages ---------- */

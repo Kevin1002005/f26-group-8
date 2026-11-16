@@ -212,6 +212,18 @@ function TrackerHeader(props) {
   );
 }
 
+// Saves a card's notes that are still waiting for their "in a moment" timer,
+// right now. box is { timer, text } (text is null when nothing is waiting).
+// saveTrackerNotes puts the change in this device's outbox at once (tracker.js),
+// so even if the tab closes a moment later, it's sent the next time you open the site
+function saveWaitingNotes(id, box) {
+  clearTimeout(box.timer);
+  if (box.text !== null) {
+    saveTrackerNotes(id, box.text);
+    box.text = null;
+  }
+}
+
 // The fold-open Notes part of a card. A <details> is the browser's own
 // open/close box: pressing its <summary> line opens it, and screen readers hear
 // whether it's open (WCAG), with no code of ours.
@@ -224,15 +236,43 @@ function TrackerNotes(props) {
   // the box shows the saved notes, so notes added on another device show up
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState("");
-  // The "save it in a moment" timer (useRef: changing it doesn't redraw)
-  const timer = useRef(null);
+  // The notes waiting to be saved, and their "save it in a moment" timer
+  // (useRef: changing them doesn't redraw the page)
+  const waiting = useRef({ timer: null, text: null });
+
+  // Leaving the page while notes are still waiting (closing the tab, switching
+  // apps on a phone, or going to another page of the site): save them right
+  // away, so the last few words typed aren't lost.
+  //   "visibilitychange" fires when the tab is hidden (or closing)
+  //   "pagehide" fires when the page is being left
+  //   the "return" runs when this card leaves the screen (another page of the site)
+  // [app.id] at the end: set this up again only if it's a different card
+  useEffect(() => {
+    const box = waiting.current;
+    const id = app.id;
+    function handleHide() {
+      if (document.visibilityState === "hidden") saveWaitingNotes(id, box);
+    }
+    function handlePageHide() {
+      saveWaitingNotes(id, box);
+    }
+    document.addEventListener("visibilitychange", handleHide);
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", handleHide);
+      window.removeEventListener("pagehide", handlePageHide);
+      saveWaitingNotes(id, box);
+    };
+  }, [app.id]);
 
   // Notes are sent 1 second after you stop typing, not after every letter
   function handleChange(event) {
     const text = event.target.value;
     setDraft(text);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => saveTrackerNotes(app.id, text), 1000);
+    const box = waiting.current;
+    box.text = text;
+    clearTimeout(box.timer);
+    box.timer = setTimeout(() => saveWaitingNotes(app.id, box), 1000);
   }
   // Clicking or tabbing into the box: start from the saved notes
   function handleFocus() {
@@ -242,8 +282,7 @@ function TrackerNotes(props) {
   }
   // Leaving the box: save right away
   function handleBlur() {
-    clearTimeout(timer.current);
-    saveTrackerNotes(app.id, draft);
+    saveWaitingNotes(app.id, waiting.current);
     setTyping(false);
     props.onTypingChange(false);
   }

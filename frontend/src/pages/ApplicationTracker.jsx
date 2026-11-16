@@ -13,7 +13,10 @@
 //
 // How the page is put together, top to bottom:
 //   1. TrackerHeader    Back link, title, sentence, and the "active" box
-//   2. Three columns    one StageColumn per stage, each holding TrackerCards
+//   2. AddJob           "Add a job from another site" and its small form
+//   3. The Undo bar     after Remove (only then)
+//   4. Three columns    one StageColumn per stage, each holding TrackerCards
+//                       (each card has a Notes box and a Remove button)
 
 // useState lets the page remember a value and redraw itself when it changes.
 // useEffect runs code after the page is drawn (here: putting the focus back).
@@ -30,8 +33,20 @@ import { isPastDeadline } from "../data/opportunities.js";
 //                     (a move here, a Save in another tab, your account's list arriving)
 //   useTrackerSync    syncs with your account when the page opens, and says how it's going
 //   moveOnTracker     moves a job to another column (and saves that to your account)
+//   saveTrackerNotes  saves a card's notes
+//   removeFromTracker / putBackOnTracker   Remove, and its Undo
+//   addOtherJob       adds a job typed in from another site
 //   trackerJob        finds the job behind each saved item (a real job or an example)
-import { moveOnTracker, trackerJob, useTrackerItems, useTrackerSync } from "../data/tracker.js";
+import {
+  addOtherJob,
+  moveOnTracker,
+  putBackOnTracker,
+  removeFromTracker,
+  saveTrackerNotes,
+  trackerJob,
+  useTrackerItems,
+  useTrackerSync,
+} from "../data/tracker.js";
 
 // ---------- Icons ----------
 // Small drawings made with SVG. aria-hidden="true" hides them from screen
@@ -121,17 +136,26 @@ function formatDate(date) {
   return new Date(date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+// True if a deadline is within the next "days" days (and not already past),
+// the same as Discovery's. A job with no deadline (null) is never "due".
+// 1000 * 60 * 60 * 24 is the number of milliseconds in one day.
+function isDueWithin(deadline, days) {
+  if (!deadline) return false;
+  const msLeft = new Date(deadline + "T23:59") - new Date();
+  return msLeft >= 0 && msLeft <= days * 1000 * 60 * 60 * 24;
+}
+
 // Builds the board from the tracker's list. trackerJob (tracker.js) finds each
 // item's job: a real job's title, company, and deadline were saved with it,
 // and an example job is looked up in the opportunities list.
 function toApplications(items) {
   return (
     items
-      // For each saved item, find its job and add the column to it.
+      // For each saved item, find its job and add the column and notes to it.
       // { ...job, stage: item.stage } copies the job and adds its column.
       .map((item) => {
         const job = trackerJob(item);
-        return job ? { ...job, stage: item.stage } : null;
+        return job ? { ...job, stage: item.stage, notes: item.notes ?? "" } : null;
       })
       // Drop any saved id that no longer matches a job (null from above)
       .filter((app) => app !== null)
@@ -188,15 +212,80 @@ function TrackerHeader(props) {
   );
 }
 
+// The fold-open Notes part of a card. A <details> is the browser's own
+// open/close box: pressing its <summary> line opens it, and screen readers hear
+// whether it's open (WCAG), with no code of ours.
+// props.app            the application (its notes are in app.notes)
+// props.onTypingChange tells the card when typing starts and stops (see TrackerCard)
+function TrackerNotes(props) {
+  const app = props.app;
+  const boxId = "tracker-notes-" + app.id;
+  // What's in the box while you're typing in it ("typing" is true). Otherwise
+  // the box shows the saved notes, so notes added on another device show up
+  const [typing, setTyping] = useState(false);
+  const [draft, setDraft] = useState("");
+  // The "save it in a moment" timer (useRef: changing it doesn't redraw)
+  const timer = useRef(null);
+
+  // Notes are sent 1 second after you stop typing, not after every letter
+  function handleChange(event) {
+    const text = event.target.value;
+    setDraft(text);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => saveTrackerNotes(app.id, text), 1000);
+  }
+  // Clicking or tabbing into the box: start from the saved notes
+  function handleFocus() {
+    setDraft(app.notes);
+    setTyping(true);
+    props.onTypingChange(true);
+  }
+  // Leaving the box: save right away
+  function handleBlur() {
+    clearTimeout(timer.current);
+    saveTrackerNotes(app.id, draft);
+    setTyping(false);
+    props.onTypingChange(false);
+  }
+
+  return (
+    <details className="tracker-notes">
+      {/* The line you press. It says "Notes" when there are some */}
+      <summary className="tracker-notes-summary">{app.notes ? "Notes" : "Add notes"}</summary>
+      {/* The label is for screen readers (the summary already shows "Notes"),
+          and says which card's notes these are (WCAG) */}
+      <label htmlFor={boxId} className="sr-only">
+        {"Notes for " + app.title}
+      </label>
+      <textarea
+        id={boxId}
+        className="tracker-notes-box"
+        // the most the account keeps (backend/sql/applications.sql)
+        maxLength={5000}
+        value={typing ? draft : app.notes}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+      />
+    </details>
+  );
+}
+
 // One card on the board.
 // props.app       the application ({ id, title, ... })
 // props.dragging  true while this card is being dragged (it fades a little)
 // props.onDragStart / props.onDragEnd   tell the board a drag started or ended
 // props.onMove    moves this card to another column (used by the "Move to" menu)
+// props.onRemove  takes this card off the tracker (the page shows Undo)
 function TrackerCard(props) {
   const app = props.app;
   // A unique id, so the "Move to" menu's label can point at it
   const selectId = "tracker-move-" + app.id;
+  // true while typing in this card's notes. The card can't be dragged then:
+  // otherwise selecting words in the box with the mouse would pick the whole card up
+  const [typingNotes, setTypingNotes] = useState(false);
+  // "Due soon": the deadline is in the next 7 days, and it hasn't been sent yet
+  const dueSoon = app.stage !== "submitted" && isDueWithin(app.deadline, 7);
 
   // The small line at the bottom of the card changes with the column,
   // and says "Closed" once the deadline has gone by (if you never sent it).
@@ -214,7 +303,7 @@ function TrackerCard(props) {
     <li
       className={props.dragging ? "tracker-card tracker-card-dragging" : "tracker-card"}
       // draggable lets the mouse pick the card up and drag it
-      draggable="true"
+      draggable={typingNotes ? "false" : "true"}
       onDragStart={(event) => props.onDragStart(event, app.id)}
       onDragEnd={props.onDragEnd}
     >
@@ -226,6 +315,8 @@ function TrackerCard(props) {
         <div className="tracker-card-words">
           <h3 className="tracker-card-title">{app.title}</h3>
           <p className="tracker-card-org">{app.organization}</p>
+          {/* Only when it's due in the next 7 days ("&&": draw it only if true) */}
+          {dueSoon && <p className="tracker-due-tag">Due soon</p>}
         </div>
         {/* The six dots that show the card can be dragged */}
         <span className="tracker-grip">
@@ -257,7 +348,176 @@ function TrackerCard(props) {
           ))}
         </select>
       </div>
+
+      {/* Notes on the left, Remove on the right */}
+      <div className="tracker-card-extras">
+        <TrackerNotes app={app} onTypingChange={setTypingNotes} />
+        {/* aria-label starts with the word you see, and says which job (WCAG) */}
+        <button
+          type="button"
+          className="tracker-remove"
+          aria-label={"Remove " + app.title}
+          onClick={() => props.onRemove(app)}
+        >
+          Remove
+        </button>
+      </div>
     </li>
+  );
+}
+
+// "Add a job from another site": a button that opens a small form, for jobs
+// found anywhere (not only on Opportunities).
+// props.onAdd gets { title, organization, deadline, stage } when the form is sent
+function AddJob(props) {
+  // true while the form is open
+  const [open, setOpen] = useState(false);
+  // What's typed in each box
+  const [title, setTitle] = useState("");
+  const [organization, setOrganization] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [stage, setStage] = useState("saved");
+  // The message under the title box when it's empty ("" when it's fine)
+  const [titleError, setTitleError] = useState("");
+  // The title box, to put the keyboard focus in it (useRef: a handle on it)
+  const titleRef = useRef(null);
+  // The button that opens the form, to put the focus back on it after Cancel
+  const toggleRef = useRef(null);
+
+  // When the form opens, the focus goes into its first box, ready to type
+  useEffect(() => {
+    if (open) titleRef.current?.focus();
+  }, [open]);
+
+  // Closes the form and empties it
+  function close() {
+    setOpen(false);
+    setTitle("");
+    setOrganization("");
+    setDeadline("");
+    setStage("saved");
+    setTitleError("");
+  }
+
+  // "Add to tracker". event.preventDefault() stops the browser from reloading the page
+  function handleSubmit(event) {
+    event.preventDefault();
+    if (title.trim() === "") {
+      // Say what's wrong next to the box, and put the focus there (WCAG)
+      setTitleError("Add the job's title.");
+      titleRef.current?.focus();
+      return;
+    }
+    props.onAdd({ title: title.trim(), organization: organization.trim(), deadline: deadline, stage: stage });
+    close();
+  }
+
+  return (
+    <div className="tracker-add">
+      {/* aria-expanded tells screen readers whether the form is open (WCAG) */}
+      <button
+        type="button"
+        ref={toggleRef}
+        className="tracker-add-toggle"
+        aria-expanded={open}
+        aria-controls="tracker-add-form"
+        onClick={() => (open ? close() : setOpen(true))}
+      >
+        + Add a job from another site
+      </button>
+
+      {open && (
+        // noValidate: our own message shows instead of the browser's bubble
+        <form id="tracker-add-form" className="tracker-add-form" onSubmit={handleSubmit} noValidate>
+          <div className="tracker-add-fields">
+            <div className="tracker-add-field tracker-add-field-title">
+              <label htmlFor="tracker-add-title" className="tracker-add-label">
+                Job title
+              </label>
+              {/* aria-invalid and aria-describedby point screen readers at the
+                  message below when the box is empty (WCAG) */}
+              <input
+                id="tracker-add-title"
+                ref={titleRef}
+                className="tracker-add-input"
+                type="text"
+                maxLength={300}
+                required
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                aria-invalid={titleError ? "true" : "false"}
+                aria-describedby={titleError ? "tracker-add-title-error" : undefined}
+              />
+              {titleError && (
+                <p id="tracker-add-title-error" className="tracker-add-error">
+                  {titleError}
+                </p>
+              )}
+            </div>
+            <div className="tracker-add-field">
+              <label htmlFor="tracker-add-org" className="tracker-add-label">
+                Company
+              </label>
+              <input
+                id="tracker-add-org"
+                className="tracker-add-input"
+                type="text"
+                maxLength={300}
+                value={organization}
+                onChange={(event) => setOrganization(event.target.value)}
+              />
+            </div>
+            <div className="tracker-add-field">
+              <label htmlFor="tracker-add-deadline" className="tracker-add-label">
+                Deadline
+              </label>
+              {/* type="date" gives the browser's own date picker, and always
+                  hands back "2026-12-01" (or "" when left empty) */}
+              <input
+                id="tracker-add-deadline"
+                className="tracker-add-input"
+                type="date"
+                value={deadline}
+                onChange={(event) => setDeadline(event.target.value)}
+              />
+            </div>
+            <div className="tracker-add-field">
+              <label htmlFor="tracker-add-stage" className="tracker-add-label">
+                Column
+              </label>
+              <select
+                id="tracker-add-stage"
+                className="tracker-add-input"
+                value={stage}
+                onChange={(event) => setStage(event.target.value)}
+              >
+                {stages.map((each) => (
+                  <option key={each.id} value={each.id}>
+                    {each.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="tracker-add-actions">
+            <button type="submit" className="tracker-add-submit">
+              Add to tracker
+            </button>
+            <button
+              type="button"
+              className="tracker-add-cancel"
+              onClick={() => {
+                close();
+                // the form is gone, so the focus goes back to its button (WCAG)
+                toggleRef.current?.focus();
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
 
@@ -329,6 +589,7 @@ function StageColumn(props) {
               onDragStart={props.onDragStart}
               onDragEnd={props.onDragEnd}
               onMove={props.onMove}
+              onRemove={props.onRemove}
             />
           ))}
         </ul>
@@ -387,6 +648,40 @@ function ApplicationTracker() {
     setAnnouncement("Moved " + app.title + " to " + stage.name + ".");
   }
 
+  // The job Remove just took off, kept so Undo can put it back exactly as it
+  // was (its column and notes). null when there's nothing to undo
+  const [removed, setRemoved] = useState(null);
+
+  // Remove on a card: it comes off right away, and the Undo bar shows up.
+  // (No "Are you sure?" pop-up: Undo is easier to get out of, and less in the way)
+  function removeApplication(app) {
+    const item = items.find((each) => each.id === app.id);
+    if (!item) return;
+    removeFromTracker(app.id);
+    setRemoved({ item: item, title: app.title });
+    setAnnouncement("Removed " + app.title + ".");
+    // Its Remove button is gone, so the focus goes to Undo, ready to press (WCAG)
+    focusAfterMove.current = "tracker-undo-button";
+  }
+
+  // Undo: the job goes back in its column, and the focus goes back on its card
+  function undoRemove() {
+    putBackOnTracker(removed.item);
+    const stage = stages.find((each) => each.id === removed.item.stage);
+    setAnnouncement("Put " + removed.title + " back in " + stage.name + ".");
+    focusAfterMove.current = "tracker-move-" + removed.item.id;
+    setRemoved(null);
+  }
+
+  // "Add a job from another site" was sent: put it on the board, and the
+  // focus on its card (the form closes)
+  function addJob(job) {
+    const id = addOtherJob(job);
+    const stage = stages.find((each) => each.id === job.stage);
+    setAnnouncement("Added " + job.title + " to " + stage.name + ".");
+    focusAfterMove.current = "tracker-move-" + id;
+  }
+
   // A card was picked up: remember which one
   function handleDragStart(event, id) {
     // "move" shows the move cursor instead of a copy cursor
@@ -435,6 +730,22 @@ function ApplicationTracker() {
       <main className="tracker-page">
         <TrackerHeader total={applications.length} submitted={submittedCount} syncMessage={syncMessage} />
 
+        {/* "Add a job from another site" and its form */}
+        <AddJob onAdd={addJob} />
+
+        {/* After Remove: what was removed, and Undo. It stays until the next
+            Remove or Undo (no timer, so nobody has to rush, WCAG). Screen
+            readers hear "Removed ..." from the message at the bottom, and the
+            focus lands on Undo */}
+        {removed && (
+          <div className="tracker-undo">
+            <p>{"Removed " + removed.title + "."}</p>
+            <button id="tracker-undo-button" type="button" className="tracker-undo-button" onClick={undoRemove}>
+              Undo
+            </button>
+          </div>
+        )}
+
         {/* The board: one column per stage, in order */}
         <div className="tracker-board">
           {stages.map((stage) => (
@@ -451,6 +762,7 @@ function ApplicationTracker() {
               onDragLeave={() => setOverStage(null)}
               onDrop={handleDrop}
               onMove={moveApplication}
+              onRemove={removeApplication}
             />
           ))}
         </div>

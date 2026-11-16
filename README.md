@@ -68,7 +68,8 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
 - `GET /api/jobs` lists open jobs. It takes `type`, `level`, `setting`, `paid`, `q` (search)
   and `page` (50 jobs per page).
 - `GET /api/jobs/:id` returns one job.
-- `/api/applications` (GET, POST, PATCH `/:id`, DELETE `/:id`) is your Application tracker, and
+- `/api/applications` (GET, POST, PATCH `/:id`, DELETE `/:id`) is your Application tracker
+  (our jobs, the Feed's examples, and jobs typed in from other sites, with notes), and
   `/api/resumes/me` (GET, PUT) is your resume. Both need you to be logged in, and only ever
   touch your own.
 - To pull in real internships, run `cd backend && npm run import-jobs` by hand, on a computer
@@ -99,7 +100,8 @@ Resume builder each have a line saying "Saved to your account." (or why not yet)
   in on that browser, never to someone else's account.
 - A resume or tracker saved in a browser before accounts kept them is moved to the account
   automatically, the first time you open the page.
-- If the same resume is edited on two devices, the last save wins.
+- If your resume was saved on another device since this one last saved it, the Resume
+  builder doesn't save over it. It asks which version to keep.
 
 ## Deploy
 
@@ -133,14 +135,25 @@ first visit afterward takes up to a minute.
 
 ### 2. Connect the site to the backend
 
-In `frontend/vercel.json`, add this rewrite **first** in the `rewrites` list, before the
-one that's there, with your backend's address:
+`frontend/vercel.json` already has the rule that passes `/api/...` to the backend. It's the
+first one in `rewrites`:
 
 ```json
-{ "source": "/api/(.*)", "destination": "https://YOUR-BACKEND-ADDRESS/api/$1" }
+{ "source": "/api/(.*)", "destination": "https://backend-address-goes-here.invalid/api/$1" }
 ```
 
-Until it's added, Opportunities says "Couldn't load opportunities" on the live site.
+Replace `backend-address-goes-here.invalid` with your backend's address, like
+`scoutsearch-api.onrender.com` (no `https://`, nothing after it), then commit and push.
+Vercel redeploys by itself.
+
+Until then the live site can't reach the backend: Opportunities says "Couldn't load
+opportunities", and the tracker and Resume builder say "Not saved to your account yet" (they
+still work in the browser). The placeholder ends in `.invalid` on purpose: that ending is
+reserved and can never belong to anyone. A made-up name on `onrender.com` could be claimed by a
+stranger, who would then receive everyone's login tokens.
+
+JSON doesn't allow comments, so that rule can't explain itself inside the file. This section
+is where it's explained.
 
 ### 3. Frontend (Vercel)
 

@@ -12,9 +12,12 @@ import { supabase } from './supabase.js';
 //   0         no answer from our backend (no internet, server down, not set up)
 //   400-499   the backend said no (401 = not logged in, 404 = not found, ...)
 //   500-599   the backend broke
-function failed(message, status) {
+// body is the backend's whole answer, when there is one: some refusals carry more
+// than a message (a 409 from /resumes/me has the copy another device saved)
+function failed(message, status, body = {}) {
     const error = new Error(message);
     error.status = status;
+    error.body = body;
     return error;
 }
 
@@ -94,7 +97,7 @@ export async function api(path, options = {}) {
     // response.ok is true when it worked (status 200-299). Otherwise our
     // backend always sends { error: '...' }, so pass that message along
     if (!response.ok) {
-        throw failed(body.error || 'Something went wrong. Try again.', response.status);
+        throw failed(body.error || 'Something went wrong. Try again.', response.status, body);
     }
     return body;
 }

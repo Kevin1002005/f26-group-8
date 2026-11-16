@@ -184,15 +184,52 @@ export function saveResume(resume) {
 // How saving to your account is going, for the line on the Resume builder:
 //   state    "waiting" (nothing known yet), "saved" (your account has the
 //            newest), "offline" (the server can't be reached: it's kept in this
-//            browser for now), or "problem" (the server said no, see message)
+//            browser for now), "problem" (the server said no, see message), or
+//            "clash" (another device saved a different one first, see below)
 //   message  the server's reason, for "problem"
-const startingStatus = { account: null, state: 'waiting', message: '' };
+//   otherSavedAt  for "clash": when the other device saved its copy
+const startingStatus = { account: null, state: 'waiting', message: '', otherSavedAt: null };
 let status = startingStatus;
 const listeners = new Set();
-function setStatus(account, state, message = '') {
-    status = { account: account, state: state, message: message };
+function setStatus(account, state, message = '', otherSavedAt = null) {
+    status = { account: account, state: state, message: message, otherSavedAt: otherSavedAt };
     for (const listener of listeners) listener();
 }
+
+// ---------- When two devices both change the resume ----------
+// Each save says which copy on your account it started from ("the base": that
+// copy's updated_at time, or null for "there was none"). If another device
+// saved in between, the backend doesn't save over it. It answers 409 with its
+// copy instead, and the Resume builder asks which one to keep (see keepThisResume
+// and takeOtherResume). Until you pick, nothing is lost: this browser keeps yours,
+// and your account keeps the other.
+
+// Saved as "scoutsearch-resume-base:<id>"
+const baseKey = 'scoutsearch-resume-base';
+// The same, in memory, for when the browser won't save it
+const baseInMemory = new Map();
+// The base for this account: a time, null (your account had none), or
+// undefined (not known: this browser has never synced)
+function readBase(account) {
+    try {
+        const text = localStorage.getItem(accountKey(baseKey, account));
+        if (text !== null) return JSON.parse(text);
+    } catch {
+        // storage is off, or the text is broken: use memory
+    }
+    return baseInMemory.get(account);
+}
+function writeBase(account, base) {
+    baseInMemory.set(account, base);
+    try {
+        localStorage.setItem(accountKey(baseKey, account), JSON.stringify(base));
+    } catch {
+        // storage is off: memory has it
+    }
+}
+// The other device's copy, while the page is asking which one to keep
+// ({ account, resume: { data, updated_at } }), or null
+let clash = null;
 
 // The newest change that hasn't been sent yet ({ account, resume }), or null
 let waiting = null;
@@ -250,21 +287,32 @@ function sendNow(options = {}) {
             return;
         }
         waiting = null;
+        // Which copy this one started from (see "When two devices...")
+        // Not known counts as "there was none", so it never saves over one by accident
+        const base = readBase(job.account) ?? null;
         try {
-            await api('/resumes/me', {
+            const answer = await api('/resumes/me', {
                 method: 'PUT',
-                body: JSON.stringify({ data: job.resume }),
+                body: JSON.stringify({ data: job.resume, base_updated_at: base }),
                 keepalive: options.keepalive === true,
                 asUser: job.account,
             });
             clearTimeout(retryTimer);
+            // The account's copy is now this one: the next save starts from it
+            writeBase(job.account, answer.resume.updated_at);
+            clash = null;
             // Only "sent" if nothing newer came in while this was on its way
             if (waiting === null) {
                 markSent(job.account);
                 setStatus(job.account, 'saved');
             }
         } catch (error) {
-            if (worthRetrying(error)) {
+            if (error.status === 409 && error.body?.resume) {
+                // Another device saved a different one first. Keep both (yours
+                // here, theirs on the account) and let the page ask which to keep
+                clash = { account: job.account, resume: error.body.resume };
+                setStatus(job.account, 'clash', '', error.body.resume.updated_at);
+            } else if (worthRetrying(error)) {
                 // Put it back (unless something newer is waiting), and try again in 30 seconds
                 if (waiting === null) waiting = job;
                 setStatus(job.account, 'offline');
@@ -315,6 +363,9 @@ export async function syncResume() {
 
     const fromAccount = asResume(answer.resume?.data);
     const local = loadResume(account);
+    // This browser is now in step with the account: the next save starts from
+    // its copy (or from "there's none")
+    writeBase(account, fromAccount ? answer.resume.updated_at : null);
     if (fromAccount) {
         // Your account has one: that's the newest (maybe from another device).
         // Keep a copy here too
@@ -338,6 +389,40 @@ export async function syncResume() {
     // until you change something
     setStatus(account, 'waiting');
     return null;
+}
+
+// "Keep this device's version" (after a clash): save this browser's resume over
+// the other device's. resume is what the page shows now. It's sent as starting
+// from the other copy, so it goes through (unless a third save came in meanwhile:
+// then the page asks again)
+export function keepThisResume(resume) {
+    const account = loggedInId();
+    if (!clash || clash.account !== account) return Promise.resolve();
+    writeBase(account, clash.resume.updated_at);
+    waiting = { account: account, resume: resume };
+    return sendNow();
+}
+
+// "Use the other version" (after a clash): this browser takes the account's
+// copy instead, and drops its own. Gives back that resume for the page to
+// show, or null if there's no clash anymore
+export function takeOtherResume() {
+    const account = loggedInId();
+    if (!clash || clash.account !== account) return null;
+    const theirs = asResume(clash.resume.data);
+    if (!theirs) return null;
+    try {
+        localStorage.setItem(accountKey(storageKey, account), JSON.stringify(theirs));
+    } catch {
+        // Storage is off: the page still shows it
+    }
+    writeBase(account, clash.resume.updated_at);
+    markSent(account);
+    waiting = null;
+    clearTimeout(typingTimer);
+    clash = null;
+    setStatus(account, 'saved');
+    return theirs;
 }
 
 // Runs syncResume when the Resume builder opens and whenever you come back to

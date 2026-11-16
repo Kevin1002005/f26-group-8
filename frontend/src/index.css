@@ -8089,6 +8089,197 @@ html:has(.discovery-dialog[open]) {
   cursor: pointer;
 }
 
+/* "Due soon" under the company, when the deadline is in the next 7 days.
+   The words say it, so it doesn't rely on the amber color alone (WCAG) */
+.tracker-due-tag {
+  display: inline-flex;
+  margin-top: 6px;                       /* a little space under the company */
+  padding: 2px 9px;                      /* space inside: top/bottom, left/right */
+  border-radius: var(--radius-pill);     /* pill shape */
+  background-color: var(--tag-amber-bg); /* the site's amber tag (the same as Discovery's) */
+  color: var(--tag-amber-text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* The row under the card's bottom line: "Notes" on the left, "Remove" on the right */
+.tracker-card-extras {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* The fold-open "Notes" part of a card (a <details>: the browser opens and
+   closes it, and tells screen readers whether it's open) */
+.tracker-notes {
+  flex: 1;                               /* takes the room "Remove" doesn't */
+  min-width: 0;
+}
+
+/* "Notes" / "Add notes": the line you press to open it */
+.tracker-notes-summary {
+  display: inline-block;
+  padding: 4px 2px;                      /* a bigger area to press */
+  color: var(--primary-text);            /* blue words, like a link (5.9:1 light / 8:1 dark, WCAG) */
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* The notes box itself */
+.tracker-notes-box {
+  display: block;
+  width: 100%;
+  min-height: 72px;                      /* about 3 lines */
+  margin-top: 6px;
+  padding: 8px 10px;                     /* space inside */
+  border: 1px solid var(--border);       /* blue edge (4.1:1, WCAG) */
+  border-radius: 8px;                    /* rounded corners */
+  background-color: var(--card);
+  color: var(--text);                    /* navy */
+  font: inherit;                         /* the same letters as the page */
+  font-size: 14px;
+  line-height: 1.45;
+  resize: vertical;                      /* can be made taller, not wider */
+}
+
+/* "Remove": quiet, because it's undoable and used less */
+.tracker-remove {
+  padding: 4px 2px;                      /* a bigger area to press */
+  border: none;
+  background: none;
+  color: var(--subtle);                  /* soft blue (6:1, WCAG) */
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;            /* looks pressable without color (WCAG) */
+  cursor: pointer;
+}
+
+/* The bar above the board after Remove: "Removed ... ." and Undo */
+.tracker-undo {
+  display: flex;
+  flex-wrap: wrap;                       /* the button goes under the words on small screens */
+  align-items: center;
+  gap: 8px 14px;                         /* space between: up/down, left/right */
+  margin-bottom: 16px;
+  padding: 10px 14px;                    /* space inside */
+  border: 1px solid var(--line);         /* thin line around it */
+  border-radius: 10px;                   /* rounded corners */
+  background-color: var(--card);
+  color: var(--text);                    /* navy */
+  font-size: 14px;
+}
+
+/* The Undo button, and "Add a job from another site" (the same blue outline look) */
+.tracker-undo-button,
+.tracker-add-toggle {
+  min-height: 36px;
+  padding: 0 14px;                       /* space inside, left and right */
+  border: 1px solid var(--primary-text); /* blue edge (the word blue, so dark mode can see it too) */
+  border-radius: var(--radius-pill);     /* pill shape */
+  background-color: var(--card);
+  color: var(--primary-text);            /* blue words (5.9:1 light / 8:1 dark, WCAG) */
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* The line with the "Add a job from another site" button */
+.tracker-add {
+  margin-bottom: 16px;
+}
+
+/* The form that opens under it */
+.tracker-add-form {
+  margin-top: 12px;
+  padding: 16px;                         /* space inside */
+  border: 1px solid var(--line);         /* thin line around it */
+  border-radius: 12px;                   /* rounded corners */
+  background-color: var(--card);
+}
+
+/* Its boxes side by side: title wider than the rest. They wrap on small screens */
+.tracker-add-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+/* One label + box */
+.tracker-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;                              /* space between the label and the box */
+}
+
+/* "Job title", "Company", ... */
+.tracker-add-label {
+  color: var(--text);                    /* navy */
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* The boxes and the column menu */
+.tracker-add-input {
+  min-height: 38px;
+  padding: 0 10px;                       /* space inside, left and right */
+  border: 1px solid var(--border);       /* blue edge (4.1:1, WCAG) */
+  border-radius: 8px;
+  background-color: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+/* The box with a mistake in it: a thicker red edge (the message says what's wrong) */
+.tracker-add-input[aria-invalid="true"] {
+  border-width: 2px;
+  border-color: var(--signup-error);     /* the site's error red */
+}
+
+/* "Add the job's title." under the box */
+.tracker-add-error {
+  color: var(--signup-error);            /* the site's error red (8.6:1) */
+  font-size: 13px;
+  font-weight: 700;                      /* thick, so it doesn't rely on the red alone (WCAG) */
+}
+
+/* "Add to tracker" and "Cancel" */
+.tracker-add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* "Add to tracker": the solid blue main button */
+.tracker-add-submit {
+  min-height: 38px;
+  padding: 0 18px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-pill);
+  background-color: var(--primary);      /* the main blue */
+  color: var(--on-primary);              /* white words (6.2:1, WCAG) */
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* "Cancel": plain words */
+.tracker-add-cancel {
+  min-height: 38px;
+  padding: 0 10px;
+  border: none;
+  background: none;
+  color: var(--primary-text);            /* blue words (5.9:1 light / 8:1 dark, WCAG) */
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;            /* looks pressable without color (WCAG) */
+  cursor: pointer;
+}
+
 /* Mouse hover: underline on the Back link, a blue edge on cards */
 @media (hover: hover) and (pointer: fine) {
   .tracker-back-link:hover {
@@ -8097,11 +8288,34 @@ html:has(.discovery-dialog[open]) {
   .tracker-card:hover {
     border-color: var(--primary);
   }
+  /* the outline buttons fill in light blue, and the plain ones go darker
+     (with the underline they already have, so it isn't color alone) */
+  .tracker-undo-button:hover,
+  .tracker-add-toggle:hover {
+    background-color: var(--soft);
+  }
+  .tracker-add-submit:hover {
+    background-color: var(--primary-dark);
+  }
+  .tracker-remove:hover,
+  .tracker-add-cancel:hover,
+  .tracker-notes-summary:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
 }
 
 /* Keyboard outlines (WCAG) */
 .tracker-back-link:focus-visible,
-.tracker-move:focus-visible {
+.tracker-move:focus-visible,
+.tracker-notes-summary:focus-visible,
+.tracker-notes-box:focus-visible,
+.tracker-remove:focus-visible,
+.tracker-undo-button:focus-visible,
+.tracker-add-toggle:focus-visible,
+.tracker-add-input:focus-visible,
+.tracker-add-submit:focus-visible,
+.tracker-add-cancel:focus-visible {
   outline: 2px solid var(--focus-ring);  /* the site's blue focus outline */
   outline-offset: 2px;
 }
@@ -8152,6 +8366,13 @@ html:has(.discovery-dialog[open]) {
 @media (max-width: 760px) {
   .tracker-page {
     padding: 24px 16px 48px;
+  }
+  /* the "Add a job" boxes go two to a row, with the title on a row of its own */
+  .tracker-add-fields {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .tracker-add-field-title {
+    grid-column: 1 / -1;                 /* from the first line to the last: the whole row */
   }
   .tracker-board {
     grid-template-columns: minmax(0, 1fr); /* one column */
@@ -8451,6 +8672,27 @@ html:has(.discovery-dialog[open]) {
   max-width: 60ch;                            /* long messages wrap instead of running wide */
   font-size: 13.5px;                          /* the same size as .resume-status */
   color: var(--subtle);                       /* 5.5:1 / 6.2:1 on the page */
+}
+
+/* The box under the intro when another device saved a different resume first:
+   what happened, and two buttons to pick which one to keep */
+.resume-clash {
+  margin-top: 10px;
+  max-width: 60ch;                            /* long lines wrap instead of running wide */
+  padding: 12px 14px;                         /* space inside */
+  border: 2px solid var(--tag-amber-text);    /* a thick amber edge: "look at this" */
+  border-radius: 10px;                        /* rounded corners */
+  background-color: var(--tag-amber-bg);      /* the site's light amber */
+  color: var(--tag-amber-text);               /* dark amber words on it (the tag pair, WCAG) */
+  font-size: 14px;
+}
+
+/* The two buttons, side by side (they wrap on small screens) */
+.resume-clash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 /* The warning under the intro when this browser can't save the resume

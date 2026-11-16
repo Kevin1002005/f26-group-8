@@ -103,9 +103,12 @@ Shared contract (frontend <-> backend), proposed. Change it here first, then in 
     GET    /api/applications                 (student, own)      -> { applications: [Application] }
     POST   /api/applications                 (student)           -> 201 { application }
            body { job_id, status? } for one of our jobs (title etc. are copied from the jobs
-           table), or { example_id, title, organization?, deadline?, status? } for an example
-           job in opportunities.js. Already on the tracker -> 200 with the row that's there.
-           At most 200 per student
+           table), { example_id, title, organization?, deadline?, status? } for an example
+           job in opportunities.js, or { title, organization?, deadline?, status?, id? } for a
+           job from another site (id: a uuid the browser picked). All take notes? too.
+           Already on the tracker -> 200 with the row that's there. At most 200 per student
+    PUT    /api/resumes/me  body { data, base_updated_at? } (see F15) -> { resume }, or 409
+           { error, resume } when another device saved first
     PATCH  /api/applications/:id             (student, own)      body { status?, notes? } -> { application }
     DELETE /api/applications/:id             (student, own)      -> 204
     (Built 2026-11-15, B7/B8: "student" means any logged-in account for now, since nothing
@@ -267,12 +270,16 @@ Frontend tasks
         (not tracker-storage.js) in localStorage. Has: 3 columns, Saved / Preparing / Submitted;
         drag and drop, plus a "Move to" <select> on each card for keyboards and phones; an empty
         message per column; Save in Discovery adds a job to Saved.
+        Done 2026-11-15 (Kevin; Roemer built the board):
+        - D8 decided: the 3 columns stay. Saved to the account since F12.
+        - "+ Add a job from another site": a form (title, company, deadline, column) above the
+          board. The job gets an id in the browser, and the server keeps that same id, so its
+          card works offline too. (Notes go on the card after it's added.)
+        - Notes on each card (a fold-open "Notes" box, saved a second after you stop typing),
+          and Remove with an "Undo" bar (no timer; the focus goes to Undo, then back to the card).
+        - A "Due soon" tag for deadlines in the next 7 days (words, not color alone), not on
+          Submitted cards.
         Left:
-        - (D8 decided 2026-11-15: the 3 columns stay. Saved to the account since F12.)
-        - "Add an application" form for jobs found on other sites (title, organization, status,
-          deadline, notes). Today only Discovery's jobs can be on it.
-        - Notes on a card, and Remove with an "Undo" message.
-        - A "Due soon" chip for deadlines in the next 7 days (text, not color alone).
         - Students-only message: waits on F0c's getRole().
         Original task:
         Route /applications. Students only (others see a short "for students" message).
@@ -388,7 +395,7 @@ Frontend tasks
         labels on everything, inline errors next to the field, a preview of the card before
         posting. Non-employers see why they can't post.
 
-    [~] F12 - Tracker and Apply use the backend       files: ApplicationTracker.jsx, data/tracker.js,
+    [x] F12 - Tracker and Apply use the backend       files: ApplicationTracker.jsx, data/tracker.js,
                                                               Discovery.jsx
         needs: B7, F8, D8. Tracker reads/writes /api/applications. On first load, offer to move
         anything saved in localStorage into the account, then clear it. Apply on details
@@ -400,9 +407,9 @@ Frontend tasks
         ("scoutsearch-applications-outbox:<id>") and are sent when it's back. The tracker page
         says "Saved to your account." (or why not). Instead of an "offer", a list saved before
         this is moved to the account automatically, once (the team chose that).
-        Left: Apply still only opens the original posting (no 'applied' row: D8 has no such
-        column; 'submitted' would be the one to use). Notes are saved by PATCH but have no box
-        on the cards yet (F4's list).
+        Also done 2026-11-15: Apply (in Discovery's pop-up) opens the posting AND puts the job
+        in Submitted (D8 has no 'applied' column), saved or not; the pop-up says so, and it can
+        be moved back on the tracker. Notes have a box on each card (F4).
 
     [ ] F13 - Applicants view (employers)             files: frontend/src/pages/Applicants.jsx (new),
                                                               index.css ("Applicants page"), App.jsx
@@ -421,6 +428,9 @@ Frontend tasks
         sent when the server is back. A resume saved before this is moved to the account
         automatically, once. The example resume is never saved. A line under the intro says
         "Saved to your account." (or why not).
+        Two devices: each save says which saved copy it started from (base_updated_at). If
+        another device saved in between, the backend saves nothing and answers 409 with its
+        copy, and the builder asks "Keep this device's version" or "Use the other version".
 
     [ ] F16 - ScoutCoach 2: suggestions               files: ScoutCoach.jsx, index.css (ScoutCoach)
         needs: D3, B10.

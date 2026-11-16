@@ -1,6 +1,7 @@
 // frontend/plans.md Task B7: each student's Application tracker list, saved with their account.
 //   GET    /api/applications        your list                  -> { applications: [Application] }
-//   POST   /api/applications        put a job on it            -> 201 { application } (200 if it was there already)
+//   POST   /api/applications        put a job on it (one of ours, an example, or one
+//                                   from another site)         -> 201 { application } (200 if it was there already)
 //   PATCH  /api/applications/:id    move it to another column  -> { application }
 //   DELETE /api/applications/:id    take it off                -> 204
 //
@@ -64,9 +65,22 @@ router.get('/', async (req, res) => {
 });
 
 
+// The title, company, and deadline a student typed in (for an example job, or a job from
+// another site), checked. Gives back those three, or null if one is wrong
+function readTypedJob(body: Record<string, unknown>): { title: string; organization: string; deadline: string | null } | null {
+  const title = readText(body.title, 300);
+  const organization = readText(body.organization ?? '', 300);
+  const deadline = body.deadline === undefined || body.deadline === null ? null : readDate(body.deadline);
+  if (!title || organization === null || (body.deadline != null && deadline === null)) return null;
+  return { title, organization, deadline };
+}
+
 // POST /api/applications: put a job on your tracker.
-// body for a real job:     { job_id, status? }   (title, company, and deadline come from the jobs table)
-// body for an example job: { example_id, title, organization?, deadline?, status? }
+// body for a real job:            { job_id, status?, notes? }   (title, company, and deadline come from the jobs table)
+// body for an example job:        { example_id, title, organization?, deadline?, status?, notes? }
+// body for a job from another site: { title, organization?, deadline?, status?, notes?, id? }
+//   id lets the browser pick the row's id (a uuid) itself, so it can show the card and
+//   keep moving it before the server has answered (src/data/tracker.js)
 router.post('/', async (req, res) => {
   const body = req.body ?? {};
   const studentId = req.user!.id;
@@ -74,6 +88,11 @@ router.post('/', async (req, res) => {
   const status = body.status ?? 'saved';
   if (!STATUSES.includes(status)) {
     return res.status(400).json({ error: 'Unknown column' });
+  }
+  // notes can come along (Undo puts a job back with its notes)
+  const notes = body.notes === undefined ? '' : readText(body.notes, 5000);
+  if (notes === null) {
+    return res.status(400).json({ error: 'Notes can be at most 5,000 letters' });
   }
 
   // the row to save, filled in below
@@ -99,23 +118,33 @@ router.post('/', async (req, res) => {
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
-    row = { student_id: studentId, job_id: body.job_id, title: job.title, organization: job.organization, deadline: job.deadline, status };
+    row = { student_id: studentId, job_id: body.job_id, title: job.title, organization: job.organization, deadline: job.deadline, status, notes };
   } else if (body.example_id !== undefined && body.example_id !== null) {
     // a made-up example job (opportunities.js). The server doesn't know those, so the
     // card's words come from the request, after checking them
     const exampleId = body.example_id;
-    const title = readText(body.title, 300);
-    const organization = readText(body.organization ?? '', 300);
-    const deadline = body.deadline === undefined || body.deadline === null ? null : readDate(body.deadline);
     if (!Number.isInteger(exampleId) || exampleId < 1 || exampleId > 1000) {
       return res.status(400).json({ error: 'Unknown job' });
     }
-    if (!title || organization === null || (body.deadline != null && deadline === null)) {
+    const typed = readTypedJob(body);
+    if (!typed) {
       return res.status(400).json({ error: 'Check the job\'s title, company, and deadline' });
     }
-    row = { student_id: studentId, example_id: exampleId, title, organization, deadline, status };
+    row = { student_id: studentId, example_id: exampleId, ...typed, status, notes };
+  } else if (body.title !== undefined) {
+    // a job the student found on another site and typed in (frontend/plans.md F4:
+    // "Add an application"). It's only on their own tracker, so their words are fine
+    if (body.id !== undefined && (typeof body.id !== 'string' || !UUID.test(body.id))) {
+      return res.status(400).json({ error: 'Unknown job' });
+    }
+    const typed = readTypedJob(body);
+    if (!typed) {
+      return res.status(400).json({ error: 'Check the job\'s title, company, and deadline' });
+    }
+    row = { student_id: studentId, ...typed, status, notes };
+    if (body.id !== undefined) row.id = body.id;
   } else {
-    return res.status(400).json({ error: 'Say which job (job_id or example_id)' });
+    return res.status(400).json({ error: 'Say which job (job_id, example_id, or a title)' });
   }
 
   // at most MOST_PER_STUDENT jobs each: ask for that many ids, and see if there are that many
@@ -140,22 +169,29 @@ router.post('/', async (req, res) => {
 
   if (insertError) {
     // 23505 = unique violation: this job is on the tracker already (for example, Save
-    // pressed on two devices). That's fine: send back the row that's there, with 200
+    // pressed on two devices, or the browser sent a job from another site twice because
+    // the first answer got lost). That's fine: send back the row that's there, with 200
     if (insertError.code === '23505') {
-      const match = row.job_id ? { field: 'job_id', value: row.job_id } : { field: 'example_id', value: row.example_id };
+      const match = row.job_id ? { field: 'job_id', value: row.job_id }
+        : row.example_id ? { field: 'example_id', value: row.example_id }
+        : { field: 'id', value: row.id };
       const { data: already, error: findError } = await supabase
         .from('applications')
         .select(COLUMNS)
         .eq('student_id', studentId)
         .eq(match.field, match.value)
         .maybeSingle();
-      if (!findError && already) {
+      if (findError) {
+        console.error('finding the existing application failed:', findError);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      if (already) {
         return res.json({ application: already });
       }
-      console.error('finding the existing application failed:', findError);
-    } else {
-      console.error('application insert failed:', insertError);
+      // not one of YOUR rows: that id is taken by someone else's. Say no, without saying whose
+      return res.status(409).json({ error: 'That id is taken. Try again.' });
     }
+    console.error('application insert failed:', insertError);
     return res.status(500).json({ error: 'Database error' });
   }
 

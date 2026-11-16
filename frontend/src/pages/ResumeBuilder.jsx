@@ -24,11 +24,15 @@ import NavBar from '../components/NavBar.jsx';
 //   watchOtherTabs       keeps two open tabs showing the same resume
 //   watchAccountResume   gets your account's resume (saved on another device, maybe)
 //   useResumeSync        whether it's saved to your account yet
+//   keepThisResume / takeOtherResume   the two answers when another device
+//                        saved a different one first
 import {
     blankResume,
     exampleResume,
+    keepThisResume,
     loadResume,
     saveResume,
+    takeOtherResume,
     useResumeSync,
     watchAccountResume,
     watchOtherTabs,
@@ -386,6 +390,28 @@ function ResumeBuilder() {
         syncMessage = "Couldn't save to your account: " + sync.message;
     }
 
+    // When another device saved a different resume first (sync.state "clash"),
+    // a box asks which one to keep. Nothing is lost until you pick: this
+    // browser has this one, and your account has the other.
+    // "Keep this device's version": save this one over the other
+    function keepMine() {
+        keepThisResume(resume);
+        setMessage("Keeping this device's version.");
+    }
+    // "Use the other version": show the other device's one instead
+    function useOther() {
+        const theirs = takeOtherResume();
+        if (theirs) {
+            setResume(theirs);
+            setShowingExample(false);
+            setMessage("Switched to the version from your other device.");
+        }
+    }
+    // When the other one was saved, like "Nov 15, 3:42 PM"
+    const otherSavedAt = sync.otherSavedAt
+        ? new Date(sync.otherSavedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        : '';
+
     // Keyboard users: after Move, Remove, or Add, the button they pressed can
     // move or disappear, and the focus would jump back to the top of the page.
     // focusNext holds the id of where the focus should go instead, and the
@@ -518,6 +544,25 @@ function ResumeBuilder() {
                         {/* Whether it's saved to your account (see syncMessage above).
                             role="status" makes screen readers read it when it changes (WCAG) */}
                         <p className="resume-sync" role="status">{syncMessage}</p>
+                        {/* Only when another device saved a different one first.
+                            role="alert" makes screen readers read it right away,
+                            since nothing more is saved until you pick (WCAG) */}
+                        {sync.state === 'clash' && (
+                            <div className="resume-clash">
+                                <p role="alert">
+                                    Your resume was changed on another device ({otherSavedAt}) since this
+                                    device last saved it. Which version do you want to keep?
+                                </p>
+                                <div className="resume-clash-actions">
+                                    <button type="button" className="resume-button resume-button-main" onClick={keepMine}>
+                                        Keep this device's version
+                                    </button>
+                                    <button type="button" className="resume-button" onClick={useOther}>
+                                        Use the other version
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         {/* Only has words when saving failed (see "saveFailed" above)
                             AND your account doesn't have it either, since then your
                             changes would be lost on refresh. role="alert" makes screen

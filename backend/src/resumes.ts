@@ -1,6 +1,7 @@
 // frontend/plans.md Task B8: each student's resume from the Resume builder, saved with their account.
 //   GET /api/resumes/me   your resume, or null if you haven't saved one   -> { resume: Resume | null }
 //   PUT /api/resumes/me   save it (replaces the whole thing)               -> { resume: Resume }
+//                         (409 { error, resume } if another device saved first, see below)
 // "me" because there's only ever your own: nobody can ask for someone else's.
 // Every route needs you to be logged in (authenticateToken).
 import express from 'express';
@@ -88,25 +89,79 @@ router.get('/me', async (req, res) => {
 });
 
 
-// PUT /api/resumes/me: save your resume, body { data: { contact, education, experience, projects, skills } }.
-// It replaces what was saved before ("upsert": insert it, or update it if there's one already)
+// PUT /api/resumes/me: save your resume.
+// body { data: { contact, education, experience, projects, skills }, base_updated_at? }
+//
+// base_updated_at stops two devices from quietly overwriting each other. It's the
+// updated_at of the copy this browser started from (what GET or the last PUT gave back):
+//   a time  "only save if the saved one is still that one"
+//   null    "only save if there's none yet" (this browser has never seen one)
+//   left out  save no matter what
+// If someone saved in between (another device), nothing is saved, and the answer is
+// 409 with the copy that's there now, so the Resume builder can ask which one to keep.
+// To keep yours anyway, send it again with THAT copy's updated_at.
 router.put('/me', async (req, res) => {
+  const studentId = req.user!.id;
   const checked = cleanResume(req.body?.data);
   if ('problem' in checked) {
     return res.status(400).json({ error: checked.problem });
   }
+  const base = req.body?.base_updated_at;
+  if (base !== undefined && base !== null && (typeof base !== 'string' || Number.isNaN(Date.parse(base)))) {
+    return res.status(400).json({ error: 'base_updated_at has to be a time (or null)' });
+  }
 
-  const { data, error } = await supabase
-    .from('resumes')
-    .upsert({ student_id: req.user!.id, data: checked.resume, updated_at: new Date().toISOString() }, { onConflict: 'student_id' })
-    .select('student_id, data, updated_at')
-    .single();
+  const newRow = { student_id: studentId, data: checked.resume, updated_at: new Date().toISOString() };
+  const columns = 'student_id, data, updated_at';
 
-  if (error) {
-    console.error('resume save failed:', error);
+  // left out: save no matter what ("upsert": insert it, or update it if there's one already)
+  if (base === undefined) {
+    const { data, error } = await supabase.from('resumes').upsert(newRow, { onConflict: 'student_id' }).select(columns).single();
+    if (error) {
+      console.error('resume save failed:', error);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    return res.json({ resume: data });
+  }
+
+  if (typeof base === 'string') {
+    // only update the row if its updated_at is still the one this browser started from.
+    // It's one step in the database, so two saves at the same moment can't both win
+    const { data, error } = await supabase
+      .from('resumes')
+      .update({ data: newRow.data, updated_at: newRow.updated_at })
+      .eq('student_id', studentId)
+      .eq('updated_at', base)
+      .select(columns)
+      .maybeSingle();
+    if (error) {
+      console.error('resume save failed:', error);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (data) return res.json({ resume: data });
+    // nothing matched: someone saved in between, or there's no row anymore (see below)
+  }
+
+  // base null (or the row it was based on is gone): only add one if there's none
+  const { data: added, error: insertError } = await supabase.from('resumes').insert(newRow).select(columns).single();
+  if (!insertError) return res.json({ resume: added });
+  if (insertError.code !== '23505') {
+    console.error('resume save failed:', insertError);
     return res.status(500).json({ error: 'Database error' });
   }
-  res.json({ resume: data });
+
+  // 23505: there IS one already, and it isn't the one this browser started from.
+  // Send it back (409 = "conflict"), so the student can choose
+  const { data: current, error: findError } = await supabase
+    .from('resumes')
+    .select(columns)
+    .eq('student_id', studentId)
+    .maybeSingle();
+  if (findError || !current) {
+    console.error('resume lookup after a clash failed:', findError);
+    return res.status(500).json({ error: 'Database error' });
+  }
+  res.status(409).json({ error: 'Your resume was changed on another device.', resume: current });
 });
 
 export default router;

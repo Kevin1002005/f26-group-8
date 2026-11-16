@@ -34,10 +34,10 @@ import { api } from "../api.js";
 // (The made-up example jobs in that file are still used by the Feed page.)
 import { isPastDeadline } from "../data/opportunities.js";
 // The Application tracker's list, saved with your account (src/data/tracker.js):
-// the helpers that add a job to it (or take it off), useTrackerItems (the list,
+// the helpers that add a job to it (or take it off, or mark it applied), useTrackerItems (the list,
 // redrawing the page when it changes), useTrackerSync (syncs with your account
 // when the page opens), and trackerJob, which finds the job behind each saved item.
-import { addToTracker, removeFromTracker, trackerJob, useTrackerItems, useTrackerSync } from "../data/tracker.js";
+import { addToTracker, markApplied, removeFromTracker, trackerJob, useTrackerItems, useTrackerSync } from "../data/tracker.js";
 
 // The tabs across the page. "All" shows everything; the rest match the
 // "type" of each opportunity (the same four types the database allows).
@@ -367,13 +367,15 @@ function CloseIcon() {
 //                      (In React 19, "ref" can be passed in like any other prop.)
 //   saved, toggleSave  the same Save on/off as the row's button, and the
 //                      function that flips it (and updates the tracker)
+//   applied, onApply   true once Apply was pressed, and what Apply runs (it
+//                      moves the job to Submitted on the tracker)
 //
-// { opportunity, ref, saved, toggleSave } below "unpacks" the props: it's a
+// { opportunity, ref, saved, ... } below "unpacks" the props: it's a
 // shorter way of writing props.opportunity, props.ref, and so on. It's
 // needed here because React's rules check that a ref is never read while
 // the page is being drawn, and keeping it separate from the other props
 // makes that clear.
-function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
+function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApply }) {
   // A unique id for the title, so the dialog can be named by it (WCAG)
   const titleId = "discovery-dialog-title-" + opportunity.id;
   // true once the deadline has gone by: Apply then turns off (see the bottom)
@@ -479,7 +481,15 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
       {/* The bottom: a note on the left, Save and Apply on the right.
           It stays put while the middle scrolls. */}
       <div className="discovery-dialog-bottom">
-        <p className="discovery-dialog-message">You'll apply on {opportunity.organization}'s own site.</p>
+        {/* After Apply, it says where the job went on your tracker. role="status"
+            makes screen readers read that out (WCAG). It's inside the pop-up
+            because while it's open, the page behind it is shut off, and screen
+            readers don't hear messages from there */}
+        <p className="discovery-dialog-message" role="status">
+          {applied
+            ? "Moved to Submitted on My applications. (Didn't send it? Move it back there.)"
+            : "You'll apply on " + opportunity.organization + "'s own site."}
+        </p>
         <div className="discovery-actions">
           {/* aria-label starts with the word you see ("Save" or "Saved"),
               so voice control users can say what's on the button (WCAG) */}
@@ -513,6 +523,8 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave }) {
                 rel="noopener noreferrer"
                 className="discovery-solid-button"
                 aria-label={"Apply to " + opportunity.title + " (opens in a new tab)"}
+                // the posting opens, and the job goes in Submitted on your tracker
+                onClick={onApply}
               >
                 Apply
                 <ArrowIcon />
@@ -559,6 +571,20 @@ function OpportunityRow(props) {
   const saved = trackerItems.some((item) => item.id === opportunity.id);
   // What screen readers hear after Save is pressed (see the end of the row)
   const [announcement, setAnnouncement] = useState("");
+  // true once Apply was pressed in the pop-up (it then says where the job went)
+  const [applied, setApplied] = useState(false);
+
+  // Apply was pressed: the posting opens in a new tab (the link does that),
+  // and the job goes in the tracker's "Submitted" column, saved or not
+  function apply() {
+    markApplied(opportunity.id, {
+      title: opportunity.title,
+      organization: opportunity.organization,
+      deadline: opportunity.deadline,
+      initials: opportunity.initials,
+    });
+    setApplied(true);
+  }
 
   // Runs when Save is pressed, in the row or in the pop-up.
   // Saving puts the job in the tracker's "Saved" column; pressing again
@@ -708,7 +734,14 @@ function OpportunityRow(props) {
         </span>
 
         {/* The pop-up. It's on the page all the time but hidden until it's opened. */}
-        <OpportunityDialog opportunity={opportunity} ref={dialogRef} saved={saved} toggleSave={toggleSave} />
+        <OpportunityDialog
+          opportunity={opportunity}
+          ref={dialogRef}
+          saved={saved}
+          toggleSave={toggleSave}
+          applied={applied}
+          onApply={apply}
+        />
       </td>
     </tr>
   );

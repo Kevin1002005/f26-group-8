@@ -97,13 +97,14 @@ function cleanList(list) {
 // oldest first. Each one is { key, type, id, ... }:
 //   { type: "add", id, stage, details }   put a job on the tracker
 //   { type: "move", id, stage }           move it to another column
+//   { type: "notes", id, notes }          change its notes
 //   { type: "remove", id }                take it off
 // "key" is a made-up name for that one change, so it can be crossed off
 // after it's sent (even if another tab changed the outbox in between)
 function readOutbox(account) {
   const outbox = readSaved(outboxName, account);
   if (!Array.isArray(outbox)) return [];
-  return outbox.filter((change) => change !== null && typeof change === "object" && ["add", "move", "remove"].includes(change.type));
+  return outbox.filter((change) => change !== null && typeof change === "object" && ["add", "move", "notes", "remove"].includes(change.type));
 }
 
 // { jobId: rowId } for every job the account has: the server's own number
@@ -226,29 +227,101 @@ function initialsOf(organization) {
 // goes in the outbox, and then the outbox is sent to the account.
 
 // Puts one change in the outbox, then starts sending.
-// A newer "move" or "remove" makes older "move"s of that job pointless (only
-// where it ends up matters), so those are crossed off first
+// Only where a job ends up matters, so a newer change makes some older ones
+// pointless, and those are crossed off first:
+//   a newer "move" replaces older "move"s of that job
+//   newer "notes" replace older "notes" of that job
+//   a "remove" replaces both
 function queueChange(account, change) {
-  const outbox = readOutbox(account).filter(
-    (old) => !(old.type === "move" && old.id === change.id && change.type !== "add"),
-  );
+  const outbox = readOutbox(account).filter((old) => {
+    if (old.id !== change.id) return true;
+    if (change.type === "remove") return old.type !== "move" && old.type !== "notes";
+    return !(old.type === change.type && (change.type === "move" || change.type === "notes"));
+  });
   writeSaved(outboxName, account, [...outbox, { ...change, key: newKey() }]);
   // a new change: any old "couldn't save" sentence is about something else
   setStatus(account, { problem: "" });
   syncTracker();
 }
 
-// Adds a job to the "Saved" column (if it isn't on the tracker already).
+// Adds a job to the tracker, in the "Saved" column unless "stage" says another
+// (if it isn't on the tracker already).
 // details is what the tracker needs to show a real job:
 // { title, organization, deadline, initials } (leave it out for an example job)
-export function addToTracker(id, details = {}) {
+export function addToTracker(id, details = {}, stage = "saved") {
   const account = loggedInId();
   const list = currentItems();
-  if (list.some((item) => item.id === id)) return;
+  if (list.some((item) => item.id === id) || !stageNames.includes(stage)) return;
   // [...list, newItem] makes a new list: everything already there, plus the new one
-  setItems(account, [...list, { ...details, id: id, stage: "saved" }]);
+  setItems(account, [...list, { ...details, id: id, stage: stage }]);
   // Only logged-in accounts have a tracker on the server
-  if (account) queueChange(account, { type: "add", id: id, stage: "saved", details: details });
+  if (account) queueChange(account, { type: "add", id: id, stage: stage, details: details });
+}
+
+// Apply was pressed (Discovery's pop-up): the job goes in "Submitted", whether it
+// was on the tracker already (in another column) or not
+export function markApplied(id, details = {}) {
+  if (isOnTracker(id)) {
+    moveOnTracker(id, "submitted");
+    return;
+  }
+  const account = loggedInId();
+  setItems(account, [...currentItems(), { ...details, id: id, stage: "submitted" }]);
+  // "mustBe": if the account already has this job (saved on another device, and
+  // its list hasn't arrived here yet), it's moved to Submitted too, instead of
+  // keeping the column it had there (see sendChange)
+  if (account) queueChange(account, { type: "add", id: id, stage: "submitted", details: details, mustBe: true });
+}
+
+// Saves the notes on one card (the "Notes" box on the Application tracker).
+// The page sends them a moment after you stop typing, not on every letter
+export function saveTrackerNotes(id, notes) {
+  const account = loggedInId();
+  const list = currentItems();
+  const item = list.find((each) => each.id === id);
+  if (!item || (item.notes ?? "") === notes) return;
+  setItems(account, list.map((each) => (each.id === id ? { ...each, notes: notes } : each)));
+  if (account) queueChange(account, { type: "notes", id: id, notes: notes });
+}
+
+// Puts a job back exactly as it was (the "Undo" after Remove): the same
+// column, details, and notes. item is the one removeFromTracker took off
+export function putBackOnTracker(item) {
+  const account = loggedInId();
+  const list = currentItems();
+  if (list.some((each) => each.id === item.id)) return;
+  setItems(account, [...list, item]);
+  // details = everything except the id and column (title, company, notes...)
+  const { id, stage, ...details } = item;
+  if (account) queueChange(account, { type: "add", id: id, stage: stage, details: details });
+}
+
+// A job found on another site, typed in on the tracker page ("Add a job").
+// job is { title, organization, deadline, stage }. It gets a new id made here,
+// so the card can be moved (or have notes) before the server has answered;
+// the server keeps that same id. Gives back the id
+export function addOtherJob(job) {
+  const id = newUuid();
+  addToTracker(id, {
+    title: job.title,
+    organization: job.organization,
+    deadline: job.deadline || null,
+    initials: initialsOf(job.organization),
+    // "custom" marks it as typed in, so it's sent with its words (see sendChange)
+    custom: true,
+  }, job.stage);
+  return id;
+}
+
+// A new random id in the shape the database uses (a "uuid", like
+// "3f2a9c1e-..."). crypto.getRandomValues gives random numbers that are hard to
+// guess, and works on any address (crypto.randomUUID needs https)
+function newUuid() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // the "version 4" mark (a random uuid)
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // the "variant" mark every uuid has
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-" + hex.slice(16, 20) + "-" + hex.slice(20);
 }
 
 // Moves a job to another column ("saved", "preparing", or "submitted")
@@ -294,28 +367,40 @@ async function sendChange(account, change) {
     // The backend looks a real job up itself (it never takes the browser's word
     // for its title). An example job isn't in the backend's jobs table, so its
     // words come from opportunities.js
+    // A job from another site was typed in, so its own words are sent, with its id.
+    const details = change.details ?? {};
     let body;
     if (typeof change.id === "number") {
-      const example = opportunities.find((job) => job.id === change.id);
-      const details = example ?? change.details ?? {};
-      body = { example_id: change.id, title: details.title, organization: details.organization ?? "", deadline: details.deadline ?? null };
+      const example = opportunities.find((job) => job.id === change.id) ?? details;
+      body = { example_id: change.id, title: example.title, organization: example.organization ?? "", deadline: example.deadline ?? null };
+    } else if (details.custom) {
+      body = { id: change.id, title: details.title, organization: details.organization ?? "", deadline: details.deadline ?? null };
     } else {
       body = { job_id: change.id };
     }
     body.status = change.stage;
+    // Notes come along when Undo puts a job back
+    if (details.notes) body.notes = details.notes;
     const answer = await api("/applications", { method: "POST", body: JSON.stringify(body), asUser: account });
     // Remember the row's number (read the ids again: another change may have
     // been saved while this one was on its way)
     writeSaved(serverIdsName, account, { ...readServerIds(account), [change.id]: answer.application.id });
+    // It was on the account already, in another column. Usually that column wins
+    // (it's what your other device chose), but Apply means "it's submitted"
+    if (change.mustBe && answer.application.status !== change.stage) {
+      await api("/applications/" + answer.application.id, { method: "PATCH", body: JSON.stringify({ status: change.stage }), asUser: account });
+    }
     return;
   }
 
-  // "move" and "remove" need the row's number. No number means the account
-  // never got this job (adding it was refused), so there's nothing to do
+  // "move", "notes", and "remove" need the row's number. No number means the
+  // account never got this job (adding it was refused), so there's nothing to do
   if (!rowId) return;
   try {
     if (change.type === "move") {
       await api("/applications/" + rowId, { method: "PATCH", body: JSON.stringify({ status: change.stage }), asUser: account });
+    } else if (change.type === "notes") {
+      await api("/applications/" + rowId, { method: "PATCH", body: JSON.stringify({ notes: change.notes }), asUser: account });
     } else {
       await api("/applications/" + rowId, { method: "DELETE", asUser: account });
     }
@@ -358,17 +443,22 @@ async function sendOutbox(account) {
 }
 
 // A row from the server -> an item in the list.
-// The row's own id stands in for a real job that was deleted from the jobs
-// table later (its job_id is gone, but the row keeps the title)
+// A row with neither a job_id nor an example_id uses its own id: a job typed in
+// from another site, or a real job deleted from the jobs table later (its
+// job_id is gone, but the row keeps the title). Both are "custom": the row's
+// own words are all there is
 function itemFromRow(row) {
-  return {
+  const item = {
     id: row.example_id ?? row.job_id ?? row.id,
     stage: row.status,
     title: row.title,
     organization: row.organization,
     deadline: row.deadline,
     initials: initialsOf(row.organization),
+    notes: typeof row.notes === "string" ? row.notes : "",
   };
+  if (row.example_id === null && row.job_id === null) item.custom = true;
+  return item;
 }
 
 // The list with the outbox's changes done on top: what this device should
@@ -380,6 +470,8 @@ function withOutbox(items, outbox) {
       list = [...list, { ...change.details, id: change.id, stage: change.stage }];
     } else if (change.type === "move") {
       list = list.map((item) => (item.id === change.id ? { ...item, stage: change.stage } : item));
+    } else if (change.type === "notes") {
+      list = list.map((item) => (item.id === change.id ? { ...item, notes: change.notes } : item));
     } else if (change.type === "remove") {
       list = list.filter((item) => item.id !== change.id);
     }

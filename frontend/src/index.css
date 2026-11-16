@@ -9190,9 +9190,13 @@ html:has(.discovery-dialog[open]) {
    printed page ONLY the resume: everything else is hidden, and the paper
    fills a letter-size page with half-inch margins. */
 @media print {
+  /* No page border of its own: browsers print their date, page title, web address, and
+     page number in that border (Chrome's "Headers and footers"), so with none there's
+     nowhere to put them. The half inch of white space is inside the resume instead
+     (.resume-paper below) */
   @page {
     size: letter;                             /* 8.5 by 11 inches */
-    margin: 0.5in;                            /* half an inch on every side */
+    margin: 0;
   }
 
   /* body:has(.resume-page) means "only while the Resume builder is open".
@@ -9246,10 +9250,14 @@ html:has(.discovery-dialog[open]) {
     background: none;
   }
 
-  /* The paper fills the page (the page's own margins are set in @page above) */
+  /* The paper fills the page, with half an inch of white space on every side (the page
+     itself has none, see @page above). box-decoration-break: clone repeats that space
+     at the top and bottom of every page, when a long resume runs onto a second one */
   .resume-paper {
     width: 100%;
-    padding: 0;
+    padding: 0.5in;
+    -webkit-box-decoration-break: clone;      /* the same, for Safari */
+    box-decoration-break: clone;
     aspect-ratio: auto;
     box-shadow: none;
     font-size: 10.5pt;

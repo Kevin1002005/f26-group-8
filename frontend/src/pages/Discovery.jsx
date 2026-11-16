@@ -32,7 +32,8 @@ import NavBar from "../components/NavBar.jsx";
 import { api } from "../api.js";
 // isPastDeadline says if a job's deadline has gone by (it then says "Closed").
 // (The made-up example jobs in that file are still used by the Feed page.)
-import { isPastDeadline } from "../data/opportunities.js";
+// isDueWithin says if it's due in the next few days, and initialsOf makes the "GL" for a logo.
+import { initialsOf, isDueWithin, isPastDeadline } from "../data/opportunities.js";
 // The Application tracker's list, saved with your account (src/data/tracker.js):
 // the helpers that add a job to it (or take it off, or mark it applied), useTrackerItems (the list,
 // redrawing the page when it changes), useTrackerSync (syncs with your account
@@ -72,12 +73,7 @@ function toOpportunity(job) {
   return {
     id: job.id,
     // "Greenline Labs" -> "GL", for the square logo
-    initials: job.organization
-      .split(/\s+/)
-      .map((word) => word[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase(),
+    initials: initialsOf(job.organization),
     title: job.title,
     organization: job.organization,
     type: typeNames[job.type],
@@ -535,16 +531,6 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApp
       </div>
     </dialog>
   );
-}
-
-// True if a deadline is within the next "days" days (and not already past).
-// Used for the "Due soon" tag (7 days) and the summary box (14 days).
-// A job with no deadline (null) is never "due".
-// 1000 * 60 * 60 * 24 is the number of milliseconds in one day.
-function isDueWithin(deadline, days) {
-  if (!deadline) return false;
-  const msLeft = new Date(deadline + "T23:59") - new Date();
-  return msLeft >= 0 && msLeft <= days * 1000 * 60 * 60 * 24;
 }
 
 // The colored tag for each kind of job. Each kind has its own color, and

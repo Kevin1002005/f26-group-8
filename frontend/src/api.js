@@ -21,6 +21,16 @@ function failed(message, status, body = {}) {
     return error;
 }
 
+// True when a failed request is worth trying again later: no answer at all (0),
+// "not logged in" (401: the login is being renewed), "too many requests" (429),
+// or the server broke (500 and up). Anything else (400, 404...) means the server
+// looked at it and said no, so sending it again would only get the same no.
+// tracker.js and resume-storage.js use it
+export function canRetry(error) {
+    const code = error?.status;
+    return typeof code !== 'number' || code === 0 || code === 401 || code === 429 || code >= 500;
+}
+
 // path is the part after /api, like '/posts' or '/messages'.
 // options is the same as fetch's, like { method: 'POST', body: ... }.
 // Leave options out to just read something (a GET).

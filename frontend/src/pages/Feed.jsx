@@ -19,7 +19,7 @@ import { Link } from "react-router";
 // The jobs, for the listing posts and the right column. They're the same list
 // as the Discovery page uses (src/data/opportunities.js), so clicking one can
 // open that exact job there. isPastDeadline says if a job's deadline has gone by.
-import { isPastDeadline, opportunities } from "../data/opportunities.js";
+import { isDueWithin, isPastDeadline, opportunities } from "../data/opportunities.js";
 // The Application tracker's list (src/data/tracker.js): Save on a listing post
 // adds the job to it, and "Due soon" reads it (trackerJob finds each item's job,
 // real or example)
@@ -699,13 +699,6 @@ function Post(props) {
 // ("T00:00" = midnight, so the date doesn't slip back a day in some time zones)
 function shortDate(date) {
   return new Date(date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-// True if a deadline is in the next "days" days (and not already past).
-// 1000 * 60 * 60 * 24 is the number of milliseconds in one day.
-function isDueWithin(deadline, days) {
-  const msLeft = new Date(deadline + "T23:59") - new Date();
-  return msLeft >= 0 && msLeft <= days * 1000 * 60 * 60 * 24;
 }
 
 // The colored tag for each kind of job (the same colors as the Opportunities page)

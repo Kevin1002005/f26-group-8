@@ -119,22 +119,14 @@ router.post('/', async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
     row = { student_id: studentId, job_id: body.job_id, title: job.title, organization: job.organization, deadline: job.deadline, status, notes };
-  } else if (body.example_id !== undefined && body.example_id !== null) {
-    // a made-up example job (opportunities.js). The server doesn't know those, so the
-    // card's words come from the request, after checking them
-    const exampleId = body.example_id;
-    if (!Number.isInteger(exampleId) || exampleId < 1 || exampleId > 1000) {
-      return res.status(400).json({ error: 'Unknown job' });
-    }
-    const typed = readTypedJob(body);
-    if (!typed) {
-      return res.status(400).json({ error: 'Check the job\'s title, company, and deadline' });
-    }
-    row = { student_id: studentId, example_id: exampleId, ...typed, status, notes };
-  } else if (body.title !== undefined) {
-    // a job the student found on another site and typed in (frontend/plans.md F4:
-    // "Add an application"). It's only on their own tracker, so their words are fine
-    if (body.id !== undefined && (typeof body.id !== 'string' || !UUID.test(body.id))) {
+  } else if ((body.example_id !== undefined && body.example_id !== null) || body.title !== undefined) {
+    // a made-up example job (opportunities.js), or one the student found on another site
+    // and typed in. The server doesn't know those, so the card's words come from the
+    // request, after checking them (it's only on their own tracker)
+    const exampleId = body.example_id ?? null;
+    const badExample = exampleId !== null && (!Number.isInteger(exampleId) || exampleId < 1 || exampleId > 1000);
+    const badId = exampleId === null && body.id !== undefined && (typeof body.id !== 'string' || !UUID.test(body.id));
+    if (badExample || badId) {
       return res.status(400).json({ error: 'Unknown job' });
     }
     const typed = readTypedJob(body);
@@ -142,7 +134,8 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Check the job\'s title, company, and deadline' });
     }
     row = { student_id: studentId, ...typed, status, notes };
-    if (body.id !== undefined) row.id = body.id;
+    if (exampleId !== null) row.example_id = exampleId;
+    else if (body.id !== undefined) row.id = body.id;
   } else {
     return res.status(400).json({ error: 'Say which job (job_id, example_id, or a title)' });
   }

@@ -1,73 +1,64 @@
 // tracker.js remembers which jobs are on the Application tracker, and in
-// which column. Three pages use it:
-//   - Discovery: pressing Save adds a job (to the "Saved" column), and
-//     pressing it again takes the job off.
-//   - Feed: the same Save on listing posts, and the "Due soon" box.
-//   - Application tracker: shows the jobs, and moves them between columns.
+// which column. Discovery and the Feed add jobs to it (Save, Apply), and the
+// Application tracker page shows them, moves them, and keeps their notes.
 //
 // The list is saved with your ACCOUNT (the backend's /api/applications,
-// plans.md Task F12), so it follows you to any device. It's also kept in this
-// browser (localStorage), which does two jobs:
-//   1. Pages show your list right away, instead of waiting for the server.
-//   2. If the server can't be reached (no internet, or the backend is down),
-//      everything still works: each change waits in an "outbox" on this
-//      device, and is sent as soon as the server is back.
+// plans.md Task F12), so it follows you to any device. This browser keeps a
+// copy too (localStorage), so pages show your list right away, and so
+// everything still works when the server can't be reached: each change waits
+// in an "outbox" on this device, and is sent as soon as the server is back.
 // A list saved in this browser before accounts kept it is sent to your
-// account the first time you open a page with the tracker (once).
+// account once, the first time a page with the tracker opens.
 //
-// The list looks like:
-//   [ { id: 1, stage: "saved" },
-//     { id: "3f2a...", stage: "submitted", title: "...", organization: "...", deadline: "...", initials: "..." } ]
+// One item in the list:
+//   { id, stage, title, organization, deadline, initials, notes, custom? }
 // "stage" is the column: "saved", "preparing", or "submitted".
-// "id" is either a made-up example in opportunities.js (a number, used by the
-// Feed), or a real job from Opportunities (a long code, a uuid). Its title,
-// company, deadline, and initials are kept with it (see trackerJob below).
-//
-// Every read and write of the browser's storage is inside try/catch: storage
-// can be turned off (for example in a private window). Then this device just
-// keeps the list in memory until the tab closes (your account still has it).
+// "id" is one of:
+//   a number   a made-up example job in opportunities.js (the Feed's posts)
+//   a uuid     a real job from Opportunities (its id in the jobs table), or,
+//              with custom: true, a job typed in from another site (the
+//              server's id for that row)
 
 // useEffect runs code after a page is drawn (here: syncing when it opens).
 // useSyncExternalStore lets a page redraw when something outside React
 // changes (here: the list, after a change or after the server answers)
 import { useEffect, useSyncExternalStore } from "react";
-// api() is how we talk to the backend (src/api.js)
-import { api } from "../api.js";
+// api() talks to the backend; canRetry says if a failed request is worth trying again
+import { api, canRetry } from "../api.js";
 // accountKey and readAccountItem keep each account's list apart on a shared
 // computer (login-status.js). loggedInId says whose list it is right now
 import { accountKey, loggedInId, readAccountItem, useLoggedInId } from "../login-status.js";
-// The made-up example jobs (the Feed's listing posts use them)
-import { opportunities } from "./opportunities.js";
+// The made-up example jobs, and the "GL" initials for a company's square logo
+import { initialsOf, opportunities } from "./opportunities.js";
 
-// The names things are saved under in the browser's storage
-// (plus the account's id, added by accountKey)
+// The names things are saved under in the browser (plus the account's id)
 const listName = "scoutsearch-applications"; // the list itself
 const outboxName = "scoutsearch-applications-outbox"; // changes not sent to the account yet
-const serverIdsName = "scoutsearch-applications-server-ids"; // each job's row number on the server
+const serverIdsName = "scoutsearch-applications-server-ids"; // { jobId: the server's row id }
 
-// The three columns. Anything saved with another stage is left out (see below)
+// The three columns
 const stageNames = ["saved", "preparing", "submitted"];
 
 
 // ---------- This browser's storage ----------
 
-// Where things go when the browser won't save them (storage turned off or
-// full), so this tab still works until it closes
+// Every read and write is inside try/catch: storage can be turned off (some
+// private windows) or full. Then things are kept here, in memory, until the
+// tab closes (your account still has them)
 const memory = new Map();
 
-// Reads one saved thing (as JSON), or null if there's nothing (or it's broken)
+// Reads one saved thing (as JSON), or null if there's nothing (or it's broken).
+// readAccountItem also moves an old list from before accounts (login-status.js)
 function readSaved(name, account) {
   try {
-    // readAccountItem also moves an old list from before accounts (see login-status.js)
     const text = readAccountItem(name, account);
     if (text !== null) return JSON.parse(text);
   } catch {
-    // storage is off, or the text is broken: fall through to memory
+    // storage is off, or the text is broken: use memory
   }
   return memory.get(accountKey(name, account)) ?? null;
 }
 
-// Saves one thing (as JSON)
 function writeSaved(name, account, value) {
   const key = accountKey(name, account);
   try {
@@ -78,10 +69,9 @@ function writeSaved(name, account, value) {
   }
 }
 
-// The list, keeping only items that look right: an object, in one of the
-// three columns, for a job that isn't in the list already. One broken item
-// (like null) would otherwise crash every page that reads the tracker.
-// "seen" remembers the ids so far, so a job saved twice is only kept once
+// Keeps only items that look right (an object, in one of the 3 columns, with an
+// id, not in the list already). One broken item (like null) would otherwise
+// crash every page that reads the tracker
 function cleanList(list) {
   if (!Array.isArray(list)) return [];
   const seen = new Set();
@@ -93,36 +83,36 @@ function cleanList(list) {
   });
 }
 
-// The outbox: the changes this device made that the account doesn't have yet,
-// oldest first. Each one is { key, type, id, ... }:
-//   { type: "add", id, stage, details }   put a job on the tracker
-//   { type: "move", id, stage }           move it to another column
-//   { type: "notes", id, notes }          change its notes
-//   { type: "remove", id }                take it off
-// "key" is a made-up name for that one change, so it can be crossed off
-// after it's sent (even if another tab changed the outbox in between)
+// The outbox: this device's changes the account doesn't have yet, oldest first:
+//   { key, type: "add", id, stage, details }   put a job on the tracker
+//   { key, type: "move", id, stage }           move it to another column
+//   { key, type: "notes", id, notes }          change its notes
+//   { key, type: "remove", id }                take it off
+// "key" names that one change, so it can be crossed off after it's sent
 function readOutbox(account) {
   const outbox = readSaved(outboxName, account);
-  if (!Array.isArray(outbox)) return [];
-  return outbox.filter((change) => change !== null && typeof change === "object" && ["add", "move", "notes", "remove"].includes(change.type));
+  const types = ["add", "move", "notes", "remove"];
+  return Array.isArray(outbox) ? outbox.filter((change) => change && types.includes(change.type)) : [];
 }
 
-// { jobId: rowId } for every job the account has: the server's own number
-// for that row, needed to move it or take it off later
 function readServerIds(account) {
   const ids = readSaved(serverIdsName, account);
   return ids !== null && typeof ids === "object" && !Array.isArray(ids) ? ids : {};
 }
 
-// A new key for a change. (Not crypto.randomUUID: that only works on https
-// and localhost, and the site is sometimes opened from a phone by its address)
-function newKey() {
-  return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+// A new random id in the shape the database uses (a "uuid", like "3f2a9c1e-...").
+// crypto.getRandomValues works on any address (crypto.randomUUID needs https,
+// and the site is sometimes opened from a phone by its local address)
+function newUuid() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // the "version 4" mark (a random uuid)
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // the "variant" mark every uuid has
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-" + hex.slice(16, 20) + "-" + hex.slice(20);
 }
 
 
-// ---------- Telling pages about changes ----------
-// Pages redraw when the list or the sync status changes (the hooks at the bottom)
+// ---------- The list in memory, and telling pages about changes ----------
 
 const listeners = new Set();
 function tellListeners() {
@@ -133,8 +123,8 @@ function subscribe(listener) {
   return () => listeners.delete(listener);
 }
 
-// The list, kept in memory too. React asks for it on every redraw, and needs
-// the SAME list back each time unless something really changed
+// React asks for the list on every redraw, and needs the SAME list back each
+// time unless something really changed, so it's kept here
 let cache = { account: undefined, items: [] };
 
 // The logged-in account's list
@@ -149,9 +139,7 @@ function currentItems() {
 // Saves an account's list, and redraws the pages
 function setItems(account, items) {
   writeSaved(listName, account, items);
-  if (cache.account === account) {
-    cache = { account: account, items: items };
-  }
+  if (cache.account === account) cache = { account: account, items: items };
   tellListeners();
 }
 
@@ -162,15 +150,13 @@ function setItems(account, items) {
 const startingStatus = { account: null, state: "waiting", problem: "" };
 let status = startingStatus;
 function setStatus(account, changes) {
-  // a different account starts fresh
   const base = status.account === account ? status : { ...startingStatus, account: account };
   status = { ...base, ...changes };
   tellListeners();
 }
 
-// When ANOTHER tab changes the list (Save on Opportunities in a second tab),
-// read it again. The browser's "storage" event only fires in the other tabs.
-// (event.key null means everything was cleared)
+// ANOTHER tab changed the list (the "storage" event only fires in the other
+// tabs; event.key null means everything was cleared): read it again
 window.addEventListener("storage", (event) => {
   if (event.key === null || event.key === accountKey(listName, cache.account)) {
     cache = { account: undefined, items: [] };
@@ -179,24 +165,13 @@ window.addEventListener("storage", (event) => {
 });
 
 
-// ---------- Reading the list ----------
+// ---------- Reading and changing the list ----------
+// Each change happens on this device right away (so the page never waits),
+// then goes in the outbox, and the outbox is sent to the account.
 
-// Gives back the whole list (or an empty list if there's nothing saved yet).
-// Don't change the list it gives back: make a new one (the functions below do)
-export function loadTracker() {
-  return currentItems();
-}
-
-// True if this job is on the tracker (in any column).
-// .some() is true if at least one item in the list passes the test.
-export function isOnTracker(id) {
-  return currentItems().some((item) => item.id === id);
-}
-
-// The job behind one item on the tracker, with what the tracker shows
-// (title, organization, deadline, initials), or null if there's none:
-//   - an example job: from opportunities.js
-//   - a real job: from the details saved with it when Save was pressed
+// The job behind one item, with what the tracker shows (title, organization,
+// deadline, initials), or null if there's none: an example job comes from
+// opportunities.js, any other from the details saved with it
 export function trackerJob(item) {
   const example = opportunities.find((job) => job.id === item.id);
   if (example) return example;
@@ -210,133 +185,89 @@ export function trackerJob(item) {
   };
 }
 
-// "Greenline Labs" -> "GL", for the square logo (the same as Discovery's).
-// The server doesn't keep initials, so they're made again from the company name
-function initialsOf(organization) {
-  return (organization || "")
-    .split(/\s+/)
-    .map((word) => word.charAt(0))
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-
-// ---------- Changing the list ----------
-// Each change happens on this device right away (so the page never waits),
-// goes in the outbox, and then the outbox is sent to the account.
-
-// Puts one change in the outbox, then starts sending.
-// Only where a job ends up matters, so a newer change makes some older ones
-// pointless, and those are crossed off first:
-//   a newer "move" replaces older "move"s of that job
-//   newer "notes" replace older "notes" of that job
-//   a "remove" replaces both
+// Puts a change in the outbox, then starts sending. Only where a job ends up
+// matters, so a newer "move" (or "notes") of a job replaces an older one, and a
+// "remove" replaces both
 function queueChange(account, change) {
-  const outbox = readOutbox(account).filter((old) => {
-    if (old.id !== change.id) return true;
-    if (change.type === "remove") return old.type !== "move" && old.type !== "notes";
-    return !(old.type === change.type && (change.type === "move" || change.type === "notes"));
-  });
-  writeSaved(outboxName, account, [...outbox, { ...change, key: newKey() }]);
-  // a new change: any old "couldn't save" sentence is about something else
+  const replaced = (old) => old.id === change.id
+    && (change.type === "remove" ? old.type === "move" || old.type === "notes" : old.type === change.type && change.type !== "add");
+  const outbox = readOutbox(account).filter((old) => !replaced(old));
+  writeSaved(outboxName, account, [...outbox, { ...change, key: newUuid() }]);
+  // a new change: an old "couldn't save" sentence is about something else
   setStatus(account, { problem: "" });
   syncTracker();
 }
 
-// Adds a job to the tracker, in the "Saved" column unless "stage" says another
-// (if it isn't on the tracker already).
-// details is what the tracker needs to show a real job:
-// { title, organization, deadline, initials } (leave it out for an example job)
-export function addToTracker(id, details = {}, stage = "saved") {
+// Puts one item on the list (unless it's there already) and queues it.
+// extra goes on the outbox change only (see markApplied)
+function addItem(item, extra = {}) {
   const account = loggedInId();
   const list = currentItems();
-  if (list.some((item) => item.id === id) || !stageNames.includes(stage)) return;
-  // [...list, newItem] makes a new list: everything already there, plus the new one
-  setItems(account, [...list, { ...details, id: id, stage: stage }]);
-  // Only logged-in accounts have a tracker on the server
-  if (account) queueChange(account, { type: "add", id: id, stage: stage, details: details });
-}
-
-// Apply was pressed (Discovery's pop-up): the job goes in "Submitted", whether it
-// was on the tracker already (in another column) or not
-export function markApplied(id, details = {}) {
-  if (isOnTracker(id)) {
-    moveOnTracker(id, "submitted");
-    return;
-  }
-  const account = loggedInId();
-  setItems(account, [...currentItems(), { ...details, id: id, stage: "submitted" }]);
-  // "mustBe": if the account already has this job (saved on another device, and
-  // its list hasn't arrived here yet), it's moved to Submitted too, instead of
-  // keeping the column it had there (see sendChange)
-  if (account) queueChange(account, { type: "add", id: id, stage: "submitted", details: details, mustBe: true });
-}
-
-// Saves the notes on one card (the "Notes" box on the Application tracker).
-// The page sends them a moment after you stop typing, not on every letter
-export function saveTrackerNotes(id, notes) {
-  const account = loggedInId();
-  const list = currentItems();
-  const item = list.find((each) => each.id === id);
-  if (!item || (item.notes ?? "") === notes) return;
-  setItems(account, list.map((each) => (each.id === id ? { ...each, notes: notes } : each)));
-  if (account) queueChange(account, { type: "notes", id: id, notes: notes });
-}
-
-// Puts a job back exactly as it was (the "Undo" after Remove): the same
-// column, details, and notes. item is the one removeFromTracker took off
-export function putBackOnTracker(item) {
-  const account = loggedInId();
-  const list = currentItems();
-  if (list.some((each) => each.id === item.id)) return;
+  if (list.some((each) => each.id === item.id) || !stageNames.includes(item.stage)) return;
   setItems(account, [...list, item]);
   // details = everything except the id and column (title, company, notes...)
   const { id, stage, ...details } = item;
-  if (account) queueChange(account, { type: "add", id: id, stage: stage, details: details });
+  if (account) queueChange(account, { type: "add", id: id, stage: stage, details: details, ...extra });
 }
 
-// A job found on another site, typed in on the tracker page ("Add a job").
-// job is { title, organization, deadline, stage }. It gets a new id made here,
-// so the card can be moved (or have notes) before the server has answered;
-// the server keeps that same id. Gives back the id
+// Changes one field of one item ("stage" or "notes") and queues it
+function changeItem(id, field, value) {
+  const account = loggedInId();
+  const list = currentItems();
+  const item = list.find((each) => each.id === id);
+  if (!item || (item[field] ?? "") === value) return;
+  setItems(account, list.map((each) => (each.id === id ? { ...each, [field]: value } : each)));
+  if (!account) return;
+  queueChange(account, field === "stage" ? { type: "move", id: id, stage: value } : { type: "notes", id: id, notes: value });
+}
+
+// Save (Discovery, Feed): the job goes in "Saved". details is what the tracker
+// shows for a real job: { title, organization, deadline, initials }
+export function addToTracker(id, details = {}) {
+  addItem({ ...details, id: id, stage: "saved" });
+}
+
+// Apply (Discovery's pop-up): the job goes in "Submitted", whether it was on the
+// tracker already or not. "mustBe": if the account had it in another column
+// (saved on another device, before that list arrived here), it's moved too
+export function markApplied(id, details = {}) {
+  if (currentItems().some((item) => item.id === id)) {
+    moveOnTracker(id, "submitted");
+  } else {
+    addItem({ ...details, id: id, stage: "submitted" }, { mustBe: true });
+  }
+}
+
+// A job found on another site, typed in on the tracker page. job is
+// { title, organization, deadline, stage }. Its id is made here, so its card
+// works before the server has answered; the server keeps the same id
 export function addOtherJob(job) {
   const id = newUuid();
-  addToTracker(id, {
+  addItem({
+    id: id,
+    stage: job.stage,
     title: job.title,
     organization: job.organization,
     deadline: job.deadline || null,
     initials: initialsOf(job.organization),
-    // "custom" marks it as typed in, so it's sent with its words (see sendChange)
     custom: true,
-  }, job.stage);
+  });
   return id;
 }
 
-// A new random id in the shape the database uses (a "uuid", like
-// "3f2a9c1e-..."). crypto.getRandomValues gives random numbers that are hard to
-// guess, and works on any address (crypto.randomUUID needs https)
-function newUuid() {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40; // the "version 4" mark (a random uuid)
-  bytes[8] = (bytes[8] & 0x3f) | 0x80; // the "variant" mark every uuid has
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-" + hex.slice(16, 20) + "-" + hex.slice(20);
+// Undo after Remove: puts the item back exactly as it was (column, notes...)
+export function putBackOnTracker(item) {
+  addItem(item);
 }
 
-// Moves a job to another column ("saved", "preparing", or "submitted")
 export function moveOnTracker(id, stage) {
-  const account = loggedInId();
-  const list = currentItems();
-  const item = list.find((each) => each.id === id);
-  if (!item || item.stage === stage || !stageNames.includes(stage)) return;
-  // A new list where only that job's column is different
-  setItems(account, list.map((each) => (each.id === id ? { ...each, stage: stage } : each)));
-  if (account) queueChange(account, { type: "move", id: id, stage: stage });
+  if (stageNames.includes(stage)) changeItem(id, "stage", stage);
 }
 
-// Takes a job off the tracker, whichever column it's in.
-// .filter() keeps every item except this job.
+export function saveTrackerNotes(id, notes) {
+  changeItem(id, "notes", notes);
+}
+
 export function removeFromTracker(id) {
   const account = loggedInId();
   const list = currentItems();
@@ -348,68 +279,47 @@ export function removeFromTracker(id) {
 
 // ---------- Sending changes to the account, and reading it back ----------
 
-// True when a failed request is worth trying again later: no answer at all (0),
-// "not logged in" (401: the login is being renewed, or will be after you log
-// in again), "too many requests" (429), or the server broke (500 and up).
-// Anything else (400, 404...) means the server looked at it and said no, so
-// sending the same thing again would only get the same no
-function worthRetrying(error) {
-  const code = error?.status;
-  return typeof code !== "number" || code === 0 || code === 401 || code === 408 || code === 429 || code >= 500;
-}
-
 // Sends one change from the outbox. Throws if the request failed
 async function sendChange(account, change) {
-  const serverIds = readServerIds(account);
-  const rowId = serverIds[change.id];
+  const send = (path, method, body) => api(path, { method: method, body: body && JSON.stringify(body), asUser: account });
 
   if (change.type === "add") {
-    // The backend looks a real job up itself (it never takes the browser's word
-    // for its title). An example job isn't in the backend's jobs table, so its
-    // words come from opportunities.js
-    // A job from another site was typed in, so its own words are sent, with its id.
+    // A real job: the backend copies its title from the jobs table itself (it
+    // never takes the browser's word for it). An example or a typed-in job: its
+    // words are sent (an example's from opportunities.js)
     const details = change.details ?? {};
+    const words = (job) => ({ title: job.title, organization: job.organization ?? "", deadline: job.deadline ?? null });
     let body;
     if (typeof change.id === "number") {
-      const example = opportunities.find((job) => job.id === change.id) ?? details;
-      body = { example_id: change.id, title: example.title, organization: example.organization ?? "", deadline: example.deadline ?? null };
+      body = { example_id: change.id, ...words(opportunities.find((job) => job.id === change.id) ?? details) };
     } else if (details.custom) {
-      body = { id: change.id, title: details.title, organization: details.organization ?? "", deadline: details.deadline ?? null };
+      body = { id: change.id, ...words(details) };
     } else {
       body = { job_id: change.id };
     }
     body.status = change.stage;
-    // Notes come along when Undo puts a job back
-    if (details.notes) body.notes = details.notes;
-    const answer = await api("/applications", { method: "POST", body: JSON.stringify(body), asUser: account });
-    // Remember the row's number (read the ids again: another change may have
-    // been saved while this one was on its way)
-    writeSaved(serverIdsName, account, { ...readServerIds(account), [change.id]: answer.application.id });
-    // It was on the account already, in another column. Usually that column wins
-    // (it's what your other device chose), but Apply means "it's submitted"
-    if (change.mustBe && answer.application.status !== change.stage) {
-      await api("/applications/" + answer.application.id, { method: "PATCH", body: JSON.stringify({ status: change.stage }), asUser: account });
+    if (details.notes) body.notes = details.notes; // Undo puts notes back too
+    const { application } = await send("/applications", "POST", body);
+    writeSaved(serverIdsName, account, { ...readServerIds(account), [change.id]: application.id });
+    // It was on the account already, in another column: usually that column
+    // wins (your other device chose it), but Apply means "it's submitted"
+    if (change.mustBe && application.status !== change.stage) {
+      await send("/applications/" + application.id, "PATCH", { status: change.stage });
     }
     return;
   }
 
-  // "move", "notes", and "remove" need the row's number. No number means the
-  // account never got this job (adding it was refused), so there's nothing to do
+  // The rest need the server's row id. None means the account never got this
+  // job (adding it was refused), so there's nothing to do
+  const rowId = readServerIds(account)[change.id];
   if (!rowId) return;
   try {
-    if (change.type === "move") {
-      await api("/applications/" + rowId, { method: "PATCH", body: JSON.stringify({ status: change.stage }), asUser: account });
-    } else if (change.type === "notes") {
-      await api("/applications/" + rowId, { method: "PATCH", body: JSON.stringify({ notes: change.notes }), asUser: account });
-    } else {
-      await api("/applications/" + rowId, { method: "DELETE", asUser: account });
-    }
+    if (change.type === "remove") await send("/applications/" + rowId, "DELETE");
+    else await send("/applications/" + rowId, "PATCH", change.type === "move" ? { status: change.stage } : { notes: change.notes });
   } catch (error) {
-    // 404: the job isn't on the account anymore (taken off on another device).
-    // For a "remove" that's what we wanted, and a "move" has nothing left to move
+    // 404: it was taken off on another device, so there's nothing left to change
     if (error.status !== 404) throw error;
   }
-  // Once it's off the account, forget its number
   if (change.type === "remove") {
     const ids = readServerIds(account);
     delete ids[change.id];
@@ -417,36 +327,26 @@ async function sendChange(account, change) {
   }
 }
 
-// Crosses one change off the outbox, by its key
-function crossOff(account, key) {
-  writeSaved(outboxName, account, readOutbox(account).filter((change) => change.key !== key));
-}
-
-// Sends the outbox, oldest change first, one at a time (so the server sees
-// them in the order you made them). Gives back true once it's empty, or false
-// if the server couldn't be reached (the rest wait for next time)
+// Sends the outbox, oldest first, one at a time (so the server sees changes in
+// the order you made them). Gives back false if the server couldn't be reached
 async function sendOutbox(account) {
   for (;;) {
-    // Read it fresh each time: a new change may have been added meanwhile
+    // read it fresh each time: a new change may have been added meanwhile
     const change = readOutbox(account)[0];
     if (!change) return true;
     try {
       await sendChange(account, change);
     } catch (error) {
-      if (worthRetrying(error)) return false;
-      // The server said no. That change can never go through, so drop it and
-      // say why (reading the account back below shows what it really has)
+      if (canRetry(error)) return false;
+      // The server said no, so that change can never go through: drop it, and say why
       setStatus(account, { problem: "One change couldn't be saved to your account: " + error.message });
     }
-    crossOff(account, change.key);
+    writeSaved(outboxName, account, readOutbox(account).filter((each) => each.key !== change.key));
   }
 }
 
-// A row from the server -> an item in the list.
-// A row with neither a job_id nor an example_id uses its own id: a job typed in
-// from another site, or a real job deleted from the jobs table later (its
-// job_id is gone, but the row keeps the title). Both are "custom": the row's
-// own words are all there is
+// A row from the server -> an item. A row with neither a job_id nor an
+// example_id (typed in, or its job was deleted later) uses its own id
 function itemFromRow(row) {
   const item = {
     id: row.example_id ?? row.job_id ?? row.id,
@@ -455,23 +355,22 @@ function itemFromRow(row) {
     organization: row.organization,
     deadline: row.deadline,
     initials: initialsOf(row.organization),
-    notes: typeof row.notes === "string" ? row.notes : "",
+    notes: row.notes ?? "",
   };
   if (row.example_id === null && row.job_id === null) item.custom = true;
   return item;
 }
 
-// The list with the outbox's changes done on top: what this device should
-// show while those changes are still on their way
+// The list with the outbox's changes done on top: what this device should show
+// while they're still on their way
 function withOutbox(items, outbox) {
   let list = items;
   for (const change of outbox) {
     if (change.type === "add" && !list.some((item) => item.id === change.id)) {
       list = [...list, { ...change.details, id: change.id, stage: change.stage }];
-    } else if (change.type === "move") {
-      list = list.map((item) => (item.id === change.id ? { ...item, stage: change.stage } : item));
-    } else if (change.type === "notes") {
-      list = list.map((item) => (item.id === change.id ? { ...item, notes: change.notes } : item));
+    } else if (change.type === "move" || change.type === "notes") {
+      const field = change.type === "move" ? { stage: change.stage } : { notes: change.notes };
+      list = list.map((item) => (item.id === change.id ? { ...item, ...field } : item));
     } else if (change.type === "remove") {
       list = list.filter((item) => item.id !== change.id);
     }
@@ -479,33 +378,22 @@ function withOutbox(items, outbox) {
   return list;
 }
 
-// One round of syncing for one account. Gives back how it went:
-//   "done"     the account and this device match
-//   "offline"  the server couldn't be reached (try again later)
-//   "more"     new changes were made meanwhile (go again right away)
+// One round of syncing. Gives back "done", "offline" (try again later), or
+// "more" (changes were made meanwhile: go again right away)
 async function syncOnce(account) {
-  // 1. Jobs on this device that the account has never heard of: a list
-  //    from before accounts kept it. Put each one in the outbox, once.
-  //    (Only ones with a job behind them: the tracker can't show the others anyway)
+  // 1. Jobs on this device the account has never heard of (a list from before
+  //    accounts kept it): put each one in the outbox, once
   const serverIds = readServerIds(account);
   const outbox = readOutbox(account);
-  const unsent = cleanList(readSaved(listName, account)).filter(
-    (item) => !serverIds[item.id] && trackerJob(item) !== null
-      && !outbox.some((change) => change.type === "add" && change.id === item.id),
-  );
+  const unsent = cleanList(readSaved(listName, account)).filter((item) => !serverIds[item.id] && trackerJob(item)
+    && !outbox.some((change) => change.type === "add" && change.id === item.id));
   if (unsent.length > 0) {
-    writeSaved(outboxName, account, [
-      ...outbox,
-      ...unsent.map((item) => {
-        // the item minus its id and column = its details (title, company, ...)
-        const { id, stage, ...details } = item;
-        return { type: "add", id: id, stage: stage, details: details, key: newKey() };
-      }),
-    ]);
+    writeSaved(outboxName, account, [...outbox, ...unsent.map(({ id, stage, ...details }) => (
+      { type: "add", id: id, stage: stage, details: details, key: newUuid() }))]);
   }
 
-  // 2. Send the outbox. If the server can't be reached, stop here: this
-  //    device keeps showing its own list, and it's tried again later
+  // 2. Send the outbox. If the server can't be reached, stop here: this device
+  //    keeps showing its own list
   if (!(await sendOutbox(account))) {
     setStatus(account, { state: "offline" });
     return "offline";
@@ -517,7 +405,7 @@ async function syncOnce(account) {
   try {
     answer = await api("/applications", { asUser: account });
   } catch (error) {
-    if (worthRetrying(error)) {
+    if (canRetry(error)) {
       setStatus(account, { state: "offline" });
       return "offline";
     }
@@ -525,13 +413,8 @@ async function syncOnce(account) {
     return "done";
   }
   const rows = Array.isArray(answer.applications) ? answer.applications : [];
-  const ids = {};
-  for (const row of rows) {
-    ids[itemFromRow(row).id] = row.id;
-  }
-  writeSaved(serverIdsName, account, ids);
-  // Changes made while the list was on its way are still in the outbox:
-  // show them on top, and send them next round
+  writeSaved(serverIdsName, account, Object.fromEntries(rows.map((row) => [itemFromRow(row).id, row.id])));
+  // Changes made while the list was on its way: show them on top, send them next
   const waiting = readOutbox(account);
   setItems(account, withOutbox(cleanList(rows.map(itemFromRow)), waiting));
   if (waiting.length > 0) return "more";
@@ -539,20 +422,13 @@ async function syncOnce(account) {
   return "done";
 }
 
-// Only one sync at a time. A sync asked for while one is running ("again")
-// runs right after it, so a change made meanwhile is sent too
+// Only one sync at a time. One asked for meanwhile ("again") runs right after
 let running = null;
 let again = false;
-// The wait before trying again after the server couldn't be reached. It
-// doubles each time (5 seconds, 10, 20...) up to a minute, so a server that's
-// down isn't asked over and over
-let retryWait = 5000;
 let retryTimer = null;
 
-// Sends this device's changes to the account, then reads the account's list
-// back. Pages run it when they open (see useTrackerSync); changes run it too.
-// Gives back a promise that's done when the sync is
-export function syncTracker() {
+// Sends this device's changes, then reads the account's list back
+function syncTracker() {
   if (running) {
     again = true;
     return running;
@@ -564,23 +440,18 @@ export function syncTracker() {
         const account = loggedInId();
         if (!account) break;
         // navigator.locks makes the browser's tabs take turns, so two open tabs
-        // don't send the same change at once. (Old browsers don't have it; then
-        // the backend copes anyway: adding a job twice keeps one)
+        // don't send the same change at once (old browsers skip it: the backend
+        // copes, since adding a job twice keeps one)
         const result = navigator.locks
           ? await navigator.locks.request("scoutsearch-tracker-sync", () => syncOnce(account))
           : await syncOnce(account);
         clearTimeout(retryTimer);
-        if (result === "offline") {
-          // Try again later, by itself
-          retryTimer = setTimeout(syncTracker, retryWait);
-          retryWait = Math.min(retryWait * 2, 60000);
-        } else {
-          retryWait = 5000;
-          if (result === "more") again = true;
-        }
+        // Couldn't reach the server: try again by itself in 15 seconds
+        if (result === "offline") retryTimer = setTimeout(syncTracker, 15000);
+        if (result === "more") again = true;
       } while (again);
     } catch (error) {
-      // A mistake in our own code: log it, and let the next sync try again
+      // a mistake in our own code: log it, and let the next sync try again
       console.error("Syncing the tracker failed:", error);
     } finally {
       running = null;
@@ -589,10 +460,9 @@ export function syncTracker() {
   return running;
 }
 
-// Back online: send what's waiting right away, instead of waiting for the timer
+// Back online: send what's waiting right away. Coming back to this tab: read the
+// account again, so changes from your other devices show up here
 window.addEventListener("online", () => syncTracker());
-// Coming back to this tab: read the account again, so changes made on your
-// other devices meanwhile show up here
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && loggedInId()) syncTracker();
 });
@@ -602,16 +472,14 @@ document.addEventListener("visibilitychange", () => {
 // A "hook" is a function a component calls at its top to get something that
 // can change, and redraw when it does.
 
-// The tracker's list. The page redraws when it changes: a Save, a move, a
-// change in another tab, or the account's list arriving
+// The tracker's list (a different account logging in redraws it too)
 export function useTrackerItems() {
-  // A different account logging in redraws the page too, with their list
   useLoggedInId();
   return useSyncExternalStore(subscribe, currentItems);
 }
 
 // Syncs with the account when the page opens (and when a different account
-// logs in), and gives back how it's going: { state, problem } (see "status")
+// logs in), and gives back how it's going: { state, problem }
 export function useTrackerSync() {
   const account = useLoggedInId();
   useEffect(() => {

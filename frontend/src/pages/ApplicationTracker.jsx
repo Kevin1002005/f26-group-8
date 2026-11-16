@@ -27,7 +27,7 @@ import { Link } from "react-router";
 // NavBar is the bar across the top of the page (components/NavBar.jsx).
 import NavBar from "../components/NavBar.jsx";
 // isPastDeadline says if a job's deadline has gone by
-import { isPastDeadline } from "../data/opportunities.js";
+import { isDueWithin, isPastDeadline } from "../data/opportunities.js";
 // The board's list (shared with Discovery's Save button), from tracker.js:
 //   useTrackerItems   the list, redrawing the page whenever it changes
 //                     (a move here, a Save in another tab, your account's list arriving)
@@ -134,15 +134,6 @@ const stages = [
 // The "T00:00" means midnight, so the date doesn't slip back a day in some time zones.
 function formatDate(date) {
   return new Date(date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-// True if a deadline is within the next "days" days (and not already past),
-// the same as Discovery's. A job with no deadline (null) is never "due".
-// 1000 * 60 * 60 * 24 is the number of milliseconds in one day.
-function isDueWithin(deadline, days) {
-  if (!deadline) return false;
-  const msLeft = new Date(deadline + "T23:59") - new Date();
-  return msLeft >= 0 && msLeft <= days * 1000 * 60 * 60 * 24;
 }
 
 // Builds the board from the tracker's list. trackerJob (tracker.js) finds each

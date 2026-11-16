@@ -178,3 +178,23 @@ export function isPastDeadline(deadline) {
   if (!deadline) return false;
   return new Date(deadline + "T23:59") < new Date();
 }
+
+// True if a deadline is within the next "days" days (and not already past).
+// Used for the "Due soon" tags (7 days) and the boxes of what's due (14 days).
+// A job with no deadline (null) is never "due".
+// 1000 * 60 * 60 * 24 is the number of milliseconds in one day.
+export function isDueWithin(deadline, days) {
+  if (!deadline) return false;
+  const msLeft = new Date(deadline + "T23:59") - new Date();
+  return msLeft >= 0 && msLeft <= days * 1000 * 60 * 60 * 24;
+}
+
+// "Greenline Labs" -> "GL", for the square logos
+export function initialsOf(organization) {
+  return (organization || "")
+    .split(/\s+/)
+    .map((word) => word.charAt(0))
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}

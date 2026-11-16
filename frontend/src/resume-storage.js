@@ -20,8 +20,8 @@
 // useSyncExternalStore lets the page redraw when something outside React
 // changes (here: "Saved to your account" and the like). See useResumeSync
 import { useSyncExternalStore } from 'react';
-// api() is how we talk to the backend (api.js)
-import { api } from './api.js';
+// api() talks to the backend; canRetry says if a failed request is worth trying again
+import { api, canRetry } from './api.js';
 // accountKey and readAccountItem keep each account's resume apart
 // (login-status.js): on a shared computer, the next person to log in gets
 // their own resume, not yours. Yours stays for when you log back in.
@@ -159,23 +159,26 @@ export function loadResume(account = loggedInId()) {
     }
 }
 
+// Keeps a copy of the resume in this browser. Gives back false if its storage
+// is full or turned off. unsent: true also marks it as newer than your account's
+function keepHere(account, resume, unsent) {
+    try {
+        localStorage.setItem(accountKey(storageKey, account), JSON.stringify(resume));
+        if (unsent) localStorage.setItem(accountKey(unsentKey, account), 'yes');
+        else localStorage.removeItem(accountKey(unsentKey, account));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 // Saves the whole resume: in this browser now, and to your account a moment
 // after you stop typing (see sendSoon). Gives back true if this browser saved
 // it, or false if its storage is full or turned off, so the page can warn you
 export function saveResume(resume) {
     const account = loggedInId();
-    let savedHere = true;
-    try {
-        localStorage.setItem(accountKey(storageKey, account), JSON.stringify(resume));
-        // until it reaches your account, this browser's copy is the newest
-        localStorage.setItem(accountKey(unsentKey, account), 'yes');
-    } catch {
-        savedHere = false;
-    }
-    if (account) {
-        sendSoon(account, resume);
-    }
-    return savedHere;
+    if (account) sendSoon(account, resume);
+    return keepHere(account, resume, true);
 }
 
 
@@ -265,13 +268,6 @@ function sendSoon(account, resume) {
     typingTimer = setTimeout(sendNow, 1500);
 }
 
-// True when a failed save is worth trying again later (no answer, the login
-// is being renewed, or the server broke). The same rule as tracker.js
-function worthRetrying(error) {
-    const code = error?.status;
-    return typeof code !== 'number' || code === 0 || code === 401 || code === 408 || code === 429 || code >= 500;
-}
-
 // Sends what's waiting, right now. keepalive: true lets the browser finish
 // sending even if the tab is closing (see "visibilitychange" below).
 // Gives back a promise that's done when it's sent (or failed)
@@ -312,7 +308,7 @@ function sendNow(options = {}) {
                 // here, theirs on the account) and let the page ask which to keep
                 clash = { account: job.account, resume: error.body.resume };
                 setStatus(job.account, 'clash', '', error.body.resume.updated_at);
-            } else if (worthRetrying(error)) {
+            } else if (canRetry(error)) {
                 // Put it back (unless something newer is waiting), and try again in 30 seconds
                 if (waiting === null) waiting = job;
                 setStatus(job.account, 'offline');
@@ -332,11 +328,11 @@ function sendNow(options = {}) {
     return sendLine;
 }
 
-// Gets the builder in step with your account. The Resume builder runs this
-// when it opens, and whenever you come back to its tab. Gives back a promise
+// Gets the builder in step with your account (watchAccountResume runs it when
+// the page opens, and whenever you come back to its tab). Gives back a promise
 // of the account's resume when it's different from this browser's (the page
 // should show it), or null when there's nothing to change
-export async function syncResume() {
+async function syncResume() {
     const account = loggedInId();
     if (!account) return null;
 
@@ -354,7 +350,7 @@ export async function syncResume() {
     try {
         answer = await api('/resumes/me', { asUser: account });
     } catch (error) {
-        setStatus(account, worthRetrying(error) ? 'offline' : 'problem', error.message);
+        setStatus(account, canRetry(error) ? 'offline' : 'problem', error.message);
         return null;
     }
     // You typed while the answer was on its way, or logged out: your typing
@@ -371,11 +367,7 @@ export async function syncResume() {
         // Keep a copy here too
         setStatus(account, 'saved');
         if (JSON.stringify(fromAccount) === JSON.stringify(local)) return null;
-        try {
-            localStorage.setItem(accountKey(storageKey, account), JSON.stringify(fromAccount));
-        } catch {
-            // Storage is off: the page still shows it
-        }
+        keepHere(account, fromAccount, false);
         return fromAccount;
     }
     if (local) {
@@ -411,13 +403,8 @@ export function takeOtherResume() {
     if (!clash || clash.account !== account) return null;
     const theirs = asResume(clash.resume.data);
     if (!theirs) return null;
-    try {
-        localStorage.setItem(accountKey(storageKey, account), JSON.stringify(theirs));
-    } catch {
-        // Storage is off: the page still shows it
-    }
+    keepHere(account, theirs, false);
     writeBase(account, clash.resume.updated_at);
-    markSent(account);
     waiting = null;
     clearTimeout(typingTimer);
     clash = null;

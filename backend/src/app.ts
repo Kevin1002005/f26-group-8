@@ -13,12 +13,45 @@ const app: Express = express();
 app.disable('x-powered-by');
 app.use(express.json());
 
+// Answers under /api are about one student (or change often), so browsers and anything in
+// between must not keep a copy (no-store). Otherwise a shared computer's browser cache could
+// still hold someone's resume or profile after they log out
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
+// The old /auth routes (plans.md Task S5 will delete them): nothing on the site uses them any
+// more, but each request makes the server do a slow password hash, and signup adds a row.
+// Until they're deleted: at most 2 at a time and 20 a minute for the WHOLE site (no real user
+// needs more), and usernames of at most 100 letters. Anything past that gets 429
+// (Tests that check the routes' own race handling raise both limits with LEGACY_AUTH_AT_ONCE and
+// LEGACY_AUTH_PER_MINUTE, like JOBS_CACHE_SECONDS. Missing or empty = the safe defaults)
+const limitFromEnv = (name: string, fallback: number) => Number(process.env[name]) > 0 ? Number(process.env[name]) : fallback;
+const LEGACY_AUTH_AT_ONCE = limitFromEnv('LEGACY_AUTH_AT_ONCE', 2);
+const LEGACY_AUTH_PER_MINUTE = limitFromEnv('LEGACY_AUTH_PER_MINUTE', 20);
+let legacyAuthInFlight = 0;
+let legacyAuthWindow = { start: Date.now(), count: 0 };
+function legacyAuthGuard(req: Request, res: Response, next: NextFunction) {
+  if (Date.now() - legacyAuthWindow.start > 60_000) legacyAuthWindow = { start: Date.now(), count: 0 };
+  const username = req.body?.username;
+  if (typeof username === 'string' && username.length > 100) return res.status(400).json({ error: 'Username is too long' });
+  if (legacyAuthInFlight >= LEGACY_AUTH_AT_ONCE || legacyAuthWindow.count >= LEGACY_AUTH_PER_MINUTE) {
+    return res.status(429).json({ error: 'Too many requests. Try again in a minute.' });
+  }
+  legacyAuthWindow.count++;
+  legacyAuthInFlight++;
+  // 'close' fires when the answer is sent (or the client leaves), so the slot is given back
+  res.on('close', () => { legacyAuthInFlight--; });
+  next();
+}
+
 
 app.get('/', (req: Request, res: Response) => {
   res.send('ABOUT');
 });
 
-app.use('/auth', authRouter);
+app.use('/auth', legacyAuthGuard, authRouter);
 
 // JB3a: job routes. under /api because the frontend's Vite proxy only forwards /api
 // (see the shared contract in plans.md). /auth moves under /api too, in Task S4.

@@ -41,6 +41,10 @@ export const MAJOR_WORDS: Record<string, string[]> = {
 // "Undecided / exploring": no major, so every field shows
 export const UNDECIDED = 'Undecided / exploring';
 
+// The most skills and resume job-title words a student's Best fit looks at (see studentFrom)
+const MOST_SKILLS = 60;
+const MOST_EXPERIENCE_WORDS = 60;
+
 // Words too common to mean anything on their own (for a typed-in major, or a job title on a resume)
 const COMMON_WORDS = new Set([
   'and', 'the', 'for', 'with', 'of', 'in', 'or', 'a', 'an', 'to', 'at', 'on', 'major', 'studies', 'study', 'science', 'sciences',
@@ -51,12 +55,16 @@ const COMMON_WORDS = new Set([
 // A word or phrase in the text, as a whole word: "ai" is in "AI tools", not in "maintain".
 // text must already be lower case. The regular expressions are kept, since the same words are
 // checked against hundreds of jobs
+// (The kept list is emptied when it reaches MOST_PATTERNS: the words come from students'
+// filters and resumes, so without a limit it would grow for as long as the server runs)
 const patterns = new Map<string, RegExp>();
+const MOST_PATTERNS = 5000;
 export function mentions(text: string, word: string): boolean {
   const w = word.toLowerCase();
   if (w === '' || !text.includes(w)) return false;   // the quick check first
   let pattern = patterns.get(w);
   if (!pattern) {
+    if (patterns.size >= MOST_PATTERNS) patterns.clear();
     // escape the characters regular expressions treat specially (like the + in "C++")
     const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // \p{L} = any letter, \p{N} = any digit: the word can't be part of a longer word
@@ -96,11 +104,17 @@ export function studentFrom(profileData: unknown, resumeData: unknown): Student 
   const major = text(profile.major) === UNDECIDED ? '' : text(profile.major);
   const majorWords = major === '' ? [] : MAJOR_WORDS[major] ?? wordsOf(major, 3);
 
-  // skills: the profile's list, then each item of the resume's Skills lines ("Python, SQL")
+  // skills: the profile's list, then each item of the resume's Skills lines ("Python, SQL"),
+  // at most MOST_SKILLS in all. (A resume's Skills boxes can hold thousands of tiny items, and
+  // every skill is checked against every job, so without a limit one resume could slow
+  // Opportunities down for everyone.) seen holds each one in lower case, to skip repeats quickly
   const skills: string[] = [];
+  const seen = new Set<string>();
   const addSkill = (skill: string) => {
     const s = skill.trim();
-    if (s.length >= 1 && s.length <= 40 && !skills.some((k) => k.toLowerCase() === s.toLowerCase())) skills.push(s);
+    if (skills.length >= MOST_SKILLS || s.length < 1 || s.length > 40 || seen.has(s.toLowerCase())) return;
+    seen.add(s.toLowerCase());
+    skills.push(s);
   };
   if (Array.isArray(profile.skills)) for (const s of profile.skills) if (typeof s === 'string') addSkill(s);
   if (Array.isArray(resume.skills)) {
@@ -124,7 +138,10 @@ export function studentFrom(profileData: unknown, resumeData: unknown): Student 
     for (const job of resume.experience) if (isObject(job)) experience.push(...wordsOf(text(job.role), 4));
   }
 
-  return { major, majorWords, skills, kinds, level, places, wantsRemote, paidOnly: lookingFor.paidOnly === true, experience: [...new Set(experience)] };
+  return {
+    major, majorWords, skills, kinds, level, places, wantsRemote, paidOnly: lookingFor.paidOnly === true,
+    experience: [...new Set(experience)].slice(0, MOST_EXPERIENCE_WORDS),
+  };
 }
 
 // The parts of a job fitFor looks at. text is the job's title, company, description, and

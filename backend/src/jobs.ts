@@ -172,10 +172,23 @@ let openJobsCache: { at: number; jobs: OpenJob[] } | null = null;
 const AI_COLUMNS = ', ai_majors, ai_skills';
 let aiColumnsMissing = false;
 
-// Every open job, newest posted first (Supabase sends at most 1000 rows a call, so it asks 1000
-// at a time). null if the database can't be reached
+// The load that's running right now, if one is. Students who ask while it runs wait for that
+// same load instead of starting their own: 20 students opening Opportunities in the same
+// second used to mean 20 full copies of every job in memory at once (over 1 GB in the stress test)
+let openJobsLoading: Promise<OpenJob[] | null> | null = null;
+
+// Every open job, newest posted first. null if the database can't be reached
 async function openJobs(): Promise<OpenJob[] | null> {
   if (openJobsCache && Date.now() - openJobsCache.at < CACHE_MS) return openJobsCache.jobs;
+  if (!openJobsLoading) {
+    // .finally runs when the load ends either way, so the next miss starts a fresh one
+    openJobsLoading = loadOpenJobs().finally(() => { openJobsLoading = null; });
+  }
+  return openJobsLoading;
+}
+
+// Loads every open job (Supabase sends at most 1000 rows a call, so it asks 1000 at a time)
+async function loadOpenJobs(): Promise<OpenJob[] | null> {
   const jobs: OpenJob[] = [];
   for (let from = 0; from < 20000; from += 1000) {
     const { data, error } = await supabase
@@ -192,7 +205,7 @@ async function openJobs(): Promise<OpenJob[] | null> {
     if (error && error.code === '42703' && /ai_/.test(error.message) && !aiColumnsMissing) {
       console.error('jobs.sql step 8 (AI tags) hasn\'t been run yet, so Best fit works without AI tags');
       aiColumnsMissing = true;
-      return openJobs();
+      return loadOpenJobs();
     }
     if (error) {
       console.error('open jobs lookup failed:', error);

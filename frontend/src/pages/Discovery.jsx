@@ -1322,8 +1322,12 @@ function Discovery() {
   const [linkedJob, setLinkedJob] = useState(null);
   useEffect(() => {
     if (!openJobId || !results || results.list.some((job) => job.id === openJobId)) return;
+    // Only a real job id (a uuid) is asked for. The address can be changed by anyone who
+    // sends you a link, and something like "../account/export" would otherwise make your
+    // browser call a different part of the API with your login
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(openJobId)) return;
     let ignore = false;
-    api("/jobs/" + openJobId)
+    api("/jobs/" + encodeURIComponent(openJobId))
       .then((body) => {
         if (!ignore && body.job) setLinkedJob({ query: results.query, job: toOpportunity(body.job) });
       })

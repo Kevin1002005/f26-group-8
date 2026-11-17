@@ -73,13 +73,19 @@ function cleanProfile(data: unknown): { profile: Record<string, unknown> } | { p
   if (!Array.isArray(skills) || !skills.every((skill) => typeof skill === 'string')) {
     return { problem: 'skills has to be a list of text' };
   }
+  // (a list far longer than anyone types is refused right away, and repeats are found with a
+  // Set: checking each skill against every kept one took seconds for a list of thousands)
+  if (skills.length > MOST_SKILLS * 4) return { problem: `You can list at most ${MOST_SKILLS} skills` };
   const cleanSkills: string[] = [];
+  const seen = new Set<string>();
   for (const skill of skills as string[]) {
     const text = skill.trim();
     if (text.length > SKILL_LETTERS) return { problem: `A skill can be at most ${SKILL_LETTERS} letters` };
-    if (text !== '' && !cleanSkills.some((kept) => kept.toLowerCase() === text.toLowerCase())) cleanSkills.push(text);
+    if (text === '' || seen.has(text.toLowerCase())) continue;
+    seen.add(text.toLowerCase());
+    cleanSkills.push(text);
+    if (cleanSkills.length > MOST_SKILLS) return { problem: `You can list at most ${MOST_SKILLS} skills` };
   }
-  if (cleanSkills.length > MOST_SKILLS) return { problem: `You can list at most ${MOST_SKILLS} skills` };
   profile.skills = cleanSkills;
   return { profile };
 }

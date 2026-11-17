@@ -48,10 +48,16 @@ async function peopleFor(ids: string[]): Promise<Map<string, Person> | null> {
   const people = new Map<string, Person>();
   const unique = [...new Set(ids)];
   if (unique.length === 0) return people;
-  const { data, error } = await supabase.from('student_profiles').select('student_id, data').in('student_id', unique);
-  if (error) {
-    console.error('feed people lookup failed:', error);
-    return null;
+  // 100 ids per call: every id goes into the address of the request, and a page with hundreds
+  // of different commenters would make that address too long for the database to accept
+  const data: { student_id: string; data: Record<string, unknown> | null }[] = [];
+  for (let from = 0; from < unique.length; from += 100) {
+    const part = await supabase.from('student_profiles').select('student_id, data').in('student_id', unique.slice(from, from + 100));
+    if (part.error) {
+      console.error('feed people lookup failed:', part.error);
+      return null;
+    }
+    data.push(...part.data);
   }
   for (const id of unique) {
     const profile = data.find((row) => row.student_id === id)?.data ?? {};
@@ -61,6 +67,28 @@ async function peopleFor(ids: string[]): Promise<Map<string, Person> | null> {
   }
   return people;
 }
+
+// One request at a time for each student (and kind of thing), for the posting limits below.
+// The limit is "count your recent posts, then save the new one": two requests arriving at the
+// same moment would both count before either saved, so 30 posts sent at once all got through
+// (the stress test). Waiting in line makes each one count after the one before it saved.
+// (This works because the backend runs as one server; several servers would need a database lock)
+const lines = new Map<string, Promise<unknown>>();
+function oneAtATime<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const before = lines.get(key) ?? Promise.resolve();
+  const mine = before.catch(() => {}).then(work);
+  const done = mine.catch(() => {});
+  lines.set(key, done);
+  // forget the line once it's empty, so the map doesn't grow forever
+  done.then(() => { if (lines.get(key) === done) lines.delete(key); });
+  return mine;
+}
+
+// The most comments one post can have, and how many of the newest ones each post shows.
+// Without a cap, one account could pile thousands of comments onto a post on the first page:
+// every Feed load would carry all of them, and other students' newer comments got cut off
+const MOST_COMMENTS_PER_POST = 200;
+const COMMENTS_SHOWN = 50;
 
 // True if this student already wrote "most" rows in "table" in the last 10 minutes
 async function tooMany(table: string, studentId: string, most: number): Promise<boolean | null> {
@@ -138,13 +166,20 @@ router.get('/posts', async (req, res) => {
     ? [{ data: [], error: null }, { data: [], error: null }]
     : await Promise.all([
       supabase.from('post_likes').select('post_id, student_id').in('post_id', ids),
-      supabase.from('post_comments').select(COMMENT_COLUMNS).in('post_id', ids).order('created_at'),
+      // newest first, at most COMMENTS_SHOWN per post on the page (trimmed below), oldest first on screen
+      supabase.from('post_comments').select(COMMENT_COLUMNS).in('post_id', ids).order('created_at', { ascending: false }).limit(PAGE_SIZE * COMMENTS_SHOWN),
     ]);
   if (likes.error || comments.error) {
     console.error('post likes or comments lookup failed:', likes.error ?? comments.error);
     return res.status(500).json({ error: 'Database error' });
   }
-  const commentRows = (comments.data ?? []) as CommentRow[];
+  // keep each post's newest COMMENTS_SHOWN, then put them back in time order (oldest first)
+  const shownPerPost = new Map<string, number>();
+  const commentRows = ((comments.data ?? []) as CommentRow[]).filter((comment) => {
+    const shown = shownPerPost.get(comment.post_id) ?? 0;
+    shownPerPost.set(comment.post_id, shown + 1);
+    return shown < COMMENTS_SHOWN;
+  }).reverse();
   const likeRows = (likes.data ?? []) as { post_id: string; student_id: string }[];
 
   const people = await peopleFor([...posts.map((post) => post.author_id), ...commentRows.map((comment) => comment.author_id)]);
@@ -173,15 +208,15 @@ router.post('/posts', async (req, res) => {
   const me = req.user!.id;
   const checked = readText(req.body?.text, MOST_POST_LETTERS);
   if ('problem' in checked) return res.status(400).json({ error: checked.problem });
-  const busy = await tooMany('posts', me, MOST_POSTS_PER_10_MIN);
-  if (busy === null) return res.status(500).json({ error: 'Database error' });
-  if (busy) return res.status(429).json({ error: "You've posted a lot just now. Wait a few minutes and try again." });
-
-  const { data: post, error } = await supabase
-    .from('posts')
-    .insert({ author_id: me, text: checked.text })
-    .select(POST_COLUMNS)
-    .single();
+  // count and save in this student's line (oneAtATime above), so a burst can't pass the limit
+  const saved = await oneAtATime(`post:${me}`, async () => {
+    const busy = await tooMany('posts', me, MOST_POSTS_PER_10_MIN);
+    if (busy !== false) return { busy };
+    return { busy, ...(await supabase.from('posts').insert({ author_id: me, text: checked.text }).select(POST_COLUMNS).single()) };
+  });
+  if (saved.busy === null) return res.status(500).json({ error: 'Database error' });
+  if (saved.busy) return res.status(429).json({ error: "You've posted a lot just now. Wait a few minutes and try again." });
+  const { data: post, error } = saved as { data: { id: string; text: string; created_at: string }; error: unknown };
   if (error) {
     console.error('post insert failed:', error);
     return res.status(500).json({ error: 'Database error' });
@@ -278,15 +313,24 @@ router.post('/posts/:id/comments', async (req, res) => {
   if (!UUID.test(req.params.id)) return res.status(404).json({ error: 'Post not found' });
   const checked = readText(req.body?.text, MOST_COMMENT_LETTERS);
   if ('problem' in checked) return res.status(400).json({ error: checked.problem });
-  const busy = await tooMany('post_comments', me, MOST_COMMENTS_PER_10_MIN);
-  if (busy === null) return res.status(500).json({ error: 'Database error' });
-  if (busy) return res.status(429).json({ error: "You've commented a lot just now. Wait a few minutes and try again." });
-
-  const { data: comment, error } = await supabase
-    .from('post_comments')
-    .insert({ post_id: req.params.id, author_id: me, text: checked.text })
-    .select(COMMENT_COLUMNS)
-    .single();
+  // count and save in this student's line (see oneAtATime), so a burst can't pass the limit
+  const postId = req.params.id;
+  const saved = await oneAtATime(`comment:${me}`, async () => {
+    const busy = await tooMany('post_comments', me, MOST_COMMENTS_PER_10_MIN);
+    if (busy !== false) return { busy };
+    // a post holds at most MOST_COMMENTS_PER_POST comments
+    const { data: existing, error: countError } = await supabase.from('post_comments').select('id').eq('post_id', postId).limit(MOST_COMMENTS_PER_POST);
+    if (countError) {
+      console.error('comment count failed:', countError);
+      return { busy: null };
+    }
+    if (existing.length >= MOST_COMMENTS_PER_POST) return { busy: false, full: true };
+    return { busy, ...(await supabase.from('post_comments').insert({ post_id: postId, author_id: me, text: checked.text }).select(COMMENT_COLUMNS).single()) };
+  });
+  if (saved.busy === null) return res.status(500).json({ error: 'Database error' });
+  if (saved.busy) return res.status(429).json({ error: "You've commented a lot just now. Wait a few minutes and try again." });
+  if ('full' in saved) return res.status(409).json({ error: 'This post has as many comments as it can hold.' });
+  const { data: comment, error } = saved as { data: CommentRow; error: { code?: string } | null };
   if (error) {
     if (error.code === '23503') return res.status(404).json({ error: 'Post not found' });
     console.error('comment insert failed:', error);

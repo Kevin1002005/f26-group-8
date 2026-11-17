@@ -97,6 +97,7 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
 - After each import, `backend/src/ai-tags.ts` has a free AI model (Gemini, if `AI_API_KEY` is set) tag
   the new jobs with the majors and skills they fit. Best fit (`backend/src/fit.ts`) uses the tags. Only
   public job posts are sent, never anything about a student. Run `jobs.sql` step 8 first.
+  (Step 9, an index that makes the job lists faster, is optional.)
 - To pull in real internships, run `cd backend && npm run import-jobs` by hand, on a computer
   with `backend/secrets.env`. It saves them to the `jobs` table and closes the ones a company
   took down. JSearch only runs if `JSEARCH_API_KEY` is set. Without it, the importer says it
@@ -210,12 +211,35 @@ Vercel puts the `main` branch live. Every other branch you push gets its own pre
 
 In Authentication → URL Configuration:
 - **Site URL:** the live Vercel address.
-- **Redirect URLs:** keep `http://localhost:5173/**`, and add:
-  - `https://YOUR-PROJECT.vercel.app/**`, for the live site;
-  - `https://*-YOUR-VERCEL-ACCOUNT.vercel.app/**`, for preview addresses.
+- **Redirect URLs:** keep `http://localhost:5173/**`, and add `https://YOUR-PROJECT.vercel.app/**`
+  for the live site.
+- **Preview addresses:** don't add a wildcard like `https://*-YOUR-VERCEL-ACCOUNT.vercel.app/**`
+  to the real project. Supabase sends password-reset and Google login codes to any address on
+  this list, so a wildcard trusts every address that matches it (the 2026-11-17 security audit).
+  To test log in on a preview, add that one preview's exact address for a while, or use a
+  second Supabase project just for previews.
 
 Log in, sign up, and password reset send people back to whichever address they're on, so it
 has to be on this list.
+
+### Security settings to check (from the 2026-11-17 security audit)
+
+These live in the dashboards, not in the code, so only someone with access can check them:
+- **Supabase → Authentication → Attack Protection:** turn on CAPTCHA (Cloudflare Turnstile is
+  free). Without it, anyone can use up the project's hourly email allowance with fake sign-ups or
+  reset requests, and then real students get no emails. **Turn it on only after** the site sends
+  the CAPTCHA token (`captchaToken` in `signUp`, `signInWithPassword`, and `resetPasswordForEmail`,
+  plus the Turnstile address in the CSP in `frontend/vercel.json`): with CAPTCHA on and no token,
+  Supabase refuses every sign-up and log in.
+- **Supabase → Authentication → Sign In / Providers → Email:** keep **Confirm email** on, so
+  nobody can sign up with someone else's address (an address nobody confirmed could otherwise end
+  up linked to that person's Google login; the audit couldn't check how Supabase links them).
+- **Supabase → Authentication → URL Configuration:** no wildcard addresses (see above).
+- **Supabase → Project Settings → Data API:** note the **Max Rows** value (1000 by default). The
+  Feed shows at most 50 comments per post, so it stays under it.
+- **Render:** the old `/auth/signup` and `/auth/login` are only on the Render address. They're
+  limited to 2 at a time and 20 a minute now, but nothing uses them: deleting them
+  (`backend/plans.md` Task S5) removes the risk.
 
 ### 5. Check the live site
 - Open a deep link like `/discovery` directly, and refresh it.

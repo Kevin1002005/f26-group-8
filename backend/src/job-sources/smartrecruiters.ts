@@ -31,7 +31,9 @@ export async function fetchSmartRecruiters(): Promise<SourceResult> {
     try {
       for (let page = 0; page < MOST_PAGES; page++) {
         const body = (await fetchJson(`https://api.smartrecruiters.com/v1/companies/${company}/postings?limit=100&offset=${page * 100}`)) as { content: SmartPosting[] };
-        const list = body.content ?? [];
+        // no list at all means the answer changed shape, not "no jobs": count it as failed
+        if (!Array.isArray(body?.content)) throw new Error('the answer had no job list');
+        const list = body.content;
         for (const posting of list) {
           try {
             if (typeof posting.id !== 'string' || typeof posting.name !== 'string') continue;
@@ -41,6 +43,12 @@ export async function fetchSmartRecruiters(): Promise<SourceResult> {
           }
         }
         if (list.length < 100) break;
+        // still full pages after MOST_PAGES: we didn't get the whole list, so closing jobs that
+        // weren't in it would close real ones
+        if (page === MOST_PAGES - 1) {
+          console.error(`smartrecruiters ${company}: more than ${MOST_PAGES * 100} postings, only the first ${MOST_PAGES * 100} read`);
+          allFetchesWorked = false;
+        }
       }
     } catch (err) {
       console.error(`smartrecruiters ${company} failed:`, err);

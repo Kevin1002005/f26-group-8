@@ -40,7 +40,9 @@ export async function fetchAshby(): Promise<SourceResult> {
   for (const { board, name } of BOARDS) {
     try {
       const body = (await fetchJson(`https://api.ashbyhq.com/posting-api/job-board/${board}?includeCompensation=true`)) as { jobs: AshbyJob[] };
-      for (const job of body.jobs ?? []) {
+      // no list at all means the answer changed shape, not "no jobs": count it as failed
+      if (!Array.isArray(body?.jobs)) throw new Error('the answer had no job list');
+      for (const job of body.jobs) {
         try {
           if (typeof job.id !== 'string' || typeof job.title !== 'string' || !isWebLink(job.jobUrl) || job.isListed === false) continue;
           if (job.employmentType === 'Intern' || isInternTitle(job.title)) jobs.push(toImportedJob(job, board, name));
@@ -68,7 +70,8 @@ function toImportedJob(job: AshbyJob, board: string, name: string): ImportedJob 
     type: guessType(job.title),
     level: guessLevel(job.title, description),
     location,
-    setting: SETTINGS[job.workplaceType ?? ''] ?? (job.isRemote ? 'remote' : guessSetting(location)),
+    // Object.hasOwn: only the names in SETTINGS (see lever.ts)
+    setting: Object.hasOwn(SETTINGS, job.workplaceType ?? '') ? SETTINGS[job.workplaceType!]! : (job.isRemote ? 'remote' : guessSetting(location)),
     paid: pay ? true : null,
     pay_text: pay,
     deadline: null,

@@ -17,7 +17,7 @@
 // For Groq instead: AI_BASE_URL=https://api.groq.com/openai/v1 and AI_MODEL=llama-3.1-8b-instant
 import { randomBytes } from 'node:crypto';
 import { supabase } from './db.js';
-import { MAJOR_WORDS } from './fit.js';
+import { MAJOR_WORDS, mentions } from './fit.js';
 
 // A number setting from secrets.env, or the default if it's missing or empty. (An empty line
 // like "AI_JOBS_PER_RUN=" gives the text "", and Number("") is 0, which would switch tagging off)
@@ -103,9 +103,16 @@ export async function tagNewJobs(): Promise<void> {
       try {
         tags = await askAi(base, key, model, group);
       } catch (err) {
-        // usually "HTTP 429": today's free requests are used up. The rest wait for the next run
-        console.error('ai tags: the AI service failed, stopping for now:', err instanceof Error ? err.message : err);
-        break;
+        const status = err instanceof AiError ? err.status : 0;
+        if (status === 400 || status === 413 || status === 422) {
+          // the service refused THIS request (one post it won't take, or too long):
+          // handled like an answer we can't read, below, so one odd post can't stop every run
+          tags = new Map();
+        } else {
+          // usually "HTTP 429": today's free requests are used up. The rest wait for the next run
+          console.error('ai tags: the AI service failed, stopping for now:', err instanceof Error ? err.message : err);
+          break;
+        }
       }
       if (tags.size === 0) {
         // an answer we couldn't read at all. Maybe one odd post confused it, so ask about
@@ -140,18 +147,31 @@ export async function tagNewJobs(): Promise<void> {
 
 
 // Saves tags for a group of jobs (tags: post number -> tags). A job the AI skipped gets empty
-// tags, so it isn't asked about forever. Gives back false if the database said no
+// tags, so it isn't asked about forever. Gives back false if the database said no.
+// A skill is kept only if the job's OWN post names it: the AI reads several posts at once, and
+// a post with instructions in it could otherwise give the other jobs made-up skills
 async function saveTags(group: JobToTag[], tags: Map<number, Tags>): Promise<boolean> {
   const now = new Date().toISOString();
   const results = await Promise.all(group.map((job, i) => {
     const t = tags.get(i + 1) ?? { majors: [], skills: [] };
-    return supabase.from('jobs').update({ ai_majors: t.majors, ai_skills: t.skills, ai_tagged_at: now }).eq('id', job.id);
+    const own = [job.title, job.organization, job.description ?? '', ...(job.requirements ?? [])].join(' ').toLowerCase();
+    const skills = t.skills.filter((skill) => mentions(own, skill));
+    return supabase.from('jobs').update({ ai_majors: t.majors, ai_skills: skills, ai_tagged_at: now }).eq('id', job.id);
   }));
   const failed = results.find((r) => r.error);
   if (failed) console.error('ai tags: saving tags failed', failed.error);
   return !failed;
 }
 
+
+// An error answer from the AI service, with its status code (only the code is ever printed)
+class AiError extends Error {
+  status: number;
+  constructor(status: number) {
+    super(`HTTP ${status}`);
+    this.status = status;
+  }
+}
 
 // Sends one group of jobs to the AI and reads its answer: { post number -> tags }.
 // Throws if the service answers with an error
@@ -160,7 +180,8 @@ async function askAi(base: string, key: string, model: string, jobs: JobToTag[])
   const code = randomBytes(6).toString('hex');
   const posts = jobs.map((job, i) => {
     const text = [job.description ?? '', ...(job.requirements ?? [])].join('\n').slice(0, MOST_LETTERS);
-    return `<<<post ${i + 1} ${code}>>>\nTitle: ${job.title}\nCompany: ${job.organization}\nDescription: ${text || '(none)'}\n<<<end ${code}>>>`;
+    // title and company are cut to 200 letters too, so one listing can't make the request huge
+    return `<<<post ${i + 1} ${code}>>>\nTitle: ${job.title.slice(0, 200)}\nCompany: ${job.organization.slice(0, 200)}\nDescription: ${text || '(none)'}\n<<<end ${code}>>>`;
   }).join('\n\n');
 
   const res = await fetch(`${base}/chat/completions`, {
@@ -174,9 +195,11 @@ async function askAi(base: string, key: string, model: string, jobs: JobToTag[])
       ],
     }),
     signal: AbortSignal.timeout(60_000),
+    // never follow a redirect: the key is in the request, and it should only ever go to AI_BASE_URL
+    redirect: 'error',
   });
   // only the status code is printed: never the key
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw new AiError(res.status);
   const answer = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
   return readTags(answer.choices?.[0]?.message?.content, jobs.length);
 }

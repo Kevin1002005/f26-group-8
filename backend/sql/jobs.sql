@@ -146,3 +146,7 @@ alter table public.jobs add column if not exists ai_skills text[] not null defau
 alter table public.jobs add column if not exists ai_tagged_at timestamptz;
 -- the jobs waiting for tags, newest first, found quickly
 create index if not exists jobs_waiting_for_ai_tags on public.jobs (posted_at desc) where ai_tagged_at is null and status = 'open';
+
+-- 9. Added 2026-11-17 (optional, for speed): the open jobs in the order Opportunities and the
+-- public job list show them, so the database doesn't re-sort every open job for each page
+create index if not exists jobs_open_newest on public.jobs (posted_at desc nulls last, created_at desc, id) where status = 'open';

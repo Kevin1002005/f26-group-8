@@ -37,9 +37,9 @@ type VanshListing = {
   is_visible: boolean | null;
 };
 
-// true for the list's short links
+// true for the list's short links (https only: we never send a request in plain http)
 function isShortLink(url: string): boolean {
-  return /^https?:\/\/go\.vansh\.nyc\//i.test(url);
+  return /^https:\/\/go\.vansh\.nyc\//i.test(url);
 }
 
 // Follows one short link and gives back where it goes, or null if it doesn't say.

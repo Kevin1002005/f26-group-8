@@ -145,7 +145,8 @@ function toImportedJob(path: string, file: ProgramFile): ImportedJob | null {
 
   // what it costs and what help there is: "Free · a stipend", "Costs $5,793 · need-based financial aid"
   const costText = cost === null ? '' : cost === 0 ? 'Free' : `Costs $${cost.toLocaleString('en-US')}`;
-  const aidText = aid.map((a) => AID_WORDS[a]).filter(Boolean).join(', ');
+  // Object.hasOwn: only the names in the list (a value like "constructor" isn't one)
+  const aidText = aid.map((a) => (Object.hasOwn(AID_WORDS, a) ? AID_WORDS[a] : '')).filter(Boolean).join(', ');
   const payText = [costText, aidText].filter(Boolean).join(' · ') || null;
   // "paid" means the student gets paid: a stipend. A program you pay for (or one that's free
   // with no stipend) isn't. Neither stated = we don't know
@@ -161,7 +162,7 @@ function toImportedJob(path: string, file: ProgramFile): ImportedJob | null {
     `A program for high school students${cycle}.`,
     subjects.length > 0 ? `Subjects: ${subjects.join(', ')}.` : '',
     start ? `Starts ${dayInWords(start)}.` : '',
-    format.length > 0 ? `Students ${format.map((f) => FORMAT_WORDS[f] ?? f).join(' or ')}.` : '',
+    format.length > 0 ? `Students ${format.map((f) => (Object.hasOwn(FORMAT_WORDS, f) ? FORMAT_WORDS[f] : f)).join(' or ')}.` : '',
     file.excluded ? 'Its details couldn\'t be checked from its website, so see the website for who can apply and the dates.' : '',
     `Details checked by hand on the program's own website${file.checked_on ? ` on ${file.checked_on}` : ''}, by the precollege-finder project.`,
   ].filter(Boolean).join(' ');

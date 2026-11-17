@@ -85,7 +85,7 @@ export const browserStorage = [
     name: "Copies of your profile, tracker, and resume",
     category: "Functional",
     purpose: "So they open right away and keep working offline, plus any changes not sent to your account yet. Kept separately for each account, so on a shared computer the next person can't see yours.",
-    lasts: "Until you delete your account or clear this site's data. Kept after you log out, so they're there when you log back in.",
+    lasts: "Until you log out, delete your account, or clear this site's data. Your account keeps them, so they come back when you log in again. (Changes made offline that haven't reached your account yet stay until they're sent, the next time you log in here.)",
   },
   {
     name: "Your settings",

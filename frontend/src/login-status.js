@@ -60,8 +60,10 @@ export function isLoggedIn() {
 // The name a page saves someone's things under: the page's own name plus the
 // account id, like "scoutsearch-resume:1b2c3d4e-...". On a shared computer
 // (a school library), the next person to log in gets their OWN resume and
-// tracker, not yours. Logging out doesn't delete yours: it's still there,
-// under your id, when you log back in on this browser.
+// tracker, not yours. Logging out deletes yours from this browser (see
+// forgetAccountCopies below): your account keeps them, and they come back
+// when you log in again. (Only changes that haven't reached your account yet
+// stay, so they can be sent the next time you log in here.)
 // id is whose: leave it out for whoever is logged in now. (tracker.js and
 // resume-storage.js pass it, to finish saving for the account that made a
 // change even if someone else has logged in since)
@@ -112,6 +114,34 @@ function forgetLogin() {
     tellListeners();
 }
 
+// Deletes this browser's copies of one account's things (every saved item whose
+// name ends in ":<id>": profile, resume, tracker, hidden companies). The account
+// itself keeps them. Log out and Delete my account both run this, so on a shared
+// computer the next person can't read yours, even in the browser's developer tools.
+// keepUnsent (Log out): changes made offline that haven't reached the account yet
+// stay, so they're sent the next time you log in here instead of being lost
+// (the resume, if it has an unsent edit; the tracker, if its outbox isn't empty)
+export function forgetAccountCopies(id, { keepUnsent = false } = {}) {
+    if (!id) return;
+    try {
+        const keep = new Set();
+        if (keepUnsent) {
+            if (localStorage.getItem('scoutsearch-resume-unsent:' + id) === 'yes') {
+                for (const name of ['scoutsearch-resume', 'scoutsearch-resume-unsent', 'scoutsearch-resume-base']) keep.add(name + ':' + id);
+            }
+            const outbox = JSON.parse(localStorage.getItem('scoutsearch-applications-outbox:' + id) ?? '[]');
+            if (Array.isArray(outbox) && outbox.length > 0) {
+                for (const name of ['scoutsearch-applications', 'scoutsearch-applications-outbox', 'scoutsearch-applications-server-ids']) keep.add(name + ':' + id);
+            }
+        }
+        for (const key of Object.keys(localStorage)) {
+            if (key.startsWith('scoutsearch-') && key.endsWith(':' + id) && !keep.has(key)) localStorage.removeItem(key);
+        }
+    } catch {
+        // storage is off (or a saved item is broken): there's nothing more to remove
+    }
+}
+
 // Forgets the login (the dropdown's "Log out" runs this).
 // "async" + "await": it waits for Supabase to finish logging out, so whoever
 // runs this can wait too ("await markLoggedOut()") before opening the Log in page
@@ -124,9 +154,12 @@ export async function markLoggedOut() {
     // find it in that time. (If the internet is down, Supabase still forgets it
     // in this browser and hands back an error, so nothing else is needed here)
     // supabase is null when .env.local is missing, so "if" skips it then
+    // whose copies to delete: read it before forgetting the login
+    const id = loggedInId();
     if (supabase) {
         await supabase.auth.signOut({ scope: 'local' });
     }
+    forgetAccountCopies(id, { keepUnsent: true });
     forgetLogin();
 }
 

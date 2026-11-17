@@ -146,6 +146,27 @@ async function importSource({ name, fetchJobs, aggregator, finishJobs }: Source)
     `${forOurStudents.length - jobs.length} merged or already listed`
   );
 
+  // lists that collect jobs from other sites sometimes list one posting twice (two titles, or
+  // two seasons, with the same link): keep one per link. Sorted by id first, so the SAME copy
+  // is kept every run (otherwise the other one would be closed and reopened each time)
+  if (aggregator) {
+    const links = new Set<string>();
+    jobs = [...jobs].sort((a, b) => (a.external_id < b.external_id ? -1 : 1)).filter((job) => {
+      const link = simplifyUrl(job.apply_url);
+      if (links.has(link)) return false;
+      links.add(link);
+      return true;
+    });
+  }
+
+  // an id longer than 1000 bytes is skipped: the database can't index one past about 2700 bytes,
+  // and ONE such row would make the whole batch, and every batch after it, fail to save
+  const tooLong = jobs.filter((job) => Buffer.byteLength(job.external_id) > 1000).length;
+  if (tooLong > 0) {
+    console.error(`${name}: skipped ${tooLong} job(s) with an id too long to save`);
+    jobs = jobs.filter((job) => Buffer.byteLength(job.external_id) <= 1000);
+  }
+
   // 4. drop duplicate ids (keep the last one). Postgres refuses to save a batch that
   // has the same job in it twice ("ON CONFLICT DO UPDATE command cannot affect row a second time")
   const byId = new Map<string, ImportedJob>();

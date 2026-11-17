@@ -30,7 +30,9 @@ export async function fetchWorkable(): Promise<SourceResult> {
   for (const account of ACCOUNTS) {
     try {
       const body = (await fetchJson(`https://apply.workable.com/api/v1/widget/accounts/${account}?details=true`)) as { name?: string; jobs: WorkableJob[] };
-      for (const job of body.jobs ?? []) {
+      // no list at all means the answer changed shape, not "no jobs": count it as failed
+      if (!Array.isArray(body?.jobs)) throw new Error('the answer had no job list');
+      for (const job of body.jobs) {
         try {
           if (typeof job.shortcode !== 'string' || typeof job.title !== 'string' || !isWebLink(job.url)) continue;
           if (isInternTitle(job.title) || /intern/i.test(job.employment_type ?? '')) jobs.push(toImportedJob(job, account, body.name?.trim() || account));

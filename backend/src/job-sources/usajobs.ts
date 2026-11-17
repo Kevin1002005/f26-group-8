@@ -47,8 +47,17 @@ export async function fetchUsaJobs(): Promise<SourceResult> {
     console.error('usajobs failed:', err);
     return { jobs: [], allFetchesWorked: false };
   }
+  const items = body?.SearchResult?.SearchResultItems;
+  // no list at all means the answer changed shape, not "no jobs"; a full page (500) means there
+  // were more than one page holds. Either way the list isn't complete, so nothing gets closed
+  if (!Array.isArray(items)) {
+    console.error('usajobs failed: the answer had no job list');
+    return { jobs: [], allFetchesWorked: false };
+  }
+  const complete = items.length < 500;
+  if (!complete) console.error('usajobs: 500 or more jobs, only the first 500 read, so no old jobs are closed');
   const jobs: ImportedJob[] = [];
-  for (const item of body.SearchResult?.SearchResultItems ?? []) {
+  for (const item of items) {
     try {
       const d = item.MatchedObjectDescriptor;
       if (!d || typeof d.PositionTitle !== 'string' || !isWebLink(d.PositionURI)) continue;

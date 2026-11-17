@@ -96,7 +96,10 @@ function toImportedJob(job: LeverJob, organization: string): ImportedJob {
     type: guessType(job.text),
     level: 'college',              // same reason as greenhouse.ts
     location: job.categories?.location?.trim() || null,
-    setting: SETTINGS[job.workplaceType ?? ''] ?? null,
+    // Object.hasOwn: only the names in SETTINGS. A plain SETTINGS[x] also finds what every
+    // object has built in, so a workplaceType of "__proto__" would give an object, which the
+    // database refuses (and the whole save fails)
+    setting: Object.hasOwn(SETTINGS, job.workplaceType ?? '') ? SETTINGS[job.workplaceType!]! : null,
     // a salary range means it's paid. no range means Lever didn't say, so null (not false).
     // a range with no numbers in it counts as no range (payText would write "$NaN per hour")
     paid: hasPay(job.salaryRange) ? true : null,

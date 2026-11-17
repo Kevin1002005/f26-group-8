@@ -2,17 +2,22 @@
 // new job listings that organizations share as posts.
 // At the top: the title and three tabs (For you, Following, Listings).
 // Under that, 2 columns: the post box and the posts on the left, and
-// what's due soon, opportunities, and people to know on the right.
+// what's due soon and opportunities on the right.
 // (The 2026-11 revamp: a calm title instead of the big animated one, small
 // colored tags instead of the colored strips on posts, and listing posts.)
-// Everything on it is made-up sample data for now, because the site
-// doesn't have a backend (server and database) yet.
+// The posts are real: they're saved with the account (data/feed.js talks to
+// backend/src/feed.ts), and every logged-in student sees them, with their
+// comments and likes. You can delete your own posts and comments, and follow
+// people: the Following tab shows only their posts.
+// The listing posts and "Opportunities for you" are still made-up examples,
+// and say so.
 // The styles for this page are in index.css, under "Feed page".
 
 // useState lets the page remember a value and redraw itself when it changes.
-// useRef keeps a reference to something on the screen (here: the hidden
-// file picker), so the code can click it for you.
-import { useRef, useState } from "react";
+// useRef keeps a reference to something on the screen (here: the typing box),
+// or a value that doesn't redraw the page when it changes.
+// useEffect runs code after the page is drawn (here: getting the posts)
+import { useEffect, useRef, useState } from "react";
 import NavBar from "../components/NavBar.jsx";
 // Link makes a clickable link to another page of our site.
 import { Link } from "react-router";
@@ -26,86 +31,34 @@ import { isDueWithin, isPastDeadline, opportunities } from "../data/opportunitie
 // useTrackerItems gives the list and redraws when it changes (a Save, or your
 // account's list arriving); useTrackerSync syncs with your account when the page opens
 import { addToTracker, removeFromTracker, trackerJob, useTrackerItems, useTrackerSync } from "../data/tracker.js";
-// Who is logged in (src/use-current-user.js), so your own posts and comments
-// show your name instead of the made-up example person
-import { useCurrentUser } from "../use-current-user.js";
-// Your profile (data/profile.js): its headline goes on your posts
-import { useMyProfile } from "../data/profile.js";
+// Who is logged in (src/use-current-user.js), for your circle in the post box.
+// initialsFor turns a name into the letters in a circle ("Ana Example" -> "AE")
+import { initialsFor, useCurrentUser } from "../use-current-user.js";
+// Talking to the backend's Feed: loading, posting, liking, commenting,
+// deleting, and following (data/feed.js). timeAgo writes "5 min", "3h", ...
+import {
+  addComment,
+  deleteComment,
+  deletePost,
+  editComment,
+  editPost,
+  loadPosts,
+  setFollow,
+  setLike,
+  sharePost,
+  timeAgo,
+} from "../data/feed.js";
 
-// ---------- Sample data ----------
-// These lists hold the made-up content shown on the page.
-// [ ] is a list, each { } inside it is one item,
-// and each "name: value" is one piece of info about that item.
-// Later, this data would come from the backend instead.
+// ---------- Tabs and example listings ----------
 
-// The tabs under the title. "For you" shows every post, "Following" shows
-// only posts from people you follow, and "Listings" shows only job listings
+// The tabs under the title. "For you" shows everyone's posts, "Following"
+// shows only posts from people you follow, and "Listings" shows the example
+// job listings
 const tabs = ["For you", "Following", "Listings"];
 
-// The posts.
-// Each post has: a unique number (id), who wrote it (author, initials, headline),
-// how long ago (time), what kind of post it is (kind, shown on the colored strip),
-// the strip's color (color: "blue", "dark", or "sky"), a title,
-// what it says (text), whether you follow the author (following: true shows it
-// on the "Following" tab), and its counts (likes, comments).
-const posts = [
-  {
-    id: 1,
-    author: "Kevin Liu",
-    initials: "KL",
-    headline: "Student @ Northeastern University",
-    time: "42 min",
-    kind: "Update",
-    color: "blue",
-    title: "Building ScoutSearch!",
-    text: "Excited to be building ScoutSearch with my Oasis team!",
-    following: true,
-    likes: 48,
-    comments: 9,
-  },
-  {
-    id: 2,
-    author: "Roemer Mallari",
-    initials: "RMV",
-    headline: "Computer Science & Business Administration @ Northeastern University",
-    time: "1h",
-    kind: "Big news",
-    color: "dark",
-    title: "I'm in the Oasis Cohort!",
-    text: "Thrilled to share that I've been accepted to this semester's Oasis Cohort!",
-    following: true,
-    likes: 222,
-    comments: 18,
-  },
-  {
-    id: 3,
-    author: "Jayden Gajewski",
-    initials: "JG",
-    headline: "Student @ Northeastern University",
-    time: "4h",
-    kind: "Update",
-    color: "sky",
-    title: "Loving Oasis so far!",
-    text: "Having a great time at Oasis this semester. Can't wait to show everyone what we're building!",
-    following: false,
-    likes: 31,
-    comments: 4,
-  },
-  {
-    id: 4,
-    author: "Anthony Dorsey",
-    initials: "AD",
-    headline: "Student @ Northeastern University",
-    time: "22h",
-    kind: "Big news",
-    color: "dark",
-    title: "Proud of our team!",
-    text: "Proud of what our team is building at Oasis!",
-    following: false,
-    likes: 64,
-    comments: 12,
-  },
-];
+// The most letters a post and a comment can have (the backend checks the same numbers)
+const mostPostLetters = 2000;
+const mostCommentLetters = 500;
 
 // The listing posts: an organization sharing one of its jobs on the Feed.
 // jobId points at a job in src/data/opportunities.js, so the post shows that
@@ -128,34 +81,6 @@ const listingPosts = [
   },
 ];
 
-// Everything on the Feed, in the order it starts in: listing posts mixed in
-// with the student posts. "type" says which kind each one is, so Feed (at the
-// bottom) knows whether to draw a <Post> or a <ListingPost>.
-// The "..." copies all of a post's info and adds "type" to it.
-const feedItems = [
-  { ...listingPosts[0], type: "listing" },
-  { ...posts[0], type: "update" },
-  { ...listingPosts[1], type: "listing" },
-  ...posts.slice(1).map((post) => ({ ...post, type: "update" })),
-];
-
-// The people in the "People to know" box (right column)
-const people = [
-  { id: 1, name: "Kyle Vergara", initials: "KV", headline: "Nursing Student" },
-  {
-    id: 2,
-    name: "Richie Rich",
-    initials: "RR",
-    headline: "Business @ Northeastern",
-  },
-  {
-    id: 3,
-    name: "Ethan Ripalda",
-    initials: "ER",
-    headline: "Student @ Northeastern University",
-  },
-];
-
 // Turns a number into easy-to-read words for the post counts.
 // For example, countWords(1000000, "like") gives "1,000,000 likes",
 // and countWords(1, "comment") gives "1 comment" (no "s" when there's only one).
@@ -172,45 +97,6 @@ function countWords(number, word) {
 // stroke="currentColor" makes it the same color as the words around it.
 // aria-hidden="true" hides it from screen readers, because the words next
 // to it already say the same thing (WCAG)
-
-// A picture: a box with a small circle (the sun) and a mountain line
-function ImageIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <circle cx="9" cy="9" r="2" />
-      <path d="m21 15-5-5L5 21" />
-    </svg>
-  );
-}
-
-// An X, for the button that removes the photo from the post box
-function XIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M6 6l12 12M18 6L6 18" />
-    </svg>
-  );
-}
 
 // A calendar: a box with two rings on top and a line across
 function CalendarIcon() {
@@ -234,26 +120,6 @@ function CalendarIcon() {
   );
 }
 
-// An eye: an almond shape with a circle (the pupil) in the middle
-function EyeIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
 // ---------- Pieces of the page ----------
 // Each function below is a component: one piece of the page.
 // The Feed component at the bottom puts all the pieces together.
@@ -266,9 +132,7 @@ function FeedHeader() {
       {/* The page's one <h1> (WCAG) */}
       <h1 className="feed-head-title">Feed</h1>
       <p className="feed-head-text">
-        Updates from students, and new listings from organizations.{" "}
-        {/* The team's rule: anything made up is clearly labeled as an example */}
-        <span className="feed-examples-tag">Examples</span>
+        Updates from students, and new listings from organizations.
       </p>
     </header>
   );
@@ -306,94 +170,59 @@ function FeedTabs(props) {
 }
 
 // The "Share something you're working on" box at the top of the posts.
-// Type something (and/or add a photo), press "Post update", and it shows up
-// as your own post at the top of the feed.
+// Type something and press "Post update": it's saved, and shows up at the
+// top of everyone's Feed. (Ctrl+Enter posts too.)
 // props.onPost is a function from Feed (below): the box calls it with the new post.
 function PostComposer(props) {
-  // Who is logged in, so the post shows YOUR name and initials.
-  // (Before, every post from this box said "Roemer Mallari", the example person.)
-  // If the name isn't known (for example the email form isn't connected), it says "You"
+  // Who is logged in, for your circle next to the box
   const me = useCurrentUser();
-  const myName = me.name || me.email || "You";
   const myInitials = me.initials || "You";
-  // Your profile, for the headline under your name on your posts (data/profile.js)
-  const profile = useMyProfile();
   // What's typed in the box. Starts empty.
   const [text, setText] = useState("");
-  // The chosen photo, as a web address the browser made for it (or null if none)
-  const [photo, setPhoto] = useState(null);
-  // The photo's description for screen readers (alt text)
-  const [photoAlt, setPhotoAlt] = useState("");
+  // true while the post is being sent, so it can't be sent twice
+  const [sending, setSending] = useState(false);
   // A short message under the buttons, like "Posted."
   const [message, setMessage] = useState("");
-  // A reference to the hidden file picker, so "Add photo" can open it
-  const fileRef = useRef(null);
   // A reference to the typing box, so we can put the cursor back in it
   const textRef = useRef(null);
 
-  // Runs after you pick a photo in the file picker
-  function choosePhoto(event) {
-    // files is the list of chosen files; [0] is the first (and only) one
-    const file = event.target.files[0];
-    if (file) {
-      // createObjectURL gives the photo a temporary web address, so an <img>
-      // can show it. It only works in this browser tab (nothing is uploaded).
-      setPhoto(URL.createObjectURL(file));
-      setMessage("");
-    }
-    // Clears the picker, so choosing the same photo again still works
-    event.target.value = "";
-  }
-
-  // Runs when you press the X on the photo
-  function removePhoto() {
-    // Frees the temporary web address, since the photo isn't needed anymore
-    URL.revokeObjectURL(photo);
-    setPhoto(null);
-    setPhotoAlt("");
-  }
-
-  // Runs when you press "Post update" (or Enter in the typing box)
-  function handlePost(event) {
+  // Runs when you press "Post update" (or Ctrl+Enter in the typing box)
+  async function handlePost(event) {
     // A form normally reloads the whole page when it's sent. This stops that.
     event.preventDefault();
     // trim() removes spaces at the start and end, so "   " counts as empty
     const words = text.trim();
     // Nothing to post: say so, and put the cursor in the box
-    if (words === "" && photo === null) {
-      setMessage("Write something or add a photo first.");
+    if (words === "") {
+      setMessage("Write something first.");
       textRef.current.focus();
       return;
     }
-    // Hand the new post to Feed (below), which puts it at the top of the list
-    props.onPost({
-      // Date.now() is the time in milliseconds, so every post gets a different id
-      id: Date.now(),
-      author: myName,
-      initials: myInitials,
-      // The headline from your profile, or "Student" if you haven't written one
-      headline: profile.data.headline.trim() || "Student",
-      time: "Just now",
-      kind: "Update",
-      color: "blue",
-      title: "",
-      text: words,
-      photo: photo,
-      // If no description was written, use a plain one so the photo still has alt text (WCAG)
-      photoAlt: photoAlt.trim() || "Photo shared by " + myName,
-      following: false,
-      likes: 0,
-      comments: 0,
-    });
-    // Empty the box for the next post, and say it worked
-    setText("");
-    setPhoto(null);
-    setPhotoAlt("");
-    setMessage("Posted.");
+    setSending(true);
+    setMessage("Posting...");
+    try {
+      // The backend saves it and sends it back with your name and headline
+      const post = await sharePost(words);
+      // Hand it to Feed (below), which puts it at the top of the list
+      props.onPost(post);
+      setText("");
+      setMessage("Posted. Everyone on ScoutSearch can see it.");
+    } catch (error) {
+      // What you typed stays in the box, so you can try again
+      setMessage("Couldn't post: " + error.message);
+    }
+    setSending(false);
+  }
+
+  // Ctrl+Enter (or Cmd+Enter on a Mac) posts, like in most chat apps.
+  // A plain Enter starts a new line
+  function handleKeyDown(event) {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.currentTarget.form.requestSubmit();
+    }
   }
 
   return (
-    // A <form>, so pressing Enter in the typing box posts too
     <form className="feed-composer" onSubmit={handlePost}>
       {/* Top row: your circle next to the typing box */}
       <div className="feed-composer-top">
@@ -401,63 +230,32 @@ function PostComposer(props) {
           {myInitials}
         </div>
         {/* The label tells screen readers what this box is for (WCAG).
-            htmlFor="feed-composer" connects it to the input with id="feed-composer".
             "sr-only" (screen reader only) hides it on the screen, but screen
             readers still read it. The placeholder alone isn't enough,
             because it disappears once you start typing */}
         <label htmlFor="feed-composer" className="sr-only">
           Share something you're working on
         </label>
-        {/* placeholder is the hint text that shows while the box is empty.
-            value + onChange: the box shows "text", and every key press saves
-            the new words into "text" */}
-        <input
+        {/* A <textarea>, so a post can have more than one line.
+            maxLength stops typing at the same limit the server checks */}
+        <textarea
           id="feed-composer"
           ref={textRef}
           className="feed-composer-input"
           placeholder="What are you working on?"
+          rows={2}
+          maxLength={mostPostLetters}
           value={text}
           onChange={(event) => setText(event.target.value)}
+          onKeyDown={handleKeyDown}
         />
       </div>
 
-      {/* The chosen photo, only once there is one ("&&" means "only if") */}
-      {photo && (
-        <div className="feed-composer-photo-area">
-          <div className="feed-composer-photo">
-            {/* alt="" because the description box right under it says what it is */}
-            <img src={photo} alt="" />
-            {/* The X in the corner removes the photo. aria-label says what it does (WCAG) */}
-            <button type="button" className="feed-composer-photo-remove" aria-label="Remove photo" onClick={removePhoto}>
-              <XIcon />
-            </button>
-          </div>
-          {/* A description of the photo for people using screen readers (alt text, WCAG) */}
-          <label htmlFor="feed-photo-alt" className="feed-composer-alt-label">
-            Describe the photo (for people using screen readers)
-          </label>
-          <input
-            id="feed-photo-alt"
-            className="feed-composer-alt"
-            placeholder="For example: our team at the Oasis demo night"
-            value={photoAlt}
-            onChange={(event) => setPhotoAlt(event.target.value)}
-          />
-        </div>
-      )}
-
-      {/* The buttons under the typing box */}
+      {/* The button under the typing box. type="submit" sends the form,
+          which runs handlePost */}
       <div className="feed-composer-buttons">
-        {/* The real file picker is hidden (it can't be styled), and "Add photo"
-            clicks it for you. accept="image/*" only allows pictures */}
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={choosePhoto} />
-        <button type="button" className="feed-composer-button" onClick={() => fileRef.current.click()}>
-          <ImageIcon />
-          {photo ? "Change photo" : "Add photo"}
-        </button>
-        {/* type="submit" sends the form, which runs handlePost */}
-        <button type="submit" className="feed-composer-button feed-composer-post">
-          Post update
+        <button type="submit" className="feed-composer-button feed-composer-post" disabled={sending}>
+          {sending ? "Posting..." : "Post update"}
         </button>
       </div>
 
@@ -470,226 +268,457 @@ function PostComposer(props) {
   );
 }
 
-// One post.
-// "props" holds the info passed in by Feed below. For example,
-// <Post author="David Ripalda" /> makes props.author equal "David Ripalda".
+// One comment under a post: the writer's circle, their name, how long ago,
+// what they wrote, and Edit and Delete if it's yours.
+// props.comment is the comment, props.onDelete deletes it, and
+// props.onEdit(text) saves new words (it gives back a promise, and throws if it can't)
+function Comment(props) {
+  const comment = props.comment;
+  // true while you're changing it, and what's in the box meanwhile
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  // The Edit button, so the keyboard focus can go back to it afterwards (WCAG)
+  const editButton = useRef(null);
+
+  function startEditing() {
+    setDraft(comment.text);
+    setEditing(true);
+  }
+  function stopEditing() {
+    setEditing(false);
+    // after the page redraws, the Edit button is there again
+    requestAnimationFrame(() => editButton.current?.focus());
+  }
+  async function saveEdit(event) {
+    event.preventDefault();
+    const words = draft.trim();
+    if (words === "" || saving) return;
+    if (words === comment.text) return stopEditing(); // nothing changed
+    setSaving(true);
+    try {
+      await props.onEdit(words);
+      stopEditing();
+    } catch {
+      // props.onEdit already said what went wrong; the box stays open with your words
+    }
+    setSaving(false);
+  }
+
+  return (
+    <li className="feed-comment">
+      <div className="feed-comment-avatar" aria-hidden="true">
+        {initialsFor(comment.author.name)}
+      </div>
+      <div className="feed-comment-bubble">
+        <p className="feed-comment-author">
+          {comment.author.name}
+          <span className="feed-comment-time">
+            {" · "}
+            <time dateTime={comment.created_at}>{timeAgo(comment.created_at)}</time>
+            {/* "Edited" if its writer changed it after posting */}
+            {comment.edited_at && " · Edited"}
+          </span>
+          {/* Only on your own comments (Edit hides while you're editing it) */}
+          {comment.mine && !editing && (
+            <button type="button" ref={editButton} className="feed-comment-delete" onClick={startEditing} aria-label="Edit your comment">
+              Edit
+            </button>
+          )}
+          {comment.mine && (
+            <button type="button" className="feed-comment-delete" onClick={props.onDelete} aria-label="Delete your comment">
+              Delete
+            </button>
+          )}
+        </p>
+        {editing ? (
+          // The box to change it. Enter saves, Esc cancels
+          <form className="feed-comment-edit" onSubmit={saveEdit}>
+            <label htmlFor={"feed-comment-edit-" + comment.id} className="sr-only">
+              Edit your comment
+            </label>
+            <input
+              id={"feed-comment-edit-" + comment.id}
+              className="feed-comment-input"
+              maxLength={mostCommentLetters}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => event.key === "Escape" && stopEditing()}
+              autoFocus
+            />
+            <button type="submit" className="feed-edit-save" disabled={saving}>
+              Save
+            </button>
+            <button type="button" className="feed-edit-cancel" onClick={stopEditing}>
+              Cancel
+            </button>
+          </form>
+        ) : (
+          <p className="feed-comment-text">{comment.text}</p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+// One post. props.post is the post from the backend (see data/feed.js).
+// The Feed (below) keeps the list of posts, so this asks it to change them:
+//   props.onChange(change)   changes this post. change is a function that gets
+//                            the post as it is now and gives back what changed,
+//                            like (post) => ({ likes: post.likes + 1 })
+//   props.onRemove()         takes this post out (after you delete it)
+//   props.onFollow(id, on)   changes the Follow button on every post by that person
 function Post(props) {
-  // Who is logged in, so the comments YOU write show your name
-  const me = useCurrentUser();
-  // "liked" remembers whether you clicked Like on this post. It starts as false.
-  // Each post gets its own "liked", so liking one post doesn't like the others.
-  const [liked, setLiked] = useState(false);
+  const post = props.post;
+  const author = post.author;
+
   // "change" remembers which way the like count just moved, so the CSS knows
   // which way to roll the number: "up" (you liked it) or "down" (you unliked it).
   // It starts as null ("nothing yet"), so the counts don't roll when the page first loads
   const [change, setChange] = useState(null);
-
-  // Runs when you click Like
-  function toggleLike() {
-    // If it was liked, the count goes down. If it wasn't, it goes up
-    setChange(liked ? "down" : "up");
-    // Flip "liked": false becomes true, true becomes false ("!" means "the opposite of")
-    setLiked(!liked);
-  }
-
   // "showComments" remembers whether the comment area under the post is open.
   // It starts closed (false). The Comment button opens and closes it.
   const [showComments, setShowComments] = useState(false);
-  // The comments YOU write on this post. [] = an empty list to start with.
-  // (The sample posts only have a comment count, not real comments.)
-  const [myComments, setMyComments] = useState([]);
   // What's typed in the comment box right now. Starts empty.
   const [commentText, setCommentText] = useState("");
-  // The message after pressing Share, like "Link copied."
-  const [shareMessage, setShareMessage] = useState("");
+  // true while your comment is being sent
+  const [sending, setSending] = useState(false);
+  // A message under the buttons, like "Link copied." or what went wrong
+  const [message, setMessage] = useState("");
+  // Editing your post: true while the box is open, and what's in it
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  // The Edit button, so the keyboard focus can go back to it afterwards (WCAG)
+  const editButton = useRef(null);
 
   // An id for the comment area, so the Comment button can say it controls it (WCAG)
-  const commentsId = "feed-comments-" + props.id;
+  const commentsId = "feed-comments-" + post.id;
+
+  // Like / unlike. It shows the change right away, then asks the server,
+  // and uses the server's count (others may have liked it too). If the server
+  // can't be reached, it goes back to how it was and says so
+  async function toggleLike() {
+    const on = !post.liked;
+    setChange(on ? "up" : "down");
+    props.onChange((now) => ({ liked: on, likes: now.likes + (on ? 1 : -1) }));
+    try {
+      const answer = await setLike(post.id, on);
+      props.onChange(() => ({ liked: answer.liked, likes: answer.likes }));
+      setMessage("");
+    } catch (error) {
+      props.onChange((now) => ({ liked: !on, likes: now.likes + (on ? -1 : 1) }));
+      setMessage("Couldn't save your like: " + error.message);
+    }
+  }
+
+  // Follow / stop following the person who wrote this. Every post of theirs
+  // changes at once (props.onFollow), and goes back if the server says no
+  async function toggleFollow() {
+    const on = !author.following;
+    props.onFollow(author.id, on);
+    try {
+      await setFollow(author.id, on);
+      setMessage(on ? "Following " + author.name + ". Their posts show on the Following tab." : "");
+    } catch (error) {
+      props.onFollow(author.id, !on);
+      setMessage("Couldn't change that: " + error.message);
+    }
+  }
+
+  // Edit your own post: the box opens with what it says now
+  function startEditing() {
+    setDraft(post.text);
+    setEditing(true);
+    setMessage("");
+  }
+  function stopEditing() {
+    setEditing(false);
+    requestAnimationFrame(() => editButton.current?.focus());
+  }
+  async function saveEdit(event) {
+    event.preventDefault();
+    const words = draft.trim();
+    if (words === "") {
+      setMessage("Write something first, or press Cancel.");
+      return;
+    }
+    if (words === post.text) return stopEditing(); // nothing changed
+    setSavingEdit(true);
+    try {
+      const changed = await editPost(post.id, words);
+      props.onChange(() => ({ text: changed.text, edited_at: changed.edited_at }));
+      stopEditing();
+      setMessage("Post updated.");
+    } catch (error) {
+      // the box stays open with your words, so you can try again
+      setMessage("Couldn't save your edit: " + error.message);
+    }
+    setSavingEdit(false);
+  }
+
+  // Saves new words for one of your comments (Comment's props.onEdit). It
+  // throws if it can't, so the comment's box stays open
+  async function saveComment(comment, words) {
+    try {
+      const changed = await editComment(comment.id, words);
+      props.onChange((now) => ({
+        comments: now.comments.map((c) => (c.id === comment.id ? { ...c, text: changed.text, edited_at: changed.edited_at } : c)),
+      }));
+      setMessage("Comment updated.");
+    } catch (error) {
+      setMessage("Couldn't save your edit: " + error.message);
+      throw error;
+    }
+  }
+
+  // Delete your own post (after checking, since it can't be undone)
+  async function removePost() {
+    if (!window.confirm("Delete this post? Its comments and likes go too. This can't be undone.")) return;
+    try {
+      await deletePost(post.id);
+      props.onRemove();
+    } catch (error) {
+      setMessage("Couldn't delete this post: " + error.message);
+    }
+  }
 
   // Runs when you press Post in the comment box
-  function addComment(event) {
+  async function sendComment(event) {
     // A form normally reloads the whole page when it's sent. This stops that.
     event.preventDefault();
     // trim() removes spaces at the start and end, so "   " counts as empty
     const words = commentText.trim();
-    if (words === "") {
-      return; // nothing typed, so nothing to add
+    if (words === "" || sending) return; // nothing typed (or already sending)
+    setSending(true);
+    try {
+      const comment = await addComment(post.id, words);
+      // [...comments, comment] makes a new list: the old comments, plus the new one at the end
+      props.onChange((now) => ({ comments: [...now.comments, comment] }));
+      setCommentText("");
+      setMessage("");
+    } catch (error) {
+      setMessage("Couldn't post your comment: " + error.message);
     }
-    // [...myComments, newComment] makes a new list: the old comments, plus the new one at the end.
-    // Date.now() is the time in milliseconds, so every comment gets a different id.
-    setMyComments([...myComments, { id: Date.now(), text: words }]);
-    // Empty the box for the next comment
-    setCommentText("");
+    setSending(false);
+  }
+
+  // Delete one of your comments. .filter() keeps every comment except that one
+  async function removeComment(comment) {
+    if (!window.confirm("Delete your comment? This can't be undone.")) return;
+    try {
+      await deleteComment(comment.id);
+      props.onChange((now) => ({ comments: now.comments.filter((c) => c.id !== comment.id) }));
+      setMessage("Comment deleted.");
+    } catch (error) {
+      setMessage("Couldn't delete your comment: " + error.message);
+    }
   }
 
   // Runs when you press Share. "async" lets it wait for the browser to finish
   // sharing or copying before it shows the message ("await" is the waiting part).
-  async function sharePost() {
-    // The link to this post: the site's address + /feed + #post-1 (for post 1).
+  async function sharePostLink() {
+    // The link to this post: the site's address + /feed + #post-<its id>.
     // window.location.origin is the start of the address, like "http://localhost:5173"
-    const link = window.location.origin + "/feed#post-" + props.id;
+    const link = window.location.origin + "/feed#post-" + post.id;
     // try/catch: sharing can fail (for example if you close the share menu),
     // and then "catch" runs instead of the page breaking
     try {
       if (navigator.share) {
         // Phones (and some computers) have a built-in share menu: use it
-        await navigator.share({ title: props.author + "'s post on ScoutSearch", url: link });
-        setShareMessage("");
+        await navigator.share({ title: author.name + "'s post on ScoutSearch", url: link });
+        setMessage("");
       } else {
         // Otherwise, copy the link so you can paste it anywhere
         await navigator.clipboard.writeText(link);
-        setShareMessage("Link copied.");
+        setMessage("Link copied.");
       }
     } catch (error) {
       // Closing the phone's share menu without picking anything counts as an
       // "AbortError". That's you changing your mind, not a failure, so say nothing
       if (error.name === "AbortError") return;
-      setShareMessage("Couldn't share this post. Try again.");
+      setMessage("Couldn't share this post. Try again.");
     }
   }
 
   return (
     // <article> means "one post that makes sense on its own" (screen readers
-    // can jump from post to post). id="post-1" lets a shared link jump straight to it
-    <article className="feed-post" id={"post-" + props.id}>
+    // can jump from post to post). id="post-..." lets a shared link jump straight to it
+    <article className="feed-post" id={"post-" + post.id}>
       {/* Everything in the post */}
       <div className="feed-post-body">
-        {/* Who posted it: the circle, then the name with school and time
-            under it, then the kind of post as a small tag on the right */}
+        {/* Who posted it: the circle, then the name with their headline and
+            how long ago under it, then Follow (or Delete, on your own) */}
         <div className="feed-post-header">
           {/* Hidden from screen readers, because the name is right next to it */}
           <div className="feed-post-avatar" aria-hidden="true">
-            {props.initials}
+            {initialsFor(author.name)}
           </div>
           <div className="feed-post-who">
-            <p className="feed-post-author">{props.author}</p>
+            {/* An <h2>, so screen readers can jump from post to post by heading (WCAG) */}
+            <h2 className="feed-post-author">
+              {author.name}
+              {post.mine && <span className="sr-only"> (you)</span>}
+            </h2>
             <p className="feed-post-headline">
-              {props.headline}
+              {author.headline}
               {/* The dot is decoration, so screen readers skip it */}
               <span aria-hidden="true"> · </span>
-              {props.time}
+              {/* <time> holds the exact time for computers */}
+              <time dateTime={post.created_at}>{timeAgo(post.created_at)}</time>
+              {/* "Edited" if its writer changed it after posting */}
+              {post.edited_at && " · Edited"}
             </p>
           </div>
-          {/* The kind of post ("Update", "Big news") as a small colored tag.
-              (It used to be a colored strip across the top of the post.)
-              "Big news" posts have color "dark" in the data and get the purple
-              tag; the others get the blue one. The word is always there, so the
-              color is never the only clue (WCAG) */}
-          <span className={props.color === "dark" ? "feed-kind-tag feed-kind-tag-purple" : "feed-kind-tag feed-kind-tag-blue"}>
-            {props.kind}
+          <span className="feed-post-tools">
+            {post.mine ? (
+              // Only on your own posts. <> </> groups the two buttons.
+              // Edit hides while the edit box is open (Save and Cancel are there instead)
+              <>
+                {!editing && (
+                  <button type="button" ref={editButton} className="feed-post-delete" onClick={startEditing} aria-label="Edit your post">
+                    Edit
+                  </button>
+                )}
+                <button type="button" className="feed-post-delete" onClick={removePost} aria-label="Delete your post">
+                  Delete
+                </button>
+              </>
+            ) : (
+              // Follow: an on/off button. aria-pressed tells screen readers if
+              // it's on, and aria-label says WHO, starting with the visible word (WCAG)
+              <button
+                type="button"
+                className="feed-post-follow"
+                aria-pressed={author.following}
+                aria-label={(author.following ? "Following " : "Follow ") + author.name}
+                onClick={toggleFollow}
+              >
+                {author.following ? "Following" : "Follow"}
+              </button>
+            )}
           </span>
         </div>
-        {/* The post's title. An <h2>, because each post is one part of the page.
-            Posts you write in the post box have no title, so it's only shown
-            when there is one ("&&" means "only if") */}
-        {props.title && <h2 className="feed-post-title">{props.title}</h2>}
-        {/* What the post says (a photo-only post has no words) */}
-        {props.text && <p className="feed-post-text">{props.text}</p>}
-        {/* The photo, if the post has one. alt describes it for screen readers (WCAG) */}
-        {props.photo && <img className="feed-post-photo" src={props.photo} alt={props.photoAlt} />}
+
+        {/* What the post says (it keeps its line breaks, see index.css), or the
+            box to change it while you're editing. Esc cancels */}
+        {editing ? (
+          <form className="feed-post-edit" onSubmit={saveEdit}>
+            <label htmlFor={"feed-post-edit-" + post.id} className="sr-only">
+              Edit your post
+            </label>
+            <textarea
+              id={"feed-post-edit-" + post.id}
+              className="feed-composer-input"
+              rows={3}
+              maxLength={mostPostLetters}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => event.key === "Escape" && stopEditing()}
+              autoFocus
+            />
+            <div className="feed-edit-actions">
+              <button type="button" className="feed-edit-cancel" onClick={stopEditing}>
+                Cancel
+              </button>
+              <button type="submit" className="feed-edit-save" disabled={savingEdit}>
+                {savingEdit ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="feed-post-text">{post.text}</p>
+        )}
+
         <div className="feed-post-counts">
-          {/* "liked ? A : B" means: if liked is true, use A. Otherwise, use B.
-              So the count goes up by 1 while you have the post liked.
-              countWords (near the top of this file) adds commas and the right
-              ending, like "1,000,000 likes" or "1 like" */}
           {/* The like count. While liked, it gets the "feed-like-count-on" class,
-              which turns it blue (see index.css) */}
-          <span className={liked ? "feed-like-count feed-like-count-on" : "feed-like-count"}>
+              which turns it blue (see index.css). countWords (near the top of
+              this file) adds commas and the right ending, like "1 like" */}
+          <span className={post.liked ? "feed-like-count feed-like-count-on" : "feed-like-count"}>
             {/* key={...} gives this <span> a new name every time "liked" flips.
                 A new name makes React swap in a brand new <span>, and a brand new
                 one plays its roll-in animation (see index.css). The class adds
                 "-up" or "-down" so it rolls the right way */}
             <span
-              key={liked ? "liked" : "not-liked"}
+              key={post.liked ? "liked" : "not-liked"}
               className={change ? "feed-like-number feed-like-number-" + change : "feed-like-number"}
             >
-              {countWords(liked ? props.likes + 1 : props.likes, "like")}
+              {countWords(post.likes, "like")}
             </span>
           </span>
-          {/* The comment count goes up by 1 for every comment you add */}
-          <span>{countWords(props.comments + myComments.length, "comment")}</span>
+          <span>{countWords(post.comments.length, "comment")}</span>
         </div>
         <div className="feed-post-actions">
-          {/* Clicking Like runs toggleLike (above), which flips "liked".
-              While liked, the button gets the "feed-liked" class,
-              which makes it blue and bold (see index.css).
-              aria-pressed={liked} tells screen readers this is an on/off button
-              and whether it's on right now, like "Liked, toggle button, pressed" (WCAG).
-              Every post has a Like button, so aria-label tells screen readers
-              WHOSE post each one is for, like "Like Kevin Liu's post". It starts
-              with the word "Like" so voice control ("click Like") still works (WCAG) */}
+          {/* Like: an on/off button. While liked, it gets the "feed-liked" class
+              (blue and bold). aria-pressed says whether it's on (WCAG).
+              Every post has a Like button, so aria-label says WHOSE post,
+              starting with "Like" so voice control still works (WCAG) */}
           <button
+            type="button"
             onClick={toggleLike}
-            className={liked ? "feed-liked" : ""}
-            aria-pressed={liked}
-            aria-label={"Like " + props.author + "'s post"}
+            className={post.liked ? "feed-liked" : ""}
+            aria-pressed={post.liked}
+            aria-label={"Like " + author.name + "'s post"}
           >
-            {/* The button's words change too */}
-            {liked ? "Liked" : "Like"}
+            {post.liked ? "Liked" : "Like"}
           </button>
-          {/* Opens and closes the comment area under the post.
+          {/* Opens and closes the comments under the post.
               aria-expanded tells screen readers if it's open, and aria-controls
-              says which part of the page it opens (WCAG). While it's open, it
-              gets the "feed-liked" class too, so it looks pressed like Like does */}
+              says which part of the page it opens (WCAG) */}
           <button
+            type="button"
             onClick={() => setShowComments(!showComments)}
             className={showComments ? "feed-liked" : ""}
             aria-expanded={showComments}
             aria-controls={commentsId}
-            aria-label={"Comment on " + props.author + "'s post"}
+            aria-label={"Comment on " + author.name + "'s post"}
           >
             Comment
           </button>
-          {/* Shares a link to this post (see sharePost above) */}
-          <button onClick={sharePost} aria-label={"Share " + props.author + "'s post"}>
+          {/* Shares a link to this post (see sharePostLink above) */}
+          <button type="button" onClick={sharePostLink} aria-label={"Share " + author.name + "'s post"}>
             Share
           </button>
         </div>
 
-        {/* "Link copied." after pressing Share. role="status" reads it out (WCAG) */}
+        {/* "Link copied.", or what went wrong. role="status" reads it out (WCAG) */}
         <p className="feed-post-message" role="status">
-          {shareMessage}
+          {message}
         </p>
 
-        {/* The comment area, only while it's open ("&&" means "only if") */}
+        {/* The comments, only while they're open ("&&" means "only if") */}
         {showComments && (
           <div className="feed-comments" id={commentsId}>
-            {/* Your comments, one per row. .map() goes through them in order */}
-            {myComments.length > 0 && (
+            {post.comments.length > 0 && (
               <ul className="feed-comment-list">
-                {myComments.map((comment) => (
-                  <li key={comment.id} className="feed-comment">
-                    <div className="feed-comment-avatar" aria-hidden="true">
-                      {me.initials || "You"}
-                    </div>
-                    <div className="feed-comment-bubble">
-                      <p className="feed-comment-author">
-                        {me.name || me.email || "You"}
-                        <span className="feed-comment-time"> · Just now</span>
-                      </p>
-                      <p className="feed-comment-text">{comment.text}</p>
-                    </div>
-                  </li>
+                {post.comments.map((comment) => (
+                  <Comment
+                    key={comment.id}
+                    comment={comment}
+                    onDelete={() => removeComment(comment)}
+                    onEdit={(words) => saveComment(comment, words)}
+                  />
                 ))}
               </ul>
             )}
 
             {/* The box to write a comment. A <form>, so pressing Enter posts it */}
-            <form className="feed-comment-form" onSubmit={addComment}>
+            <form className="feed-comment-form" onSubmit={sendComment}>
               {/* A real label for screen readers (sr-only hides it on screen, WCAG) */}
-              <label htmlFor={"feed-comment-input-" + props.id} className="sr-only">
-                {"Write a comment on " + props.author + "'s post"}
+              <label htmlFor={"feed-comment-input-" + post.id} className="sr-only">
+                {"Write a comment on " + author.name + "'s post"}
               </label>
               {/* autoFocus puts the cursor in the box as soon as it opens */}
               <input
-                id={"feed-comment-input-" + props.id}
+                id={"feed-comment-input-" + post.id}
                 className="feed-comment-input"
                 placeholder="Write a comment..."
+                maxLength={mostCommentLetters}
                 value={commentText}
                 onChange={(event) => setCommentText(event.target.value)}
                 autoFocus
               />
-              <button type="submit" className="feed-comment-post">
+              <button type="submit" className="feed-comment-post" disabled={sending}>
                 Post
               </button>
             </form>
@@ -759,7 +788,11 @@ function ListingPost(props) {
               {props.post.time}
             </p>
           </div>
-          <span className="feed-kind-tag feed-kind-tag-amber">New listing</span>
+          {/* "Example": these listings are made up, so the tag says so (the team's rule) */}
+          <span className="feed-post-tools">
+            <span className="feed-examples-tag">Example</span>
+            <span className="feed-kind-tag feed-kind-tag-amber">New listing</span>
+          </span>
         </div>
 
         {/* What the organization wrote */}
@@ -919,82 +952,175 @@ function OpportunityRadar() {
   );
 }
 
-// The "People to know" box (right column)
-function PeopleToKnow() {
-  return (
-    <section className="feed-side-card">
-      <h2 className="feed-side-title">People to know</h2>
-      <ul className="feed-side-list">
-        {/* Makes one row for each person in the people list */}
-        {people.map((person) => (
-          <li key={person.id} className="feed-person">
-            {/* Their initials in a circle (hidden from screen readers,
-                because their name is right next to it) */}
-            <div className="feed-person-avatar" aria-hidden="true">
-              {person.initials}
-            </div>
-            {/* Their name, with their headline under it */}
-            <div className="feed-person-info">
-              <p className="feed-person-name">{person.name}</p>
-              <p className="feed-person-headline">{person.headline}</p>
-            </div>
-            {/* The eye button: takes you to their profile.
-                It's a <Link> (not a <button>) because it goes to another page.
-                Everyone's own profile page doesn't exist yet, so for now it
-                goes to the Profile page. Later, "/profile" can become each
-                person's own page.
-                It has no words on it, so aria-label tells screen readers
-                what it does and WHO it's for, like "View Kyle Vergara's profile" (WCAG) */}
-            <Link
-              to="/profile"
-              className="feed-profile-button"
-              aria-label={"View " + person.name + "'s profile"}
-              // The site remembers how far down you scrolled, so without this the
-              // profile would open partway down the page. This jumps to the very
-              // top first (right away, with no glide), so the profile opens at the top
-              onClick={() => window.scrollTo({ top: 0, behavior: "instant" })}
-            >
-              <EyeIcon />
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 // Feed is the whole page. It puts all the pieces above together.
 function Feed() {
   // "picked" remembers which tab is on. It starts on "For you".
   const [picked, setPicked] = useState("For you");
-  // Everything on the page: the listing posts and student posts (feedItems,
-  // near the top), plus the ones you post. (New posts are only kept until the
-  // page is refreshed, because there's no backend to save them yet.)
-  const [allPosts, setAllPosts] = useState(feedItems);
+  // Which posts the backend should send: everyone's, or only from people you follow
+  const tab = picked === "Following" ? "following" : "all";
+  // The posts the backend sent, and for which tab:
+  //   { tab, posts, more (true if there are older ones), followingCount, error }
+  // null until the first answer arrives
+  const [feed, setFeed] = useState(null);
+  // "Try again" adds 1 to this, which makes the posts load again (see the useEffect)
+  const [reload, setReload] = useState(0);
+  // true while "Show older posts" is loading
+  const [loadingMore, setLoadingMore] = useState(false);
+  // What screen readers hear after something changes the list ("Post deleted.")
+  const [announcement, setAnnouncement] = useState("");
+  // true once you've pressed "Show older posts" (a ref: changing it doesn't
+  // redraw the page). The every-minute refresh only gets the newest 20, so it
+  // stops after that, or it would take away the older ones you loaded
+  const loadedMore = useRef(false);
   // The Application tracker's list, for the "Due soon" box. The box redraws
   // whenever it changes (a listing's Save, or your account's list arriving).
   // useTrackerSync syncs it with your account when the page opens
   const tracker = useTrackerItems();
   useTrackerSync();
 
-  // Runs when the post box sends a new post: puts it at the top of the list.
-  // [newPost, ...allPosts] makes a new list: the new post, then all the old ones.
-  // type: "update" marks it as a normal post (see feedItems)
-  function addPost(newPost) {
-    setAllPosts([{ ...newPost, type: "update" }, ...allPosts]);
-    // Your own post shows on "For you", so switch there if you were on another tab
-    setPicked("For you");
+  // Gets the posts when the page opens and whenever you switch tabs. While
+  // you're looking at the page, it gets the newest ones again every minute
+  // (and when you come back to the tab), so you see what others share without
+  // reloading. "stopped" makes an answer that arrives after you switched tabs
+  // (or left the page) get ignored
+  useEffect(() => {
+    if (picked === "Listings") return;
+    let stopped = false;
+    loadedMore.current = false;
+    // quiet: an every-minute refresh that fails keeps showing what's there
+    function load(quiet) {
+      loadPosts(tab)
+        .then((answer) => {
+          if (!stopped) setFeed({ tab: tab, ...answer, error: "" });
+        })
+        .catch((error) => {
+          if (!stopped && !quiet) setFeed({ tab: tab, posts: [], more: false, followingCount: 0, error: error.message });
+        });
+    }
+    load(false);
+    function refreshIfLooking() {
+      if (document.visibilityState === "visible" && !loadedMore.current) load(true);
+    }
+    const timer = setInterval(refreshIfLooking, 60000);
+    document.addEventListener("visibilitychange", refreshIfLooking);
+    // "Clean up" when the tab changes or you leave the page
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfLooking);
+    };
+  }, [picked, tab, reload]);
+
+  // What to show: the posts, if they're for the tab that's on (null = still loading)
+  const shown = feed && feed.tab === tab ? feed : null;
+
+  // Changes one post in the list (see Post's props.onChange).
+  // "...post, ...change(post)" copies the post and puts the changes on top
+  function updatePost(postId, change) {
+    setFeed((now) => now && { ...now, posts: now.posts.map((post) => (post.id === postId ? { ...post, ...change(post) } : post)) });
   }
 
-  // Picks which posts to show, based on the tab.
-  // "For you" shows every post. .filter() goes through the posts and keeps
-  // only the ones that pass: "following" is true (Following), or it's a
-  // listing post (Listings)
-  let shownPosts = allPosts;
-  if (picked === "Following") {
-    shownPosts = allPosts.filter((post) => post.following);
-  } else if (picked === "Listings") {
-    shownPosts = allPosts.filter((post) => post.type === "listing");
+  // After you delete a post: take it out, tell screen readers, and put the
+  // keyboard focus in the post box (the post you were on is gone) (WCAG)
+  function removePost(postId) {
+    setFeed((now) => now && { ...now, posts: now.posts.filter((post) => post.id !== postId) });
+    setAnnouncement("Post deleted.");
+    document.getElementById("feed-composer")?.focus();
+  }
+
+  // After Follow (or unfollow): every post by that person changes its button
+  function followChanged(authorId, on) {
+    setFeed((now) => now && {
+      ...now,
+      followingCount: Math.max(0, now.followingCount + (on ? 1 : -1)),
+      posts: now.posts.map((post) => (post.author.id === authorId ? { ...post, author: { ...post.author, following: on } } : post)),
+    });
+  }
+
+  // Runs when the post box sends a new post: puts it at the top of the list.
+  // On another tab, switch to "For you", which loads it with everything else
+  function addPost(newPost) {
+    if (tab === "all" && picked !== "Listings") {
+      setFeed((now) => now && { ...now, posts: [newPost, ...now.posts] });
+    } else {
+      setPicked("For you");
+    }
+  }
+
+  // "Show older posts": the 20 before the last one showing, added at the end
+  async function showOlder() {
+    const last = shown.posts[shown.posts.length - 1];
+    setLoadingMore(true);
+    loadedMore.current = true;
+    try {
+      const answer = await loadPosts(tab, last.created_at);
+      setFeed((now) => now && {
+        ...now,
+        // .some() leaves out any post that's already showing, so none shows twice
+        posts: [...now.posts, ...answer.posts.filter((post) => !now.posts.some((p) => p.id === post.id))],
+        more: answer.more,
+      });
+      setAnnouncement(answer.posts.length + " older posts loaded.");
+    } catch (error) {
+      setAnnouncement("Couldn't load older posts: " + error.message);
+    }
+    setLoadingMore(false);
+  }
+
+  // "Try again" after the posts couldn't load
+  function tryAgain() {
+    setFeed(null);
+    setReload(reload + 1);
+  }
+
+  // What an empty tab says
+  let emptyText = "No posts yet. Be the first to share something!";
+  if (tab === "following") {
+    emptyText = shown && shown.followingCount === 0
+      ? "You're not following anyone yet. Press Follow on someone's post, and their posts show up here."
+      : "No posts from the people you follow yet.";
+  }
+
+  // The posts column, under the post box
+  let posts;
+  if (picked === "Listings") {
+    // The example listing posts (made up, and labeled "Example")
+    posts = listingPosts.map((post) => <ListingPost key={post.id} post={post} />);
+  } else if (shown === null) {
+    posts = <p className="feed-empty" role="status">Loading posts...</p>;
+  } else if (shown.error) {
+    posts = (
+      <div className="feed-empty" role="status">
+        <p>Couldn't load the posts: {shown.error}</p>
+        <button type="button" className="feed-try-again" onClick={tryAgain}>
+          Try again
+        </button>
+      </div>
+    );
+  } else if (shown.posts.length === 0) {
+    posts = <p className="feed-empty">{emptyText}</p>;
+  } else {
+    posts = (
+      <>
+        {/* One <Post> for each post. key={post.id} lets React keep each post's
+            own open comments and typing when the list changes */}
+        {shown.posts.map((post) => (
+          <Post
+            key={post.id}
+            post={post}
+            onChange={(change) => updatePost(post.id, change)}
+            onRemove={() => removePost(post.id)}
+            onFollow={followChanged}
+          />
+        ))}
+        {/* Only if there are older ones */}
+        {shown.more && (
+          <button type="button" className="feed-more-button" onClick={showOlder} disabled={loadingMore}>
+            {loadingMore ? "Loading..." : "Show older posts"}
+          </button>
+        )}
+      </>
+    );
   }
 
   return (
@@ -1015,45 +1141,17 @@ function Feed() {
         <section className="feed-middle" aria-label="Posts">
           {/* The post box. onPost is how it hands a new post back up to Feed */}
           <PostComposer onPost={addPost} />
-          {/* "A ? B : C" again: if there are posts to show, show them.
-              Otherwise, show a short message instead of an empty space */}
-          {shownPosts.length > 0 ? (
-            // Makes one <Post> for each post that passed the filter above.
-            // Each line like author={post.author} passes one piece of info
-            // into the Post component, where it becomes props.author
-            // A listing post gets its own piece (ListingPost); the rest are normal posts
-            shownPosts.map((post) => post.type === "listing" ? (
-              <ListingPost key={post.id} post={post} />
-            ) : (
-              <Post
-                key={post.id}
-                id={post.id}
-                author={post.author}
-                initials={post.initials}
-                headline={post.headline}
-                time={post.time}
-                kind={post.kind}
-                color={post.color}
-                title={post.title}
-                text={post.text}
-                photo={post.photo}
-                photoAlt={post.photoAlt}
-                likes={post.likes}
-                comments={post.comments}
-              />
-            ))
-          ) : (
-            <p className="feed-empty">
-              Nothing here yet.
-            </p>
-          )}
+          {posts}
+          {/* Hidden on screen. Screen readers hear changes to the list (WCAG) */}
+          <p className="sr-only" role="status">
+            {announcement}
+          </p>
         </section>
 
         {/* Right column: what's due soon, then suggestions */}
         <aside className="feed-right">
           <DueSoonCard tracker={tracker} />
           <OpportunityRadar />
-          <PeopleToKnow />
         </aside>
       </main>
     </>

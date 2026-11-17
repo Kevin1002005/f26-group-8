@@ -105,6 +105,8 @@ function AccountMenu() {
   async function handleLogOut(event) {
     event.preventDefault();
     setOpen(false);
+    // (markLoggedOut also deletes this browser's copies of your things: your
+    // account keeps them, see login-status.js)
     await markLoggedOut();
     navigate("/login", { replace: true });
   }

@@ -184,6 +184,7 @@ function ProfileHeader(props) {
   const facts = [
     profile.city,
     profile.school,
+    profile.major,
     profile.classYear ? classYearText(profile.classYear) : "",
   ].filter(Boolean);
 

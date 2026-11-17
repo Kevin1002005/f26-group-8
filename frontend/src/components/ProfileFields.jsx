@@ -16,15 +16,34 @@
 import { useState } from "react";
 // The kinds of positions, and the most letters each box can hold
 import { most, positionKinds } from "../data/profile.js";
+// The majors to pick from (data/majors.js)
+import { majors, undecided } from "../data/majors.js";
 
 // Every box has a <label htmlFor="x"> that matches its id="x", so clicking the
 // label puts the cursor in the box, and screen readers say the label (WCAG).
 // maxLength stops typing at the same limit the server checks, so you never
 // get an error for typing too much.
 
-// Basics: name, pronouns, school, class year, and city
+// Basics: name, pronouns, school, class year, major, and city
 export function BasicsFields(props) {
   const profile = props.profile;
+  // true while "Other" is picked for the major, so a box shows to type it in.
+  // It starts on if the saved major isn't one from the list
+  const [otherMajor, setOtherMajor] = useState(
+    profile.major !== "" && profile.major !== undecided && !majors.includes(profile.major),
+  );
+
+  // Picking from the major list. "Other" empties the major and shows the box
+  function pickMajor(value) {
+    if (value === "Other") {
+      setOtherMajor(true);
+      props.onChange({ major: "" });
+    } else {
+      setOtherMajor(false);
+      props.onChange({ major: value });
+    }
+  }
+
   return (
     <>
       <div className="edit-row">
@@ -101,20 +120,67 @@ export function BasicsFields(props) {
         </div>
       </div>
 
-      <label className="edit-label" htmlFor="profile-city">
-        City
-      </label>
-      {/* "address-level2" means a city, so the browser can offer yours */}
-      <input
-        id="profile-city"
-        className="edit-input"
-        type="text"
-        autoComplete="address-level2"
-        maxLength={most.city}
-        placeholder="e.g. Boston, MA"
-        value={profile.city}
-        onChange={(e) => props.onChange({ city: e.target.value })}
-      />
+      <div className="edit-row">
+        <div className="edit-field">
+          <label className="edit-label" htmlFor="profile-major">
+            Major
+          </label>
+          {/* A drop-down list. aria-describedby reads the tip under it (WCAG) */}
+          <select
+            id="profile-major"
+            className="edit-input"
+            aria-describedby="profile-major-hint"
+            value={otherMajor ? "Other" : profile.major}
+            onChange={(e) => pickMajor(e.target.value)}
+          >
+            <option value="">Choose one</option>
+            {majors.map((major) => (
+              <option key={major} value={major}>
+                {major}
+              </option>
+            ))}
+            <option value={undecided}>{undecided}</option>
+            <option value="Other">Other (type it)</option>
+          </select>
+          <p className="edit-hint" id="profile-major-hint">
+            Opportunities shows jobs for it first. In high school? Pick "{undecided}".
+          </p>
+        </div>
+        <div className="edit-field">
+          <label className="edit-label" htmlFor="profile-city">
+            City
+          </label>
+          {/* "address-level2" means a city, so the browser can offer yours */}
+          <input
+            id="profile-city"
+            className="edit-input"
+            type="text"
+            autoComplete="address-level2"
+            maxLength={most.city}
+            placeholder="e.g. Boston, MA"
+            value={profile.city}
+            onChange={(e) => props.onChange({ city: e.target.value })}
+          />
+        </div>
+      </div>
+
+      {/* Only after picking "Other": a box to type the major in */}
+      {otherMajor && (
+        <>
+          <label className="edit-label" htmlFor="profile-major-other">
+            Your major
+          </label>
+          <input
+            id="profile-major-other"
+            className="edit-input"
+            type="text"
+            maxLength={most.major}
+            placeholder="e.g. Linguistics"
+            value={profile.major}
+            onChange={(e) => props.onChange({ major: e.target.value })}
+          />
+        </>
+      )}
     </>
   );
 }

@@ -32,7 +32,7 @@ export const legal = {
 export const services = [
   {
     name: "Supabase",
-    what: "Accounts and logins (email, a scrambled \"hash\" of your password, and your name and picture if you use Google), and the database with your Application tracker, resume, and profile.",
+    what: "Accounts and logins (email, a scrambled \"hash\" of your password, and your name and picture if you use Google), and the database with your Application tracker, resume, profile, and Feed posts.",
     region: "the United States (US East, North Virginia)", // Supabase -> Project Settings -> General -> Region
     link: "https://supabase.com/privacy",
   },
@@ -64,7 +64,7 @@ export const services = [
 //   login            Supabase's session and its one-time login code; scoutsearch-logged-in
 //   profile, tracker, resume  scoutsearch-profile:<id>, scoutsearch-applications(-outbox, -server-ids):<id>,
 //                    scoutsearch-resume(-unsent, -base):<id>
-//   settings         scoutsearch-settings, scoutsearch-theme
+//   settings         scoutsearch-settings, scoutsearch-theme, scoutsearch-hidden-companies:<id>
 //   logo             logo-intro-played (sessionStorage)
 // If the site starts saving something new, add it to a row here (or a new row).
 //   category   "Strictly necessary" (logging in) or "Functional" (a feature you use)
@@ -85,12 +85,12 @@ export const browserStorage = [
     name: "Copies of your profile, tracker, and resume",
     category: "Functional",
     purpose: "So they open right away and keep working offline, plus any changes not sent to your account yet. Kept separately for each account, so on a shared computer the next person can't see yours.",
-    lasts: "Until you delete your account or clear this site's data. Kept after you log out, so they're there when you log back in.",
+    lasts: "Until you log out, delete your account, or clear this site's data. Your account keeps them, so they come back when you log in again. (Changes made offline that haven't reached your account yet stay until they're sent, the next time you log in here.)",
   },
   {
     name: "Your settings",
     category: "Functional",
-    purpose: "Your choices on the Settings page (colors, light or dark, text size, accessibility, profile privacy).",
+    purpose: "Your choices on the Settings page (colors, light or dark, text size, accessibility, profile privacy), and the companies you hide on Opportunities.",
     lasts: "Until you change them or clear this site's data.",
   },
   {

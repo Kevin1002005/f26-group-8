@@ -9,7 +9,7 @@
 //
 // How to use it in a component:
 //   const profile = useMyProfile();
-//   profile.data        { name, pronouns, school, classYear, city, headline, about,
+//   profile.data        { name, pronouns, school, classYear, major, city, headline, about,
 //                         lookingFor: { kinds, when, where, paidOnly }, skills }
 //   profile.known       true once we know your profile (from the server, or this browser's copy)
 //   profile.state       "loading", "ready" (the server answered), or "offline"
@@ -32,13 +32,13 @@ export const positionKinds = ['Internship', 'Co-op', 'Research', 'Program'];
 // The most letters each box can hold. The boxes use these as maxLength, and
 // the backend checks the same numbers (backend/src/student-profile.ts)
 export const most = {
-    name: 100, pronouns: 40, school: 150, classYear: 20, city: 100,
+    name: 100, pronouns: 40, school: 150, classYear: 20, major: 100, city: 100,
     headline: 150, about: 2000, when: 100, where: 150, skill: 50, skills: 30,
 };
 
 // A profile with nothing filled in yet
 export const emptyProfile = {
-    name: '', pronouns: '', school: '', classYear: '', city: '',
+    name: '', pronouns: '', school: '', classYear: '', major: '', city: '',
     headline: '', about: '',
     lookingFor: { kinds: [], when: '', where: '', paidOnly: false },
     skills: [],
@@ -53,7 +53,7 @@ function fillProfile(saved) {
     const text = (value) => (typeof value === 'string' ? value : '');
     return {
         name: text(data.name), pronouns: text(data.pronouns), school: text(data.school),
-        classYear: text(data.classYear), city: text(data.city),
+        classYear: text(data.classYear), major: text(data.major), city: text(data.city),
         headline: text(data.headline), about: text(data.about),
         lookingFor: {
             kinds: Array.isArray(looking.kinds) ? looking.kinds.filter((kind) => positionKinds.includes(kind)) : [],

@@ -41,6 +41,7 @@ safe to run again.
 4. `backend/sql/applications.sql` (the Application tracker; needs `jobs.sql` first)
 5. `backend/sql/resumes.sql` (the Resume builder)
 6. `backend/sql/student_profiles.sql` (the welcome guide, Profile, and Edit profile)
+7. `backend/sql/feed.sql` (the Feed: posts, comments, likes, and follows)
 
 **2. Login settings.** In Supabase, go to Authentication → URL Configuration:
 - set the Site URL to `http://localhost:5173`;
@@ -50,7 +51,9 @@ safe to run again.
 **3. Secrets.** Never commit these files. They're in `.gitignore`.
 - **`backend/secrets.env`:** copy `backend/secrets.env.example` to `secrets.env`, then fill it in.
   The example explains each value: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `JWT_KEY`, and the
-  importer's keys. `JSEARCH_API_KEY` is optional. `USAJOBS_*` and `ADZUNA_*` aren't used yet.
+  importer's keys, which are all optional (a source without its key skips itself): `JSEARCH_API_KEY`,
+  `USAJOBS_API_KEY` + `USAJOBS_EMAIL`, and `ADZUNA_APP_ID` + `ADZUNA_APP_KEY`. `AI_API_KEY` (a free
+  Google Gemini key) turns on the AI tags for job posts (also optional).
 - **`frontend/.env.local`:** `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Use only
   the **publishable** key here, never the secret one: anything starting with `VITE_` is copied
   into the website, where anyone can read it.
@@ -66,6 +69,13 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
 
 ## Backend
 
+- `GET /api/jobs/for-me` (logged in) is what Opportunities uses: every filter (major, who it's for,
+  where, pay, posted, deadline, must mention / leave out, city, hidden companies), sorting (newest,
+  best fit, deadline, company), 50 a page, and each job's best-fit score and reasons
+  (`backend/src/fit.ts`, from your profile and resume). `POST /api/jobs/refresh` checks the job sites
+  for new listings (the sources without a daily limit), at most once every 30 minutes for the site.
+- `/api/feed` is the Feed: posts, comments, likes, and follows. Everyone logged in sees every post;
+  only the writer can delete theirs.
 - `GET /api/jobs` lists open jobs, newest posted first (`posted_at`, the date the company's job
   site gives). It takes `type`, `level`, `setting`, `paid`, `q` (search) and `page` (50 jobs per page).
 - `GET /api/jobs/:id` returns one job.
@@ -80,6 +90,14 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
 - `GET /api/account/export` and `DELETE /api/account` are Settings' "Download my data" and
   "Delete my account". Deleting removes the Supabase login, and the profile, tracker, and resume
   go with it (their tables are set to `on delete cascade`).
+- The importer's sources are in `backend/src/import-runner.ts`: Greenhouse, Lever, Ashby,
+  SmartRecruiters, and Workable company boards, USAJOBS, NSF ETAP (research programs), precollege-finder
+  (high school programs), the SimplifyJobs, vanshb03, CO0Oper, and SpeedyApply GitHub lists, JSearch, and
+  Adzuna. To add a company, add it to the list at the top of its file in `backend/src/job-sources/`.
+- After each import, `backend/src/ai-tags.ts` has a free AI model (Gemini, if `AI_API_KEY` is set) tag
+  the new jobs with the majors and skills they fit. Best fit (`backend/src/fit.ts`) uses the tags. Only
+  public job posts are sent, never anything about a student. Run `jobs.sql` step 8 first.
+  (Step 9, an index that makes the job lists faster, is optional.)
 - To pull in real internships, run `cd backend && npm run import-jobs` by hand, on a computer
   with `backend/secrets.env`. It saves them to the `jobs` table and closes the ones a company
   took down. JSearch only runs if `JSEARCH_API_KEY` is set. Without it, the importer says it
@@ -193,12 +211,35 @@ Vercel puts the `main` branch live. Every other branch you push gets its own pre
 
 In Authentication → URL Configuration:
 - **Site URL:** the live Vercel address.
-- **Redirect URLs:** keep `http://localhost:5173/**`, and add:
-  - `https://YOUR-PROJECT.vercel.app/**`, for the live site;
-  - `https://*-YOUR-VERCEL-ACCOUNT.vercel.app/**`, for preview addresses.
+- **Redirect URLs:** keep `http://localhost:5173/**`, and add `https://YOUR-PROJECT.vercel.app/**`
+  for the live site.
+- **Preview addresses:** don't add a wildcard like `https://*-YOUR-VERCEL-ACCOUNT.vercel.app/**`
+  to the real project. Supabase sends password-reset and Google login codes to any address on
+  this list, so a wildcard trusts every address that matches it (the 2026-11-17 security audit).
+  To test log in on a preview, add that one preview's exact address for a while, or use a
+  second Supabase project just for previews.
 
 Log in, sign up, and password reset send people back to whichever address they're on, so it
 has to be on this list.
+
+### Security settings to check (from the 2026-11-17 security audit)
+
+These live in the dashboards, not in the code, so only someone with access can check them:
+- **Supabase → Authentication → Attack Protection:** turn on CAPTCHA (Cloudflare Turnstile is
+  free). Without it, anyone can use up the project's hourly email allowance with fake sign-ups or
+  reset requests, and then real students get no emails. **Turn it on only after** the site sends
+  the CAPTCHA token (`captchaToken` in `signUp`, `signInWithPassword`, and `resetPasswordForEmail`,
+  plus the Turnstile address in the CSP in `frontend/vercel.json`): with CAPTCHA on and no token,
+  Supabase refuses every sign-up and log in.
+- **Supabase → Authentication → Sign In / Providers → Email:** keep **Confirm email** on, so
+  nobody can sign up with someone else's address (an address nobody confirmed could otherwise end
+  up linked to that person's Google login; the audit couldn't check how Supabase links them).
+- **Supabase → Authentication → URL Configuration:** no wildcard addresses (see above).
+- **Supabase → Project Settings → Data API:** note the **Max Rows** value (1000 by default). The
+  Feed shows at most 50 comments per post, so it stays under it.
+- **Render:** the old `/auth/signup` and `/auth/login` are only on the Render address. They're
+  limited to 2 at a time and 20 a minute now, but nothing uses them: deleting them
+  (`backend/plans.md` Task S5) removes the risk.
 
 ### 5. Check the live site
 - Open a deep link like `/discovery` directly, and refresh it.

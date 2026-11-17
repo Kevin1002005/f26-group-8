@@ -7,7 +7,8 @@
 // has to decide about every column, AND every row has the same keys: when many rows are
 // saved at once, Supabase fills a key that's missing from one row with null.
 export type ImportedJob = {
-  source: 'greenhouse' | 'lever' | 'usajobs' | 'adzuna' | 'jsearch';
+  source: 'greenhouse' | 'lever' | 'usajobs' | 'adzuna' | 'jsearch' | 'simplify' | 'ashby' | 'smartrecruiters' | 'workable'
+    | 'co0oper' | 'vanshb03' | 'speedyapply' | 'nsf' | 'precollege';
   external_id: string;          // the job's id on the outside site
   title: string;
   organization: string;
@@ -33,8 +34,34 @@ export type SourceResult = {
 };
 
 
-// GET a URL and read the JSON. Throws if the site is down, too slow, or answers with an
-// error code, so the caller's try/catch counts it as a failed fetch.
+// The biggest answer we read from a job site: 40 MB. The importer runs inside the same server
+// as the website (Refresh), so one giant file from a list could otherwise use up all its memory
+// and crash it for everyone. (SimplifyJobs' list, the biggest, is about 13 MB today)
+const MOST_BYTES = 40 * 1024 * 1024;
+
+// Reads an answer's body as text, but stops (and throws) once it passes MOST_BYTES
+async function readCapped(res: Response): Promise<string> {
+  const declared = Number(res.headers.get('content-length'));
+  if (declared > MOST_BYTES) throw new Error('the answer is too big');
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MOST_BYTES) {
+      await reader.cancel();
+      throw new Error('the answer is too big');
+    }
+    parts.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(parts));
+}
+
+// GET a URL and read the JSON. Throws if the site is down, too slow, answers with an
+// error code, or sends more than MOST_BYTES, so the caller's try/catch counts it as a failed fetch.
 export async function fetchJson(url: string, headers: Record<string, string> = {}): Promise<unknown> {
   // give up after 60 seconds so one slow site can't hang the whole import.
   // (20 seconds was too short: big boards like Veeva's, with 800+ jobs, take a while to download)
@@ -44,7 +71,14 @@ export async function fetchJson(url: string, headers: Record<string, string> = {
     // and this message gets printed in the terminal
     throw new Error(`HTTP ${res.status}`);
   }
-  return res.json();
+  return JSON.parse(await readCapped(res));
+}
+
+// the same as fetchJson, for a page that isn't JSON (speedyapply's README)
+export async function fetchText(url: string, headers: Record<string, string> = {}): Promise<string> {
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(60_000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return readCapped(res);
 }
 
 
@@ -189,18 +223,26 @@ export function storableText(text: string): string {
   return text.replace(/\u0000/g, '').toWellFormed();
 }
 
-// storableText for every text field of one row
+// The longest each field can be (letters). A site's text past these is cut off, so one odd
+// listing can't make every Opportunities load (and every AI request) huge.
+// (external_id isn't cut: two long ids that start the same would become one job. The importer
+// skips a job whose id is too long instead, see import-runner.ts)
+const MOST_LETTERS = { title: 300, organization: 200, location: 400, pay_text: 200, description: 30000, requirement: 1000 };
+const MOST_REQUIREMENTS = 50;
+const cut = (text: string, most: number) => (text.length > most ? text.slice(0, most).toWellFormed() : text);
+
+// storableText for every text field of one row, plus the length limits above
 export function storableJob(job: ImportedJob): ImportedJob {
-  const clean = (text: string | null) => (text === null ? null : storableText(text));
+  const clean = (text: string | null, most: number) => (text === null ? null : cut(storableText(text), most));
   return {
     ...job,
     external_id: storableText(job.external_id),
-    title: storableText(job.title),
-    organization: storableText(job.organization),
-    location: clean(job.location),
-    pay_text: clean(job.pay_text),
-    description: clean(job.description),
-    requirements: job.requirements.map(storableText),
+    title: cut(storableText(job.title), MOST_LETTERS.title),
+    organization: cut(storableText(job.organization), MOST_LETTERS.organization),
+    location: clean(job.location, MOST_LETTERS.location),
+    pay_text: clean(job.pay_text, MOST_LETTERS.pay_text),
+    description: clean(job.description, MOST_LETTERS.description),
+    requirements: job.requirements.slice(0, MOST_REQUIREMENTS).map((r) => cut(storableText(r), MOST_LETTERS.requirement)),
     apply_url: storableText(job.apply_url),
   };
 }
@@ -242,6 +284,77 @@ export function guessLevel(title: string, description: string | null): ImportedJ
 }
 
 
+// ---------- is it in the US? ----------
+// for worldwide lists (CO0Oper's): ScoutSearch is for students in the US, so we keep jobs in
+// the US or remote. "New York, NY", "Austin, Texas", "Remote (USA)", "US Remote", and just
+// "Remote" count. "Remote - Australia", "London, UK", "Berlin, DE", and "Bengaluru" don't.
+// A place we can't tell is left out.
+
+// a US state, a big US city, or the country by name. (?<![a-z]) and (?![a-z]) mean "not inside a
+// longer word", so "us" counts in "Remote (US)" but not in "Campus"
+const US_PLACES = new RegExp('(?<![a-z])(' + [
+  'united states', 'usa', 'u\\.s\\.?a?\\.?', 'us', 'd\\.c\\.',
+  'alabama', 'alaska', 'arizona', 'arkansas', 'california', 'colorado', 'connecticut', 'delaware', 'florida', 'hawaii',
+  'idaho', 'illinois', 'indiana', 'iowa', 'kansas', 'kentucky', 'louisiana', 'maine', 'maryland', 'massachusetts',
+  'michigan', 'minnesota', 'mississippi', 'missouri', 'montana', 'nebraska', 'nevada', 'new hampshire', 'new jersey',
+  'new mexico', 'new york', 'north carolina', 'north dakota', 'ohio', 'oklahoma', 'oregon', 'pennsylvania',
+  'rhode island', 'south carolina', 'south dakota', 'tennessee', 'texas', 'utah', 'vermont', 'virginia', 'washington',
+  'west virginia', 'wisconsin', 'wyoming',
+  'san francisco', 'bay area', 'silicon valley', 'seattle', 'boston', 'chicago', 'austin', 'los angeles', 'nyc',
+  'atlanta', 'denver', 'pittsburgh', 'philadelphia', 'miami', 'dallas', 'houston', 'san diego', 'san jose',
+  'palo alto', 'mountain view', 'menlo park', 'sunnyvale',
+].join('|') + ')(?![a-z])', 'i');
+
+// other countries and their big cities, so "Berlin, DE" (Germany) isn't read as Delaware
+const OTHER_PLACES = new RegExp('(?<![a-z])(' + [
+  'canada', 'toronto', 'vancouver', 'montreal', 'ottawa', 'waterloo', 'mexico', 'brazil', 'colombia', 'bogota', 'bogotá',
+  'argentina', 'chile', 'united kingdom', 'uk', 'england', 'scotland', 'london', 'ireland', 'dublin', 'germany', 'berlin',
+  'munich', 'france', 'paris', 'spain', 'madrid', 'barcelona', 'portugal', 'lisbon', 'italy', 'milan', 'rome',
+  'netherlands', 'amsterdam', 'belgium', 'switzerland', 'zurich', 'austria', 'vienna', 'sweden', 'stockholm', 'norway',
+  'denmark', 'finland', 'poland', 'warsaw', 'czech', 'prague', 'romania', 'greece', 'turkey', 'istanbul', 'israel',
+  'tel aviv', 'uae', 'dubai', 'saudi', 'egypt', 'kenya', 'nigeria', 'south africa', 'india', 'bengaluru', 'bangalore',
+  'hyderabad', 'pune', 'chennai', 'mumbai', 'delhi', 'gurgaon', 'gurugram', 'noida', 'singapore', 'malaysia',
+  'kuala lumpur', 'indonesia', 'jakarta', 'philippines', 'manila', 'thailand', 'bangkok', 'vietnam', 'china',
+  'shanghai', 'beijing', 'shenzhen', 'hong kong', 'taiwan', 'taipei', 'japan', 'tokyo', 'korea', 'seoul',
+  'australia', 'sydney', 'melbourne', 'new zealand', 'europe', 'emea', 'apac', 'latam',
+  // more cities that come with a two-letter code that's also a US state's ("Haifa, IL", "Hamburg, DE")
+  'mississauga', 'quebec', 'calgary', 'edmonton', 'winnipeg', 'halifax', 'ontario', 'british columbia', 'alberta',
+  'hamburg', 'frankfurt', 'cologne', 'stuttgart', 'dusseldorf', 'haifa', 'jerusalem', 'kolkata', 'ahmedabad', 'kochi',
+  'medellin', 'casablanca', 'morocco', 'lima', 'peru', 'monterrey', 'guadalajara', 'krakow', 'budapest', 'hungary',
+  'kyiv', 'ukraine', 'bucharest', 'sofia', 'bulgaria', 'belgrade', 'serbia', 'zagreb', 'croatia', 'estonia', 'latvia',
+  'lithuania', 'edinburgh', 'manchester', 'glasgow', 'belfast', 'cork', 'lyon', 'toulouse', 'valencia', 'porto',
+  'brussels', 'copenhagen', 'oslo', 'helsinki', 'athens', 'cape town', 'johannesburg', 'accra', 'ghana',
+].join('|') + ')(?![a-z])', 'i');
+
+// Canada's provinces, written the same way ("Mississauga, ON"): none of them is a US state
+const CANADA_CODES = new Set(['AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT']);
+
+// a two-letter US state after a comma or space, in capitals: "Boston, MA", "Kansas City, MO (HQ)"
+const US_STATE_CODES = new Set(['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS',
+  'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR',
+  'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC', 'PR']);
+function hasCode(location: string, codes: Set<string>): boolean {
+  return [...location.matchAll(/[,\s]\s*([A-Z]{2})(?![A-Za-z])/g)].some((match) => codes.has(match[1]!));
+}
+
+export function isInUS(location: string | null): boolean {
+  if (!location) return false;
+  // "Montréal" -> "Montreal", so the accent doesn't hide a city from the lists above.
+  // Runs of spaces become one space, and very long text is cut: hasCode's pattern got slow
+  // (each space tried again from every earlier one) on a location with thousands of spaces
+  const place = location.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').slice(0, 400);
+  // "Mississauga, ON, CA" or "Austin, TX, US": two codes at the end, and the last is the country
+  const country = /,\s*[A-Z]{2}\s*,\s*([A-Z]{2})\s*$/.exec(place)?.[1];
+  if (country) return country === 'US';
+  if (US_PLACES.test(place)) return true;   // a US place by name (even if another country is listed too)
+  if (OTHER_PLACES.test(place) || hasCode(place, CANADA_CODES)) return false;
+  if (hasCode(place, US_STATE_CODES)) return true;
+  // just "Remote" (or "Anywhere"), with no country
+  const words = location.toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+  return ['remote', 'anywhere', 'remote anywhere', 'fully remote'].includes(words);
+}
+
+
 // ---------- merging similar jobs ----------
 
 // "Software Engineer Intern - Summer 2027" and "Software Engineer Intern (Summer 2027)"
@@ -271,12 +384,19 @@ export function jobKey(job: { organization: string; title: string }): string {
   return `${simplifyOrganization(job.organization)}|${simplifyTitle(job.title)}`;
 }
 
+// the bits on the end of a link that only say where you came from, not which job it is
+const TRACKING_PARAMS = /^(utm_.*|gh_src|source|ref|referrer|lever-source.*|lever-origin|trk)$/i;
+
 // "https://Boards.Greenhouse.io/stripe/jobs/123?gh_src=abc" -> "boards.greenhouse.io/stripe/jobs/123"
-// so the same posting reached through two sites counts as one link
+// so the same posting reached through two sites counts as one link.
+// The rest of the ?... part is kept (in a set order): some sites put the job's id there, like
+// "...recruitment.html?cid=5&jobId=111", and without it every job on that site would look like one
 export function simplifyUrl(url: string): string {
   try {
     const u = new URL(url);
-    return (u.host + u.pathname).toLowerCase().replace(/\/+$/, '');
+    const kept = [...u.searchParams].filter(([name]) => !TRACKING_PARAMS.test(name)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    const query = kept.length > 0 ? '?' + new URLSearchParams(kept).toString() : '';
+    return ((u.host + u.pathname).replace(/\/+$/, '') + query).toLowerCase();
   } catch {
     return url.toLowerCase();
   }

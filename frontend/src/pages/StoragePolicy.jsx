@@ -98,7 +98,7 @@ const sections = [
     body: (
       <>
         <ul>
-          <li><strong>Log out</strong> (the menu under your circle) to remove the login items.</li>
+          <li><strong>Log out</strong> (the menu under your circle) to remove the login items and this browser's copies of your profile, tracker, and resume (your account still has them). Only changes made offline that haven't reached your account yet stay, until they're sent the next time you log in here.</li>
           <li><strong>Delete your account</strong> on the <Link to="/settings#privacy">Settings page</Link> to remove your information and this browser's copies of it.</li>
           <li><strong>Clear this site's data</strong> in your browser's settings (usually under Privacy, "Cookies and site data") to remove everything above. You'll be logged out, and this browser's copies of your profile, tracker, and resume will be gone (your account still has them).</li>
         </ul>

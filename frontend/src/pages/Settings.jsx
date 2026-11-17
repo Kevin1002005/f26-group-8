@@ -35,7 +35,7 @@ import { supabase } from '../supabase.js';
 // api() talks to our backend (api.js). The "Your data" buttons use it
 import { api } from '../api.js';
 // Whose account this is, and how to log out after deleting it (login-status.js)
-import { loggedInId, markLoggedOut } from '../login-status.js';
+import { forgetAccountCopies, loggedInId, markLoggedOut } from '../login-status.js';
 
 // The shortest password we accept (the same as the Sign up page)
 const shortestPassword = 8;
@@ -342,23 +342,18 @@ function Settings() {
     // "Delete my account": after checking (it can't be undone), deletes the account and
     // everything saved with it, removes this browser's copies too, then logs out
     async function deleteAccount() {
-        if (!window.confirm('Delete your account and everything saved with it (your profile, tracker, and resume)? This can\'t be undone.')) return;
+        if (!window.confirm('Delete your account and everything saved with it (your profile, tracker, resume, and Feed posts)? This can\'t be undone.')) return;
         const id = loggedInId();
         setMessage('Deleting your account...');
         try {
-            await api('/account', { method: 'DELETE' });
+            // asUser: only if this browser's login is still that account (api.js)
+            await api('/account', { method: 'DELETE', asUser: id });
         } catch (error) {
             setMessage("Couldn't delete your account: " + error.message);
             return;
         }
         // this browser's copies of your things are saved under your account id ("...:<id>")
-        try {
-            for (const key of Object.keys(localStorage)) {
-                if (id && key.endsWith(':' + id)) localStorage.removeItem(key);
-            }
-        } catch {
-            // storage is off: there's nothing saved to remove
-        }
+        forgetAccountCopies(id);
         await markLoggedOut();
         navigate('/about', { replace: true });
     }

@@ -18,7 +18,7 @@ router.use(authenticateToken);
 
 // The boxes, and the most letters each one can hold. They match the maxLength on the
 // site's boxes (frontend/src/components/ProfileFields.jsx), so only a hand-made request hits them
-const TEXT_BOXES: Record<string, number> = { name: 100, pronouns: 40, school: 150, classYear: 20, city: 100, headline: 150, about: 2000 };
+const TEXT_BOXES: Record<string, number> = { name: 100, pronouns: 40, school: 150, classYear: 20, major: 100, city: 100, headline: 150, about: 2000 };
 const LOOKING_FOR_BOXES: Record<string, number> = { when: 100, where: 150 };
 // The kinds of positions, the same as the job board's tabs (Discovery)
 const KINDS = ['Internship', 'Co-op', 'Research', 'Program'];

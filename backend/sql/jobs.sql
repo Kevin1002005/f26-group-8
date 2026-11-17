@@ -40,7 +40,8 @@ create table if not exists public.jobs (
 
   -- new columns for JB1a
   -- (if you add a source here, also add it to step 4 below, which updates the existing table)
-  source        text not null check (source in ('employer', 'greenhouse', 'lever', 'usajobs', 'adzuna', 'jsearch')),
+  source        text not null check (source in ('employer', 'greenhouse', 'lever', 'usajobs', 'adzuna', 'jsearch', 'simplify', 'ashby', 'smartrecruiters', 'workable',
+    'nsf', 'precollege', 'vanshb03', 'co0oper', 'speedyapply')),
   external_id   text,         -- the job's id on the outside site. null for employer jobs
   -- defaults to 'pending' so a job is hidden unless something deliberately opens it
   status        text not null default 'pending' check (status in ('pending', 'open', 'closed')),
@@ -80,14 +81,17 @@ alter table public.jobs add constraint jobs_apply_url_is_web_link
   check (apply_url is null or apply_url ~* '^https?://');   -- ~* = matches this pattern, any case
 
 
--- 4. the list of allowed sources, with 'jsearch' added.
+-- 4. the list of allowed sources (with 'jsearch' added, then on 2026-11-16 'simplify', 'ashby',
+-- 'smartrecruiters', and 'workable', then on 2026-11-17 'nsf', 'precollege', 'vanshb03', 'co0oper',
+-- and 'speedyapply').
 -- the table already exists, so the new list inside "create table" above isn't applied to it
 -- (see the note at the top). This replaces the old rule on the existing table.
 -- jobs_source_check is the name Postgres gave the "check (source in ...)" rule above
 -- (<table>_<column>_check). drop-then-add makes it safe to run again.
 alter table public.jobs drop constraint if exists jobs_source_check;
 alter table public.jobs add constraint jobs_source_check
-  check (source in ('employer', 'greenhouse', 'lever', 'usajobs', 'adzuna', 'jsearch'));
+  check (source in ('employer', 'greenhouse', 'lever', 'usajobs', 'adzuna', 'jsearch', 'simplify', 'ashby', 'smartrecruiters', 'workable',
+  'nsf', 'precollege', 'vanshb03', 'co0oper', 'speedyapply'));
 
 
 -- 5. only jobs for high schoolers and college undergrads.
@@ -120,3 +124,25 @@ alter table public.jobs add constraint jobs_title_for_our_students
 alter table public.jobs add column if not exists posted_at timestamptz;
 update public.jobs set posted_at = created_at where source = 'employer' and posted_at is null;
 alter table public.jobs alter column posted_at set default now();
+
+-- 7. Added 2026-11-16: when Refresh on Opportunities last checked the job sites (one row).
+-- The backend only starts a new check if the last one started over 30 minutes ago, for the whole
+-- site, so nobody can make our server hammer the job sites (backend/src/jobs.ts, POST /refresh).
+create table if not exists public.job_refreshes (
+  id           int primary key default 1 check (id = 1),   -- only ever one row
+  started_at   timestamptz not null default 'epoch',
+  finished_at  timestamptz,
+  worked       boolean
+);
+insert into public.job_refreshes (id) values (1) on conflict (id) do nothing;
+alter table public.job_refreshes enable row level security;
+
+-- 8. Added 2026-11-17: AI tags (backend/src/ai-tags.ts). After each import, a free AI model reads
+-- the public job posts and tags which majors each one fits and which skills it names. Best fit on
+-- Opportunities uses them. Only job posts are sent to the AI, never anything about a student.
+-- ai_tagged_at = when it was tagged (null = not yet, so the next run picks it up)
+alter table public.jobs add column if not exists ai_majors text[] not null default '{}';
+alter table public.jobs add column if not exists ai_skills text[] not null default '{}';
+alter table public.jobs add column if not exists ai_tagged_at timestamptz;
+-- the jobs waiting for tags, newest first, found quickly
+create index if not exists jobs_waiting_for_ai_tags on public.jobs (posted_at desc) where ai_tagged_at is null and status = 'open';

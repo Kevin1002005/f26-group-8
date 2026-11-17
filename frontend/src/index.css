@@ -2201,69 +2201,7 @@ html:has(.about-site) {
   color: var(--on-primary);              /* white words and sparkle (6.2:1, WCAG) */
 }
 
-/* The chosen photo and its description box, under the typing box.
-   Lined up with the typing box, past your circle (48px circle + 14px gap) */
-.feed-composer-photo-area {
-  margin: 14px 0 0 62px;                 /* top, right, bottom, left */
-}
-
-/* The photo preview. "relative" lets the X sit in its corner */
-.feed-composer-photo {
-  position: relative;
-  width: fit-content;                    /* only as wide as the photo */
-}
-
-/* The photo itself: never too big, with rounded corners */
-.feed-composer-photo img {
-  display: block;
-  max-width: 100%;                       /* never wider than the post box */
-  max-height: 220px;                     /* never taller than 220px */
-  border-radius: 12px;                   /* rounded corners */
-  object-fit: cover;                     /* fills its space without stretching */
-}
-
-/* The X in the photo's top right corner */
-.feed-composer-photo-remove {
-  position: absolute;                    /* placed on top of the photo... */
-  top: 8px;                              /* ...8px from the top... */
-  right: 8px;                            /* ...and 8px from the right */
-  display: grid;
-  place-items: center;                   /* centers the X */
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;                  /* a circle */
-  background-color: var(--strong-fill);  /* the darkest navy, so it shows on any photo */
-  color: var(--on-primary);              /* white X */
-  cursor: pointer;
-}
-
-/* "Describe the photo (for people using screen readers)" */
-.feed-composer-alt-label {
-  display: block;
-  margin-top: 12px;
-  font-size: 14px;
-  font-weight: 600;                      /* semi-bold */
-  color: var(--muted);                   /* blue (8.3:1, WCAG) */
-}
-
-/* The description box */
-.feed-composer-alt {
-  width: 100%;
-  margin-top: 6px;
-  padding: 10px 14px;                    /* space inside */
-  border: 1px solid var(--border);       /* blue edge (WCAG: input borders need 3:1) */
-  border-radius: 10px;                   /* rounded corners */
-  background-color: var(--soft);         /* very light blue, like the typing box */
-  font-size: 16px;                       /* 16px or more stops phones from zooming in */
-  color: var(--text);                    /* navy words */
-}
-
-/* The example words in the description box */
-.feed-composer-alt::placeholder {
-  color: var(--subtle);                  /* soft blue (WCAG) */
-}
-
-/* "Posted." or "Write something or add a photo first." under the buttons */
+/* "Posted." or "Write something first." under the buttons */
 .feed-composer-message {
   margin: 8px 0 0 62px;                  /* lined up with the typing box */
   font-size: 14px;
@@ -2273,16 +2211,6 @@ html:has(.about-site) {
 /* Empty messages take up no space */
 .feed-composer-message:empty {
   margin-top: 0;
-}
-
-/* A photo inside a post */
-.feed-post-photo {
-  display: block;
-  width: 100%;                           /* as wide as the post */
-  max-height: 460px;                     /* never taller than 460px */
-  margin: 4px 0 16px;                    /* space above and below */
-  border-radius: 12px;                   /* rounded corners */
-  object-fit: cover;                     /* fills its space without stretching */
 }
 
 /* ----- One post ----- */
@@ -2589,13 +2517,11 @@ html:has(.about-site) {
 
 /* Each row in a side box gets a light line under it, except the last one.
    ":last-child" means "only the LAST row" */
-.feed-opportunity,
-.feed-person {
+.feed-opportunity {
   border-bottom: 1px solid var(--line);
 }
 
-.feed-opportunity:last-child,
-.feed-person:last-child {
+.feed-opportunity:last-child {
   border-bottom: none;
 }
 
@@ -2714,57 +2640,6 @@ html:has(.about-site) {
   color: var(--subtle);         /* soft blue */
 }
 
-/* One person in "People to know": circle, name, then the eye button */
-.feed-person {
-  display: grid;                                /* turns on grid */
-  grid-template-columns: auto minmax(0, 1fr) auto; /* circle and button only as wide as they
-                                                    need to be; the name gets the rest */
-  gap: 14px;                                    /* space between them */
-  align-items: center;                          /* lined up in the middle, top-to-bottom */
-  padding: 14px 0;                              /* space above and below each person */
-}
-
-/* The person's circle. Light blue with navy letters, so the people
-   look different from the blue circles on the posts */
-.feed-person-avatar {
-  width: 48px;                          /* same width and height = a square */
-  height: 48px;
-  border-radius: 50%;                   /* rounds the square into a circle */
-  background-color: var(--accent-soft); /* light blue */
-  color: var(--text);                   /* navy letters (9.9:1, WCAG) */
-  font-size: 15px;
-  font-weight: bold;
-  display: flex;                        /* turns on flexbox so we can center... */
-  align-items: center;                  /* ...top-to-bottom */
-  justify-content: center;              /* ...left-to-right */
-}
-
-/* The person's name */
-.feed-person-name {
-  font-weight: bold;      /* thick text */
-  color: var(--text);     /* navy */
-}
-
-/* The line under their name, like "Nursing Student" */
-.feed-person-headline {
-  font-size: 14px;        /* smaller text */
-  color: var(--subtle);   /* soft blue */
-}
-
-/* The square eye button next to each person (a link to their profile) */
-.feed-profile-button {
-  display: flex;                      /* turns on flexbox so we can center the + ... */
-  align-items: center;                /* ...top-to-bottom */
-  justify-content: center;            /* ...left-to-right */
-  width: 44px;                        /* 44px square: big enough to tap easily */
-  height: 44px;
-  border: 1px solid var(--border);    /* blue line around it (3.5:1, WCAG) */
-  border-radius: 10px;                /* rounded corners */
-  background-color: var(--card);      /* off-white */
-  color: var(--link);         /* darker blue eye */
-  cursor: pointer;                    /* the mouse turns into a pointing hand over it */
-}
-
 /* Mouse users: buttons fill in light blue when the mouse is over them.
    (hover: hover) means "only on devices with a mouse" */
 @media (hover: hover) {
@@ -2784,26 +2659,6 @@ html:has(.about-site) {
     background-color: var(--primary-dark);
     color: var(--on-primary);
   }
-}
-
-/* Mouse users: the eye button fills in light blue and its line gets darker
-   when the mouse is over it.
-   (hover: hover) and (pointer: fine) means "only with a real mouse or trackpad",
-   so the color doesn't get stuck on after you tap it on a phone */
-@media (hover: hover) and (pointer: fine) {
-  .feed-profile-button:hover {
-    background-color: var(--soft);
-    border-color: var(--primary-dark);
-  }
-}
-
-/* While you press an eye button, it fills in blue with a white eye,
-   the same as the Add buttons on the Profile page. A color change isn't
-   motion, so everyone gets this, even with "reduce motion" on */
-.feed-profile-button:active {
-  background-color: var(--primary);   /* blue (the white eye on it is 4.9:1, WCAG) */
-  border-color: var(--primary);
-  color: var(--on-primary);
 }
 
 /* The bar across the top of the Feed page */
@@ -2976,10 +2831,7 @@ html:has(.feed-nav) :focus {
    The same 2px blue ring the Profile page uses */
 .feed-composer-button:focus-visible,
 .feed-post-actions button:focus-visible,
-.feed-profile-button:focus-visible,
 .feed-composer-input:focus-visible,
-.feed-composer-alt:focus-visible,
-.feed-composer-photo-remove:focus-visible,
 .feed-comment-input:focus-visible,
 .feed-comment-post:focus-visible {
   outline: 2px solid var(--focus-ring);    /* blue outline (4.5:1 on the boxes; outlines need 3:1, WCAG) */
@@ -2992,8 +2844,7 @@ html:has(.feed-nav) :focus {
 @media (prefers-reduced-motion: no-preference) {
   /* Hover colors fade in quickly instead of snapping on, at the same speed as Profile */
 .feed-composer-button,
-.feed-post-actions button,
-.feed-profile-button {
+.feed-post-actions button {
     transition:
       background-color var(--time-hover) ease,
       border-color var(--time-hover) ease,
@@ -3009,12 +2860,6 @@ html:has(.feed-nav) :focus {
   :root:not([data-reduce-motion="on"]) .feed-composer-button:active,
   :root:not([data-reduce-motion="on"]) .feed-post-actions button:active {
     transform: scale(0.97);
-  }
-
-  /* The eye buttons are small (44px), so 97% would only shrink them by about
-     1px, too little to notice. 94% is a clear little "click" */
-  :root:not([data-reduce-motion="on"]) .feed-profile-button:active {
-    transform: scale(0.94);
   }
 
   /* The like count fades to blue (and back) instead of snapping */
@@ -3073,7 +2918,6 @@ html:has(.feed-nav) :focus {
 
   /* The post box's buttons line up with the left edge instead of past the circle */
   .feed-composer-buttons,
-  .feed-composer-photo-area,
   .feed-composer-message {
     margin-left: 0;
   }
@@ -3417,6 +3261,201 @@ html:has(.feed-nav) :focus {
 }
 
 
+
+/* ----- Feed: saved posts (2026-11-16) ----- */
+/* Posts, comments, and likes are saved now, and everyone sees them. These are the
+   pieces that came with that: Follow and Delete on posts, Delete on your comments,
+   the loading and "couldn't load" notes, and "Show older posts". */
+
+/* The typing box is a <textarea> now, so a post can have more than one line */
+textarea.feed-composer-input {
+  font-family: inherit;         /* the page's font (text areas don't use it by themselves) */
+  line-height: 1.45;            /* space between lines */
+  min-height: 54px;             /* about one line tall to start with */
+  max-height: 320px;            /* never taller than this... */
+  resize: vertical;             /* ...but you can drag it taller (not wider) */
+}
+
+/* A post's and a comment's words keep the line breaks they were written with,
+   and a very long word (like a web address) wraps instead of spilling out */
+.feed-post-text,
+.feed-comment-text {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* The buttons at the right end of a post's top row (Follow, or Delete on yours) */
+.feed-post-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;            /* pushes them to the right end of the row */
+  flex-shrink: 0;               /* never squished by a long name */
+}
+
+/* "Follow" / "Following": a small outlined pill */
+.feed-post-follow {
+  padding: 6px 14px;            /* space inside: top/bottom, left/right */
+  border: 1px solid var(--primary);   /* blue line (5.9:1) */
+  border-radius: var(--radius-pill);  /* pill shape */
+  background-color: transparent;
+  color: var(--link);           /* blue words (5.9:1 on boxes, WCAG) */
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Following: filled light blue with navy words, so it's on without relying on the
+   word alone (aria-pressed is what screen readers hear) */
+.feed-post-follow[aria-pressed="true"] {
+  background-color: var(--accent-soft);   /* light blue (navy words 12.9:1) */
+  color: var(--text);
+}
+
+/* "Delete" on your own post or comment: plain words, underlined on hover */
+.feed-post-delete,
+.feed-comment-delete {
+  padding: 4px 6px;             /* a bit of room, so it's easy to tap */
+  border: none;
+  background: none;
+  color: var(--subtle);         /* gray-blue (5.8:1 on boxes, 5.2:1 in a comment, WCAG) */
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* In a comment, Delete sits after the time */
+.feed-comment-delete {
+  margin-left: 4px;
+}
+
+/* Editing your post: the box (it uses the post box's look, .feed-composer-input),
+   with Cancel and Save under it on the right */
+.feed-post-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.feed-edit-actions {
+  display: flex;
+  justify-content: flex-end;    /* on the right, like "Post update" */
+  gap: 8px;
+}
+
+/* Editing a comment: the box, then Save and Cancel, in one row */
+.feed-comment-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Save: a solid blue pill. Cancel: an outlined one */
+.feed-edit-save,
+.feed-edit-cancel {
+  padding: 7px 16px;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.feed-edit-save {
+  border: 1px solid var(--primary);
+  background-color: var(--primary);   /* the main blue */
+  color: var(--on-primary);           /* white words (5.9:1, WCAG) */
+}
+
+.feed-edit-cancel {
+  border: 1px solid var(--border);    /* gray-blue line (3.5:1) */
+  background-color: var(--card);
+  color: var(--text);                 /* navy words */
+}
+
+.feed-edit-save:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .feed-edit-save:hover {
+    background-color: var(--primary-dark);
+  }
+
+  .feed-edit-cancel:hover {
+    background-color: var(--soft);
+  }
+}
+
+.feed-edit-save:focus-visible,
+.feed-edit-cancel:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* "Loading posts...", "Couldn't load the posts", and the empty tabs: the same
+   dashed box as an empty Feed (.feed-empty), with a button under the words */
+.feed-try-again,
+.feed-more-button {
+  margin-top: 12px;
+  padding: 10px 20px;
+  border: 1px solid var(--border);      /* gray-blue line (3.5:1, WCAG) */
+  border-radius: var(--radius-pill);    /* pill shape */
+  background-color: var(--card);
+  color: var(--link);           /* blue words (5.9:1) */
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* "Show older posts": across the whole column, under the last post */
+.feed-more-button {
+  width: 100%;
+}
+
+/* While it's loading, or while the post button is sending */
+.feed-more-button:disabled,
+.feed-composer-post:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Hover (mouse only): light gray-blue, like the post's other buttons */
+@media (hover: hover) and (pointer: fine) {
+  .feed-post-follow:hover,
+  .feed-try-again:hover,
+  .feed-more-button:hover {
+    background-color: var(--soft);
+  }
+
+  .feed-post-delete:hover,
+  .feed-comment-delete:hover {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+/* Keyboard users see the same blue ring as the rest of the Feed (WCAG) */
+.feed-post-follow:focus-visible,
+.feed-post-delete:focus-visible,
+.feed-comment-delete:focus-visible,
+.feed-try-again:focus-visible,
+.feed-more-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Only for people who haven't turned on "reduce motion" (WCAG) */
+@media (prefers-reduced-motion: no-preference) {
+  .feed-post-follow,
+  .feed-try-again,
+  .feed-more-button {
+    transition: background-color var(--time-hover) ease;
+  }
+}
 
 /* ---------- Top bar: account menu ---------- */
 /* The dropdown that opens when you click your circle in the top bar
@@ -7891,6 +7930,259 @@ html:has(.feed-nav) :focus {
 .discovery-text-link:focus-visible {
   outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+/* ----- Filters, Refresh, and best fit (2026-11-16) ----- */
+
+/* The filter box under the tabs: one row of quick filters, then "More filters" */
+.discovery-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);          /* a light edge, like the other boxes */
+  border-radius: var(--radius-box);
+  background-color: var(--card);
+}
+
+/* A row of filters, wrapping onto new lines when there's no room */
+.discovery-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;                  /* the boxes line up along the bottom */
+  gap: 12px 16px;                         /* space between rows, then between filters */
+}
+
+/* One filter: its name on top, its box underneath */
+.discovery-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);                    /* gray-blue (7.8:1, WCAG) */
+}
+
+/* The typing boxes ("Must mention", "Leave out", "City or state") */
+.discovery-filter-input {
+  height: 38px;                           /* the same height as the menus */
+  min-width: 190px;
+  padding: 0 10px;
+  border: 1px solid var(--border);        /* gray-blue edge (3.5:1, enough for a box) */
+  border-radius: 8px;
+  background-color: var(--card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;                        /* 16px, so phones don't zoom in when you tap it */
+  font-weight: 400;
+}
+
+.discovery-filter-input::placeholder {
+  color: var(--subtle);                   /* gray-blue (5.8:1), readable */
+}
+
+/* The small tip under a box ("Commas between words") */
+.discovery-filter-hint {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--subtle);                   /* gray-blue (5.8:1, WCAG) */
+}
+
+/* "For your major (Computer Science)": an on/off pill */
+.discovery-chip {
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--primary);       /* blue edge */
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  color: var(--link);                     /* blue words (5.9:1) */
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* While it's on: filled light blue with navy words (not only a color: the
+   button's aria-pressed says it to screen readers, and it shows a check) */
+.discovery-chip[aria-pressed="true"] {
+  background-color: var(--accent-soft);   /* light blue (navy words 12.9:1) */
+  color: var(--text);
+}
+
+/* "Paid only": a checkbox and its words */
+.discovery-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.discovery-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);           /* the browser draws the box in our blue */
+}
+
+/* "More filters": click it to open the rest */
+.discovery-more-filters summary {
+  width: fit-content;
+  padding: 4px 0;
+  color: var(--link);                     /* blue words (5.9:1) */
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.discovery-more-filters[open] summary {
+  margin-bottom: 12px;
+}
+
+/* "Hidden companies:" and the list of them */
+.discovery-hidden {
+  margin-top: 14px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.discovery-hidden-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  list-style: none;
+  padding: 0;
+}
+
+/* One hidden company, with "Show again" */
+.discovery-hidden-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 12px;
+  border-radius: var(--radius-pill);
+  background-color: var(--soft);          /* light gray-blue */
+  color: var(--text);                     /* navy (13:1 on it) */
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.discovery-unhide {
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background-color: var(--card);
+  color: var(--link);                     /* blue words (5.9:1) */
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* The row with "Clear filters" */
+.discovery-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Refresh, next to Sort, and what it says after ("Up to date") */
+.discovery-refresh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.discovery-refresh-message {
+  font-size: 13.5px;
+  color: var(--muted);                    /* gray-blue (7.4:1 on the page) */
+}
+
+/* "86% fit" under a job's company */
+.discovery-fit {
+  display: inline-block;
+  width: fit-content;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background-color: var(--accent-soft);   /* light blue */
+  color: var(--primary-text);             /* blue (4.9:1 / 6.5:1 on it, WCAG) */
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* "Why it fits" in a job's pop-up: one reason per line */
+.discovery-fit-list {
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* "Hide jobs from Acme" at the bottom of a job's pop-up: looks like a link */
+.discovery-hide-company {
+  margin-top: 18px;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  color: var(--link);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* The bottom of the table: the count, and "Show more" */
+.discovery-more-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* (the count already has its own line and space; inside this row it doesn't need them) */
+.discovery-more-row .discovery-results-count {
+  padding: 0;
+  border-top: none;
+}
+
+/* Keyboard users see the same ring as the rest of the page (WCAG) */
+.discovery-chip:focus-visible,
+.discovery-filter-input:focus-visible,
+.discovery-check:has(input:focus-visible),
+.discovery-more-filters summary:focus-visible,
+.discovery-unhide:focus-visible,
+.discovery-hide-company:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Hover (mouse only) */
+@media (hover: hover) and (pointer: fine) {
+  .discovery-chip:hover,
+  .discovery-unhide:hover {
+    background-color: var(--soft);
+  }
+}
+
+/* Phones: each filter takes the whole width */
+@media (max-width: 640px) {
+  .discovery-filter {
+    flex: 1 1 100%;
+  }
+
+  .discovery-filter-input,
+  .discovery-filter .discovery-sort-select {
+    width: 100%;
+  }
 }
 
 /* ----- Motion ----- */

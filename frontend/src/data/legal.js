@@ -32,7 +32,7 @@ export const legal = {
 export const services = [
   {
     name: "Supabase",
-    what: "Accounts and logins (email, a scrambled \"hash\" of your password, and your name and picture if you use Google), and the database with your Application tracker, resume, and profile.",
+    what: "Accounts and logins (email, a scrambled \"hash\" of your password, and your name and picture if you use Google), and the database with your Application tracker, resume, profile, and Feed posts.",
     region: "the United States (US East, North Virginia)", // Supabase -> Project Settings -> General -> Region
     link: "https://supabase.com/privacy",
   },
@@ -64,7 +64,7 @@ export const services = [
 //   login            Supabase's session and its one-time login code; scoutsearch-logged-in
 //   profile, tracker, resume  scoutsearch-profile:<id>, scoutsearch-applications(-outbox, -server-ids):<id>,
 //                    scoutsearch-resume(-unsent, -base):<id>
-//   settings         scoutsearch-settings, scoutsearch-theme
+//   settings         scoutsearch-settings, scoutsearch-theme, scoutsearch-hidden-companies:<id>
 //   logo             logo-intro-played (sessionStorage)
 // If the site starts saving something new, add it to a row here (or a new row).
 //   category   "Strictly necessary" (logging in) or "Functional" (a feature you use)
@@ -90,7 +90,7 @@ export const browserStorage = [
   {
     name: "Your settings",
     category: "Functional",
-    purpose: "Your choices on the Settings page (colors, light or dark, text size, accessibility, profile privacy).",
+    purpose: "Your choices on the Settings page (colors, light or dark, text size, accessibility, profile privacy), and the companies you hide on Opportunities.",
     lasts: "Until you change them or clear this site's data.",
   },
   {

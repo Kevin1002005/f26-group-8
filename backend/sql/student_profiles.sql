@@ -9,7 +9,7 @@
 
 
 -- 1. one profile per student: the answers as one JSON value
---    { name, pronouns, school, classYear, city, headline, about,
+--    { name, pronouns, school, classYear, major, city, headline, about,
 --      lookingFor: { kinds[], when, where, paidOnly }, skills[] }
 -- the backend checks every box before saving (backend/src/student-profile.ts), so only that shape
 -- ever gets in. The checks here are a second lock: it has to be a JSON object, and not huge.

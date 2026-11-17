@@ -47,7 +47,8 @@ const sections = [
         <h3>What you give us</h3>
         <ul>
           <li><strong>Your account:</strong> your email address and password. Supabase, our login service, stores your password only as a scrambled "hash" that can't be turned back into the password. If you use "Continue with Google", Google also gives us your name and profile picture.</li>
-          <li><strong>Your profile:</strong> what you fill in on the welcome guide or on Edit profile: your name, pronouns, school, class year, city, headline, About, what kind of position you're looking for, and your skills.</li>
+          <li><strong>Your profile:</strong> what you fill in on the welcome guide or on Edit profile: your name, pronouns, school, class year, major, city, headline, About, what kind of position you're looking for, and your skills.</li>
+          <li><strong>Your Feed posts:</strong> the posts and comments you share, the posts you like, and who you follow.</li>
           <li><strong>Your Application tracker:</strong> the jobs you save, which column each one is in, your notes and details on them (a link, a short status, the date you applied), and any jobs you add from other websites.</li>
           <li><strong>Your resume:</strong> whatever you type into the Resume builder, like your name, contact details, education, experience, projects, and skills. Please don't put very sensitive information (like a Social Security number) in it: a resume never needs it.</li>
         </ul>
@@ -76,7 +77,7 @@ const sections = [
     body: (
       <>
         <ul>
-          <li>To run your account and the features you use: logging in, saving your profile, tracker, and resume, and showing them on any device you log in on.</li>
+          <li>To run your account and the features you use: logging in, saving your profile, tracker, resume, and Feed posts, and showing them on any device you log in on.</li>
           <li>To send emails you ask for, like a password reset link (Supabase sends these).</li>
           <li>To keep the site secure and working, for example by finding and stopping misuse.</li>
         </ul>
@@ -91,11 +92,21 @@ const sections = [
     id: "ai",
     title: "AI",
     body: (
-      <p>
-        ScoutSearch doesn't use AI to process your information, and your information isn't used to train AI.
-        If we ever add an AI feature (like suggestions for your resume), we'll update this policy first and
-        say exactly what's sent and to whom.
-      </p>
+      <>
+        <p>
+          ScoutSearch doesn't use AI to process your information, and your information isn't used to train AI.
+        </p>
+        <p>
+          We do use a free AI model (Google's Gemini) to read <strong>public job posts</strong>: it tags which
+          majors each job fits and which skills it names, which helps sort jobs by best fit. Only the job post is
+          sent (its title, company, and description, the same words anyone can read on the job site). Nothing
+          about you is sent: matching jobs to your profile happens on our own server.
+        </p>
+        <p>
+          If we ever add an AI feature that uses your information (like suggestions for your resume), we'll
+          update this policy first and say exactly what's sent and to whom.
+        </p>
+      </>
     ),
   },
   {
@@ -114,13 +125,18 @@ const sections = [
         </ul>
         <h3>Job listings</h3>
         <p>
-          The jobs on Opportunities come from employers' public job boards (Greenhouse, Lever, and JSearch).
+          The jobs on Opportunities come from employers' public job boards (Greenhouse, Lever, Ashby, SmartRecruiters, and Workable), public lists (USAJOBS, the National Science Foundation's ETAP, precollege-finder, and the SimplifyJobs, vanshb03, CO0Oper, and SpeedyApply lists on GitHub), and job search services (JSearch and Adzuna).
           Our server downloads those listings; it doesn't send them anything about you. When you press Apply,
           you go to the employer's own site, and their privacy policy applies there.
         </p>
         <p>
-          Employers on ScoutSearch can't see your profile, your tracker, or your resume. We'd only share information if the
-          law requires it, for example a valid court order.
+          <strong>The Feed is shared.</strong> Everyone logged in to ScoutSearch can see the posts and comments you
+          share there, with your name and headline from your profile. They see how many likes a post has, but not
+          who liked it, and only you can see who you follow. You can delete your posts and comments any time.
+        </p>
+        <p>
+          Apart from that, other people on ScoutSearch (employers included) can't see your profile, your tracker,
+          or your resume. We'd only share information if the law requires it, for example a valid court order.
         </p>
       </>
     ),
@@ -144,7 +160,7 @@ const sections = [
     title: "How long we keep it",
     body: (
       <ul>
-        <li>Your account, profile, tracker, and resume: until you delete your account. Deleting it removes your profile, tracker, and resume from our database right away.</li>
+        <li>Your account, profile, tracker, resume, and Feed posts: until you delete them or your account. Deleting your account removes all of them from our database right away, including your posts, comments, and likes.</li>
         <li>Hosting logs: for as long as each hosting company keeps them (see their privacy policies above).</li>
         <li>What's saved in your browser: until you log out, delete your account, or clear this site's data (the <Link to="/cookie-policy">Cookie Policy</Link> says which is which).</li>
       </ul>
@@ -190,6 +206,10 @@ const sections = [
           {legal.minimumAge}, and we don't knowingly collect their information. If you think a child under{" "}
           {legal.minimumAge} has made an account, contact us (<ContactEmail />) and we'll delete it.
         </p>
+        <p>
+          Many students here are in high school, so please keep Feed posts about your work and plans: don't share
+          your phone number, address, or other private details there, since everyone logged in can see them.
+        </p>
         <Review>COPPA (children under 13), and state laws with extra rules for teenagers' information, since many users are in high school.</Review>
       </>
     ),
@@ -202,8 +222,8 @@ const sections = [
         <p>You can do most of this yourself, right away, on the <Link to="/settings#privacy">Settings page (Privacy &amp; data)</Link>:</p>
         <ul>
           <li><strong>See and take your information:</strong> "Download my data" gives you a file with everything saved with your account.</li>
-          <li><strong>Delete it:</strong> "Delete my account" deletes your account, profile, tracker, and resume.</li>
-          <li><strong>Correct it:</strong> change your profile, resume, and tracker any time. To change your account's email, contact us.</li>
+          <li><strong>Delete it:</strong> "Delete my account" deletes your account, profile, tracker, resume, and everything you shared on the Feed.</li>
+          <li><strong>Correct it:</strong> change your profile, resume, and tracker any time, and delete your Feed posts and comments. To change your account's email, contact us.</li>
         </ul>
         <p>
           For anything else (for example, if you can't log in, you object to how we use your information, or

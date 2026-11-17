@@ -46,11 +46,23 @@ type JSearchBody = {
 };
 
 
+// JSearch is sold two ways, and their keys don't work on each other's site:
+//   JSEARCH_API_KEY        a RapidAPI key ("X-RapidAPI-Key" on rapidapi.com)
+//   OPENWEBNINJA_API_KEY   a key from OpenWeb Ninja's own dashboard (app.openwebninja.com)
+// Either one works (if both are set, the OpenWeb Ninja one is used). Both give the same answers
+function jsearchAddress(): { url: string; headers: Record<string, string> } | null {
+  const ninjaKey = process.env.OPENWEBNINJA_API_KEY;
+  if (ninjaKey) return { url: 'https://api.openwebninja.com/jsearch/search-v2', headers: { 'x-api-key': ninjaKey } };
+  const rapidKey = process.env.JSEARCH_API_KEY;
+  if (rapidKey) return { url: 'https://jsearch.p.rapidapi.com/search-v2', headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': 'jsearch.p.rapidapi.com' } };
+  return null;
+}
+
 export async function fetchJSearch(): Promise<SourceResult> {
-  const apiKey = process.env.JSEARCH_API_KEY;
+  const address = jsearchAddress();
   // without a key, skip JSearch instead of crashing, so Greenhouse and Lever still import.
   // allFetchesWorked: false means the importer won't close old JSearch jobs either.
-  if (!apiKey) {
+  if (!address) {
     console.log('jsearch: skipped, JSEARCH_API_KEY is not in secrets.env');
     return { jobs: [], allFetchesWorked: false };
   }
@@ -68,10 +80,7 @@ export async function fetchJSearch(): Promise<SourceResult> {
         country: 'us',
         employment_types: 'INTERN',
       });
-      const body = (await fetchJson(`https://jsearch.p.rapidapi.com/search-v2?${query}`, {
-        'x-rapidapi-key': apiKey,
-        'x-rapidapi-host': 'jsearch.p.rapidapi.com',
-      })) as JSearchBody;
+      const body = (await fetchJson(`${address.url}?${query}`, address.headers)) as JSearchBody;
 
       const list = Array.isArray(body.data) ? body.data : body.data?.jobs ?? [];
 

@@ -1,19 +1,23 @@
 // Discovery.jsx is the Discovery page (yoursite.com/discovery).
 // It shows real internships, co-ops, research positions, and programs.
-// The jobs come from our backend (GET /api/jobs), which gets them from
-// company job boards (Greenhouse, Lever) and JSearch. See backend/src/jobs.ts.
+// The jobs come from our backend (GET /api/jobs/for-me), which gets them from
+// company job boards (Greenhouse, Lever, Ashby, SmartRecruiters, Workable), lists
+// like SimplifyJobs, USAJOBS, JSearch, and Adzuna. See backend/src/jobs.ts.
+// The backend does the filtering, sorting, and "best fit" scoring (backend/src/fit.ts)
+// across every job, and sends 50 at a time ("Show more" gets the next 50).
 // The styles for this page are in index.css, under "Discovery page".
 //
 // Since the 2026-11 revamp it's laid out like a dashboard, one column:
 //   1. DiscoveryHeader   the title, one sentence, and the search bar
 //   2. SummaryBoxes      three number boxes: open to you, due soon, on your tracker
-//   3. TypeTabs + Sort   tabs (All, Internship, Co-op, Research, Program) with counts, and the Sort menu
-//   4. ResultsSection    the table: one row per opportunity (OpportunityRow)
-//   5. ProfileTip        a one-line tip under the table
+//   3. TypeTabs + Sort   tabs (All, Internship, Co-op, Research, Program), Sort, and Refresh
+//   4. FilterBar         "For your major", who it's for, where, posted, deadline, paid,
+//                        and "More filters" (must mention, leave out, city, hidden companies)
+//   5. ResultsSection    the table: one row per opportunity (OpportunityRow), and "Show more"
+//   6. ProfileTip        a one-line tip under the table
 //
-// The search bar and the tabs both really work: the Discovery function at
-// the bottom remembers what you typed and which tab is picked (with
-// useState), and only shows the opportunities that match both.
+// The Discovery function at the bottom remembers the search, the tab, the sort, and
+// the filters (with useState), and asks the backend again whenever one changes.
 
 // useState lets the page remember a value and redraw itself when it changes.
 // useRef keeps a reference to something on the screen (here: each row's pop-up,
@@ -30,6 +34,11 @@ import NavBar from "../components/NavBar.jsx";
 
 // api() is how pages talk to our backend (src/api.js).
 import { api } from "../api.js";
+// Your profile, for "For your major" (data/profile.js), and the "undecided" choice (data/majors.js)
+import { useMyProfile } from "../data/profile.js";
+import { undecided } from "../data/majors.js";
+// accountKey keeps each account's hidden companies apart on a shared computer (login-status.js)
+import { accountKey } from "../login-status.js";
 // isPastDeadline says if a job's deadline has gone by (it then says "Closed").
 // (The made-up example jobs in that file are still used by the Feed page.)
 // isDueWithin says if it's due in the next few days, and initialsOf makes the "GL" for a logo.
@@ -63,7 +72,19 @@ const sourceNames = {
   usajobs: "USAJOBS",
   adzuna: "Adzuna",
   jsearch: "JSearch",
+  simplify: "SimplifyJobs",
+  ashby: "Ashby",
+  smartrecruiters: "SmartRecruiters",
+  workable: "Workable",
+  nsf: "NSF ETAP",
+  precollege: "precollege-finder",
+  vanshb03: "the vanshb03 list",
+  co0oper: "the CO0Oper list",
+  speedyapply: "SpeedyApply",
 };
+
+// The tab names as the backend writes them (the other way round from typeNames)
+const typeValues = { Internship: "internship", "Co-op": "co-op", Research: "research", Program: "program" };
 
 // Turns one job from the backend into the shape the rest of this page uses.
 // The names on the left are what the table and the pop-up read; the names on
@@ -89,15 +110,67 @@ function toOpportunity(job) {
     // addedAt is when ScoutSearch first saved it, shown only when postedAt is missing
     postedAt: job.posted_at ?? null,
     addedAt: job.created_at ?? null,
+    // How well it fits you: { score (0-100, or null if your profile doesn't say
+    // enough yet), reasons ["Fits your major...", ...] } (backend/src/fit.ts)
+    fit: job.fit ?? null,
   };
 }
 
-// Asks the backend for the jobs, and turns each one into the page's shape.
-// It's "async", so it hands back a promise: the list arrives a moment later.
-// The backend sends the newest 50 open jobs ({ jobs: [...] }).
-async function fetchOpportunities() {
-  const body = await api("/jobs");
-  return body.jobs.map(toOpportunity);
+// Asks the backend for one page (50) of the jobs that pass the filters, and
+// turns each one into the page's shape. query is the filters, written the way
+// a web address carries them ("type=co-op&sort=fit", see queryFor below).
+// It's "async", so it hands back a promise: the page arrives a moment later.
+// Gives back { list, total (how many match in all), more (true if there's
+// another page), major (your major, from your profile) }
+async function fetchPage(query, page) {
+  const body = await api("/jobs/for-me?" + query + (page > 1 ? "&page=" + page : ""));
+  // Our backend always sends a list. Anything else didn't come from it
+  if (!Array.isArray(body.jobs)) {
+    throw new Error("Couldn't reach the server. Try again in a minute.");
+  }
+  return { list: body.jobs.map(toOpportunity), total: body.total ?? body.jobs.length, more: body.more === true, major: body.major ?? "" };
+}
+
+// The filters before you change any (see FilterBar)
+const noFilters = { level: "", setting: "", posted: "", deadline: "", paidOnly: false, include: "", exclude: "", location: "" };
+
+// Everything the page is showing, written as a web address's "?a=1&b=2" part
+// for the backend. URLSearchParams takes care of spaces and odd letters.
+// Empty filters are left out. Each hidden company is its own "hide=..."
+function queryFor({ search, picked, sortBy, filters, forMajor, hidden }) {
+  const query = new URLSearchParams();
+  if (search.trim()) query.set("q", search.trim());
+  if (picked !== "All") query.set("type", typeValues[picked]);
+  if (sortBy !== "newest") query.set("sort", sortBy);
+  if (forMajor) query.set("major", "only");
+  for (const name of ["level", "setting", "posted", "deadline", "include", "exclude", "location"]) {
+    if (filters[name].trim()) query.set(name, filters[name].trim());
+  }
+  if (filters.paidOnly) query.set("paid", "true");
+  for (const company of hidden) query.append("hide", company);
+  return query.toString();
+}
+
+// ---------- Hidden companies ----------
+// "Hide jobs from Acme" in a job's pop-up. The list is kept in this browser,
+// under your account (so on a shared computer, the next person has their own).
+// try/catch: the browser's storage can be turned off; then it only lasts until
+// you leave the page
+const hiddenKey = "scoutsearch-hidden-companies";
+function loadHidden() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(accountKey(hiddenKey)));
+    return Array.isArray(saved) ? saved.filter((name) => typeof name === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function saveHidden(list) {
+  try {
+    localStorage.setItem(accountKey(hiddenKey), JSON.stringify(list));
+  } catch {
+    // Storage is off: it still works until you leave the page
+  }
 }
 
 // ---------- Helpers ----------
@@ -132,43 +205,6 @@ function postedOf(opportunity) {
   if (opportunity.postedAt) return { label: "Posted", time: opportunity.postedAt };
   if (opportunity.addedAt) return { label: "Added to ScoutSearch", time: opportunity.addedAt };
   return null;
-}
-
-// Puts opportunities in order of deadline, soonest first.
-// [...list] makes a copy first, because .sort() changes the list it's given,
-// and we don't want to shuffle the list the page remembers.
-// localeCompare compares two words A to Z; because the dates are written
-// year-month-day, A to Z is also earliest to latest.
-// Jobs with no deadline (null) count as "9999-12-31", so they go last.
-function sortByDeadline(list) {
-  return [...list].sort((a, b) => (a.deadline ?? "9999-12-31").localeCompare(b.deadline ?? "9999-12-31"));
-}
-
-// True if every word typed in the search bar appears somewhere in this
-// opportunity's title, company, type, place, or skill tags.
-// toLowerCase() makes "REACT", "React", and "react" all count as the same.
-function matchesSearch(opportunity, search) {
-  // trim() removes spaces at the start and end, so "  react " still works.
-  // split(/\s+/) cuts it into separate words at the spaces, so "python cambridge"
-  // finds a job with both words in it, in any order, not only that exact phrase
-  const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  // An empty search bar matches everything
-  if (words.length === 0) {
-    return true;
-  }
-  // All the searchable text joined into one long piece of lowercase text
-  const text = [
-    opportunity.title,
-    opportunity.organization,
-    opportunity.type,
-    opportunity.place,
-    ...opportunity.tags,
-  ]
-    .join(" ")
-    .toLowerCase();
-  // every() is true only if EVERY word is somewhere inside that text
-  // (includes() checks one word)
-  return words.every((word) => text.includes(word));
 }
 
 // ---------- Icons ----------
@@ -285,28 +321,28 @@ function DiscoveryHeader(props) {
   );
 }
 
-// The three summary boxes under the title: how many opportunities there are,
-// how many are due soon, and how many are on your tracker. Like the number
-// boxes at the top of a dashboard, so you see the big picture first.
-// props.openCount is how many you can still apply to, props.dueSoon is the list
-// of opportunities due in the next 14 days (soonest first), props.trackerCount
-// is how many are on your tracker, and props.loading is true while the jobs are
-// still on their way (the job numbers show "…" until then, not a wrong 0).
+// The three summary boxes under the title: how many opportunities match your
+// filters, how many are due soon, and how many are on your tracker. Like the
+// number boxes at the top of a dashboard, so you see the big picture first.
+// props.total is how many match, props.dueSoon is { count, first } for every job
+// due in the next 14 days (null until it arrives), props.trackerCount is how many
+// are on your tracker, and props.loading is true while the jobs are still on their
+// way (the numbers show "…" until then, not a wrong 0).
 function SummaryBoxes(props) {
   // The first one due, for the note under the number ("First up: ...")
-  const first = props.dueSoon[0];
+  const first = props.dueSoon?.first;
 
   return (
     // A list, so screen readers say "list, 3 items" (WCAG)
     <ul className="discovery-summary" aria-label="Summary">
       <li className="discovery-summary-box">
-        <span className="discovery-summary-label">Open to you</span>
-        <span className="discovery-summary-number">{props.loading ? "…" : props.openCount}</span>
+        <span className="discovery-summary-label">Match your filters</span>
+        <span className="discovery-summary-number">{props.loading ? "…" : props.total.toLocaleString()}</span>
         <span className="discovery-summary-note">Internships, co-ops, research, and programs</span>
       </li>
       <li className="discovery-summary-box">
         <span className="discovery-summary-label">Due in the next 2 weeks</span>
-        <span className="discovery-summary-number">{props.loading ? "…" : props.dueSoon.length}</span>
+        <span className="discovery-summary-number">{props.dueSoon ? props.dueSoon.count : "…"}</span>
         <span className="discovery-summary-note">
           {/* "first ? (...) : (...)" means "if there's one due, name it; if not, say so" */}
           {first
@@ -328,10 +364,10 @@ function SummaryBoxes(props) {
 }
 
 // The row of tabs (All, Internship, Co-op, ...), drawn as one gray strip
-// with the picked tab as a white pill (the revamp's "segmented" look). Each
-// tab shows how many opportunities it has.
+// with the picked tab as a white pill (the revamp's "segmented" look).
 // props.picked is the tab that's on right now, and props.setPicked changes it.
-// props.counts holds the number for each tab, like counts["Co-op"] = 3.
+// (The tabs used to show a count each. The backend filters now, so the number
+// for the picked tab is in the first summary box instead.)
 // (Before the revamp, a blue line slid under the picked tab. The white pill
 // shows the same thing without needing to measure the page.)
 function TypeTabs(props) {
@@ -351,8 +387,6 @@ function TypeTabs(props) {
           onClick={() => props.setPicked(tab)}
         >
           {tab}
-          {/* The number, a little quieter than the name */}
-          <span className="discovery-tab-count">{props.counts[tab]}</span>
         </button>
       ))}
     </div>
@@ -400,7 +434,7 @@ function CloseIcon() {
 // needed here because React's rules check that a ref is never read while
 // the page is being drawn, and keeping it separate from the other props
 // makes that clear.
-function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApply }) {
+function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApply, onHide }) {
   // A unique id for the title, so the dialog can be named by it (WCAG)
   const titleId = "discovery-dialog-title-" + opportunity.id;
   // true once the deadline has gone by: Apply then turns off (see the bottom)
@@ -492,6 +526,22 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApp
           </dl>
         )}
 
+        {/* How well it fits you, and why (only if your profile says enough) */}
+        {opportunity.fit?.score != null && (
+          <>
+            <h3 className="discovery-dialog-heading">Why it fits you: {opportunity.fit.score}%</h3>
+            {opportunity.fit.reasons.length > 0 ? (
+              <ul className="discovery-fit-list">
+                {opportunity.fit.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="discovery-dialog-text">Nothing on your profile matches it yet.</p>
+            )}
+          </>
+        )}
+
         {opportunity.description && (
           <>
             <h3 className="discovery-dialog-heading">About the role</h3>
@@ -515,6 +565,19 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApp
             </ul>
           </>
         )}
+
+        {/* Not interested in this company? Its jobs stop showing (you can show
+            them again under "More filters"). It closes the pop-up first */}
+        <button
+          type="button"
+          className="discovery-hide-company"
+          onClick={() => {
+            ref.current?.close();
+            onHide(opportunity.organization);
+          }}
+        >
+          Hide jobs from {opportunity.organization}
+        </button>
       </div>
 
       {/* The bottom: a note on the left, Save and Apply on the right.
@@ -696,6 +759,8 @@ function OpportunityRow(props) {
                 {posted.label} <time dateTime={posted.time}>{timeAgo(posted.time)}</time>
               </span>
             )}
+            {/* How well it fits you (the pop-up says why) */}
+            {opportunity.fit?.score != null && <span className="discovery-fit">{opportunity.fit.score}% fit</span>}
           </span>
         </span>
       </td>
@@ -780,30 +845,30 @@ function OpportunityRow(props) {
           toggleSave={toggleSave}
           applied={applied}
           onApply={apply}
+          onHide={props.onHide}
         />
       </td>
     </tr>
   );
 }
 
-// The list of opportunities: the table, with the count under it.
-// props.shown is the opportunities that pass the search and tab, already sorted.
-// props.loading is true while the jobs are still on their way from the backend,
-// and props.loadError is true if getting them failed (props.retry tries again).
+// The list of opportunities: the table, with the count and "Show more" under it.
+// props.results is what the backend sent ({ list, total, more }), or null while
+// the first answer is on its way. props.loadError is true if getting them
+// failed (props.retry tries again). props.updating is true while new filters
+// are loading (the old list stays on screen until then)
 function ResultsSection(props) {
-  // While waiting, or if it failed, show a message in place of the table.
-  // role="status" reads it out when it appears (WCAG).
+  // While waiting the first time, or if it failed, show a message in place of
+  // the table. role="status" reads it out when it appears (WCAG).
   // It reuses the "nothing here" box below, so it needs no new styles.
-  if (props.loading || props.loadError) {
+  if (props.results === null || props.loadError) {
     return (
       <section className="discovery-results" aria-labelledby="discovery-results-title">
         <h2 id="discovery-results-title" className="sr-only">
           Opportunities
         </h2>
         <div className="discovery-empty" role="status">
-          {props.loading ? (
-            <p className="discovery-empty-title">Loading opportunities...</p>
-          ) : (
+          {props.loadError ? (
             <>
               <p className="discovery-empty-title">Couldn't load opportunities</p>
               <p className="discovery-empty-text">Check your connection, then try again.</p>
@@ -811,14 +876,20 @@ function ResultsSection(props) {
                 Try again
               </button>
             </>
+          ) : (
+            <p className="discovery-empty-title">Loading opportunities...</p>
           )}
         </div>
       </section>
     );
   }
 
+  const shown = props.results.list;
+  const total = props.results.total;
   // "opportunity" for 1, "opportunities" for anything else.
-  const word = props.shown.length === 1 ? "opportunity" : "opportunities";
+  const word = total === 1 ? "opportunity" : "opportunities";
+  // What the table is sorted by, for screen readers
+  const sortWords = { newest: "newest first", fit: "best fit first", deadline: "soonest deadline first", company: "by company, A to Z" };
 
   return (
     // aria-labelledby names this section with the heading's words (WCAG)
@@ -829,14 +900,14 @@ function ResultsSection(props) {
         Opportunities
       </h2>
 
-      {/* If nothing passes the search and tab, show a message and a way back.
+      {/* If nothing passes the filters, show a message and a way back.
           Otherwise, show the table. "? :" picks one of the two. */}
-      {props.shown.length === 0 ? (
+      {shown.length === 0 ? (
         <div className="discovery-empty">
           <p className="discovery-empty-title">No opportunities match</p>
-          <p className="discovery-empty-text">Try different words, or pick another tab.</p>
+          <p className="discovery-empty-text">Try different words, fewer filters, or another tab.</p>
           <button type="button" className="discovery-outline-button" onClick={props.showAll}>
-            Show all opportunities
+            Clear filters
           </button>
         </div>
       ) : (
@@ -845,7 +916,7 @@ function ResultsSection(props) {
         <div className="discovery-table-box">
           <table className="discovery-table">
             {/* The table's name, for screen readers (WCAG) */}
-            <caption className="sr-only">Opportunities, {props.sortBy === "deadline" ? "soonest deadline first" : "newest first"}</caption>
+            <caption className="sr-only">Opportunities, {sortWords[props.sortBy]}</caption>
             <thead>
               <tr>
                 {/* scope="col" tells screen readers each one names a column (WCAG) */}
@@ -861,23 +932,181 @@ function ResultsSection(props) {
               </tr>
             </thead>
             <tbody>
-              {props.shown.map((opportunity) => (
+              {shown.map((opportunity) => (
                 <OpportunityRow
                   key={opportunity.id}
                   opportunity={opportunity}
                   // true only for the job the Feed page linked to (see Discovery below)
                   openOnArrival={opportunity.id === props.openJobId}
                   onOpened={props.onOpened}
+                  onHide={props.onHide}
                 />
               ))}
             </tbody>
           </table>
 
-          {/* The bottom of the box: the count. role="status" reads the new
-              count out when it changes (WCAG) */}
-          <p className="discovery-results-count" role="status">
-            Showing {props.shown.length} {word}
-          </p>
+          {/* The bottom of the box: the count, and "Show more" if there are
+              more. role="status" reads the new count out when it changes (WCAG) */}
+          <div className="discovery-more-row">
+            <p className="discovery-results-count" role="status">
+              {props.updating ? "Updating..." : "Showing " + shown.length.toLocaleString() + " of " + total.toLocaleString() + " " + word}
+            </p>
+            {props.results.more && (
+              <button type="button" className="discovery-outline-button" onClick={props.showMore} disabled={props.loadingMore}>
+                {props.loadingMore ? "Loading..." : "Show more"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// The filters, under the tabs. props.filters is what's picked ({ level, setting,
+// ... }, see noFilters near the top), and props.change(name, value) changes one.
+// "For your major" is a separate on/off (props.forMajor, props.setForMajor),
+// because it starts on when your profile has a major.
+// props.hidden is the companies you've hidden, and props.unhide shows one again
+function FilterBar(props) {
+  const filters = props.filters;
+  // true while a box in "More filters" has something in it, so it starts open
+  const moreInUse = filters.include || filters.exclude || filters.location || props.hidden.length > 0;
+
+  return (
+    // aria-labelledby names the box (WCAG)
+    <section className="discovery-filters" aria-labelledby="discovery-filters-title">
+      <h2 id="discovery-filters-title" className="sr-only">
+        Filters
+      </h2>
+      <div className="discovery-filter-row">
+        {/* "For your major": on/off. Without a major on your profile, it's a
+            link to add one instead */}
+        {props.major ? (
+          <button
+            type="button"
+            className="discovery-chip"
+            aria-pressed={props.forMajor}
+            onClick={() => props.setForMajor(!props.forMajor)}
+          >
+            {/* The check mark only shows while it's on; the words say the same */}
+            {props.forMajor && <span aria-hidden="true">✓ </span>}
+            For your major ({props.major})
+          </button>
+        ) : (
+          <Link to="/editprofile#basics" className="discovery-text-link">
+            Add your major to see jobs for it
+            <ArrowIcon />
+          </Link>
+        )}
+
+        {/* Each menu has a real label above it (WCAG) */}
+        <label className="discovery-filter">
+          Who it's for
+          <select className="discovery-sort-select" value={filters.level} onChange={(e) => props.change("level", e.target.value)}>
+            <option value="">Anyone</option>
+            <option value="high-school">High school students</option>
+            <option value="college">College students</option>
+          </select>
+        </label>
+        <label className="discovery-filter">
+          Where
+          <select className="discovery-sort-select" value={filters.setting} onChange={(e) => props.change("setting", e.target.value)}>
+            <option value="">Anywhere</option>
+            <option value="remote">Remote</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="on-site">On-site</option>
+          </select>
+        </label>
+        <label className="discovery-filter">
+          Posted
+          <select className="discovery-sort-select" value={filters.posted} onChange={(e) => props.change("posted", e.target.value)}>
+            <option value="">Any time</option>
+            <option value="day">In the last day</option>
+            <option value="week">In the last week</option>
+            <option value="month">In the last month</option>
+          </select>
+        </label>
+        <label className="discovery-filter">
+          Deadline
+          <select className="discovery-sort-select" value={filters.deadline} onChange={(e) => props.change("deadline", e.target.value)}>
+            <option value="">Any</option>
+            <option value="has">Has a deadline</option>
+            <option value="soon">Due in the next 2 weeks</option>
+          </select>
+        </label>
+        <label className="discovery-check">
+          <input type="checkbox" checked={filters.paidOnly} onChange={(e) => props.change("paidOnly", e.target.checked)} />
+          Paid only
+        </label>
+      </div>
+
+      {/* <details> opens and closes by itself, and tells screen readers if it's open */}
+      <details className="discovery-more-filters" open={moreInUse ? true : undefined}>
+        <summary>More filters</summary>
+        <div className="discovery-filter-row">
+          {/* aria-describedby reads the tip with the label (WCAG) */}
+          <label className="discovery-filter">
+            Must mention
+            <input
+              className="discovery-filter-input"
+              type="text"
+              placeholder="e.g. Python, Spanish"
+              aria-describedby="discovery-words-hint"
+              value={filters.include}
+              onChange={(e) => props.change("include", e.target.value)}
+            />
+          </label>
+          <label className="discovery-filter">
+            Leave out
+            <input
+              className="discovery-filter-input"
+              type="text"
+              placeholder="e.g. PhD, US citizen"
+              aria-describedby="discovery-words-hint"
+              value={filters.exclude}
+              onChange={(e) => props.change("exclude", e.target.value)}
+            />
+          </label>
+          <label className="discovery-filter">
+            City or state
+            <input
+              className="discovery-filter-input"
+              type="text"
+              autoComplete="address-level2"
+              placeholder="e.g. Boston or CA"
+              value={filters.location}
+              onChange={(e) => props.change("location", e.target.value)}
+            />
+          </label>
+        </div>
+        <p className="discovery-filter-hint" id="discovery-words-hint">
+          Put commas between words. Each one is matched as a whole word in the job's title, description, and requirements.
+        </p>
+
+        {props.hidden.length > 0 && (
+          <div className="discovery-hidden">
+            Hidden companies:
+            <ul className="discovery-hidden-list">
+              {props.hidden.map((company) => (
+                <li key={company} className="discovery-hidden-item">
+                  {company}
+                  {/* aria-label says which company (every one has this button) (WCAG) */}
+                  <button type="button" className="discovery-unhide" aria-label={"Show " + company + " again"} onClick={() => props.unhide(company)}>
+                    Show again
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </details>
+
+      {props.inUse && (
+        <div className="discovery-filter-actions">
+          <button type="button" className="discovery-outline-button" onClick={props.clear}>
+            Clear filters
+          </button>
         </div>
       )}
     </section>
@@ -889,70 +1118,188 @@ function ResultsSection(props) {
 function ProfileTip() {
   return (
     <p className="discovery-tip">
-      Better matches: the more skills your profile shows, the more accurate your matches get.{" "}
+      Best fit uses your major, skills, and what you're looking for (from your profile), and your resume's
+      skills and experience. The more you fill in, the better it gets.{" "}
       <Link to="/editprofile" className="discovery-text-link">
-        Add a skill
+        Edit profile
         <ArrowIcon />
       </Link>
     </p>
   );
 }
 
+// Waits this many milliseconds (for checking how Refresh is going)
+function wait(ms) {
+  return new Promise((done) => setTimeout(done, ms));
+}
+
 // Discovery is the whole page. It puts the pieces above together, and it
-// remembers the search and the picked tab so everything stays in sync.
+// remembers the search, the tab, the sort, and the filters, so everything stays in sync.
 function Discovery() {
   // What's typed in the search bar. Starts empty.
   const [search, setSearch] = useState("");
   // Which tab is picked. Starts on "All".
   const [picked, setPicked] = useState("All");
-  // How the list is sorted: "newest" or "deadline".
+  // How the list is sorted: "newest", "fit" (best fit), "deadline", or "company"
   const [sortBy, setSortBy] = useState("newest");
+  // The filters (see noFilters near the top)
+  const [filters, setFilters] = useState(noFilters);
+  // "For your major": null means "you haven't touched it", which means on if
+  // your profile has a major. The button sets it to true or false
+  const [majorChoice, setMajorChoice] = useState(null);
+  // The companies you've hidden (kept in this browser, see loadHidden)
+  const [hidden, setHidden] = useState(() => loadHidden());
 
-  // The jobs from the backend. Starts as an empty list until they arrive.
-  const [opportunities, setOpportunities] = useState([]);
-  // true while waiting for the backend, so the list can say "Loading..."
-  const [loading, setLoading] = useState(true);
+  // Your profile's major ("" if none, or undecided)
+  const profile = useMyProfile();
+  const major = profile.data.major === undecided ? "" : profile.data.major.trim();
+  const forMajor = major !== "" && (majorChoice ?? true);
+
+  // Everything above, written for the backend (see queryFor)
+  const query = queryFor({ search, picked, sortBy, filters, forMajor, hidden });
+
+  // What the backend sent: { query (which filters it's for), list, total, more,
+  // page }. null until the first answer arrives
+  const [results, setResults] = useState(null);
   // true if getting the jobs failed, so the list can show "Try again"
   const [loadError, setLoadError] = useState(false);
-  // Counts how many times "Try again" was pressed. Changing it makes the
-  // useEffect below run again (it's in the [ ] list at the end).
+  // Counts "Try again" and Refresh presses. Changing it makes the useEffect
+  // below run again (it's in the [ ] list at the end).
   const [tries, setTries] = useState(0);
+  // true while "Show more" is loading
+  const [loadingMore, setLoadingMore] = useState(false);
+  // Everything due in the next 2 weeks, for the summary box: { count, first }
+  const [dueSoon, setDueSoon] = useState(null);
+  // Refresh: true while it's checking, and what it says after
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState("");
 
-  // Runs when the page opens, and again after each "Try again":
-  // asks the backend for the jobs.
+  // Asks the backend for the first page whenever the filters change (and
+  // after each "Try again" or Refresh). It waits 0.3 seconds first, so typing a
+  // word in a box is one request, not one per letter. The old list stays on
+  // screen until the new one arrives
   useEffect(() => {
-    // If you leave the page before the answer arrives, "ignore" becomes true
-    // (in the cleanup at the bottom), so we don't update a page that's gone.
+    // If the filters change again (or you leave) before the answer arrives,
+    // "ignore" becomes true (in the cleanup at the bottom), so an old answer
+    // never replaces a newer one
     let ignore = false;
-    fetchOpportunities()
-      .then((list) => {
-        if (!ignore) {
-          setOpportunities(list);
-        }
+    const timer = setTimeout(() => {
+      fetchPage(query, 1)
+        .then((page) => {
+          if (!ignore) {
+            setResults({ query: query, ...page, page: 1 });
+            setLoadError(false);
+          }
+        })
+        .catch((error) => {
+          // The real reason goes to the console (F12); the page shows a simple message
+          console.error("Loading jobs failed:", error);
+          if (!ignore) setLoadError(true);
+        });
+    }, 300);
+    return () => {
+      ignore = true;
+      clearTimeout(timer);
+    };
+  }, [query, tries]);
+
+  // Everything due in the next 2 weeks (any filters), for the summary box
+  useEffect(() => {
+    let ignore = false;
+    fetchPage("deadline=soon&sort=deadline", 1)
+      .then((page) => {
+        if (!ignore) setDueSoon({ count: page.total, first: page.list[0] });
       })
-      .catch((error) => {
-        // The real reason goes to the console (F12); the page shows a simple message
-        console.error("Loading jobs failed:", error);
-        if (!ignore) {
-          setLoadError(true);
-        }
-      })
-      // .finally runs either way, worked or failed
-      .finally(() => {
-        if (!ignore) {
-          setLoading(false);
-        }
+      .catch(() => {
+        // The box just keeps showing "…"
       });
     return () => {
       ignore = true;
     };
   }, [tries]);
 
+  // true while the list on screen is for older filters
+  const updating = results !== null && results.query !== query;
+
   // Runs when "Try again" is pressed: back to "Loading...", then ask again
   function retry() {
-    setLoading(true);
+    setResults(null);
     setLoadError(false);
     setTries(tries + 1);
+  }
+
+  // "Show more": the next 50, added under the ones showing
+  async function showMore() {
+    setLoadingMore(true);
+    try {
+      const page = await fetchPage(results.query, results.page + 1);
+      // (only if the filters haven't changed meanwhile: then the new list stays as it is)
+      setResults((now) => !now || now.query !== results.query ? now : {
+        ...now,
+        // .some() leaves out any job that's already showing, so none shows twice
+        list: [...now.list, ...page.list.filter((job) => !now.list.some((j) => j.id === job.id))],
+        more: page.more,
+        page: now.page + 1,
+      });
+    } catch (error) {
+      console.error("Loading more jobs failed:", error);
+    }
+    setLoadingMore(false);
+  }
+
+  // Changes one filter
+  function changeFilter(name, value) {
+    setFilters({ ...filters, [name]: value });
+  }
+
+  // "Clear filters" (and "Show all opportunities"): the search, the tab, and
+  // every filter back to the start. "For your major" turns off (it's a filter
+  // too); your hidden companies stay hidden
+  function clearFilters() {
+    setSearch("");
+    setPicked("All");
+    setFilters(noFilters);
+    setMajorChoice(false);
+  }
+  const filtersInUse = JSON.stringify(filters) !== JSON.stringify(noFilters) || search.trim() !== "" || picked !== "All" || forMajor;
+
+  // "Hide jobs from Acme" (in a job's pop-up), and "Show again" (under More filters)
+  function hideCompany(company) {
+    const next = [...hidden.filter((c) => c !== company), company];
+    setHidden(next);
+    saveHidden(next);
+  }
+  function unhideCompany(company) {
+    const next = hidden.filter((c) => c !== company);
+    setHidden(next);
+    saveHidden(next);
+  }
+
+  // Refresh: asks the server to check the job sites for new listings (at most
+  // once every 30 minutes for the whole site), waits for it (checking every 5
+  // seconds, for up to 3 minutes), then loads the list again
+  async function refresh() {
+    setRefreshing(true);
+    setRefreshMessage("Checking the job sites for new listings. This can take a minute...");
+    try {
+      const answer = await api("/jobs/refresh", { method: "POST" });
+      let info = answer.refresh;
+      if (answer.started || info.running) {
+        for (let i = 0; i < 36 && info.running; i++) {
+          await wait(5000);
+          info = (await api("/jobs/refresh")).refresh;
+        }
+        setRefreshMessage(info.running ? "Still checking. New jobs will show up in a few minutes." : "Up to date: the job sites were just checked.");
+      } else {
+        // Someone checked less than 30 minutes ago: the list already has what they found
+        const next = new Date(info.next_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+        setRefreshMessage("Up to date: the job sites were checked recently. You can check again after " + next + ".");
+      }
+    } catch (error) {
+      setRefreshMessage("Couldn't check the job sites: " + error.message);
+    }
+    setTries((n) => n + 1);
+    setRefreshing(false);
   }
 
   // The extra info at the end of the address. For "/discovery?job=abc",
@@ -969,22 +1316,29 @@ function Discovery() {
     setSearchParams({}, { replace: true });
   }
 
-  // The opportunities that pass the search (see matchesSearch above)
-  const searched = opportunities.filter((opportunity) => matchesSearch(opportunity, search));
+  // If the linked job isn't in the list (it's further down, or a filter hides
+  // it), get it on its own and show it at the top, so its pop-up can open.
+  // It's kept with the filters it came with ({ query, job })
+  const [linkedJob, setLinkedJob] = useState(null);
+  useEffect(() => {
+    if (!openJobId || !results || results.list.some((job) => job.id === openJobId)) return;
+    let ignore = false;
+    api("/jobs/" + openJobId)
+      .then((body) => {
+        if (!ignore && body.job) setLinkedJob({ query: results.query, job: toOpportunity(body.job) });
+      })
+      .catch(() => {
+        // Not found (or no internet): nothing to open
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [openJobId, results]);
+  const shownResults =
+    results && linkedJob && linkedJob.query === results.query && !results.list.some((job) => job.id === linkedJob.job.id)
+      ? { ...results, list: [linkedJob.job, ...results.list] }
+      : results;
 
-  // How many opportunities each tab has, for the numbers on the tabs.
-  // For each tab name, count the opportunities of that type ("All" counts all).
-  // They're counted after the search, so with "python" typed, "Co-op 1" means
-  // one co-op matches, and a tab's number is always what clicking it shows
-  const counts = {};
-  tabs.forEach((tab) => {
-    counts[tab] = tab === "All" ? searched.length : searched.filter((o) => o.type === tab).length;
-  });
-
-  // For the summary boxes: how many you can still apply to, what's due in the
-  // next 2 weeks (soonest first), and how many jobs are on your tracker.
-  const openCount = opportunities.filter((o) => !isPastDeadline(o.deadline)).length;
-  const dueSoon = sortByDeadline(opportunities.filter((o) => isDueWithin(o.deadline, 14)));
   // The tracker count: how many items on the tracker have a job behind them
   // (trackerJob), so it matches what the Application tracker page shows.
   // useTrackerItems redraws the page whenever the list changes (a Save, or
@@ -994,62 +1348,72 @@ function Discovery() {
   useTrackerSync();
   const trackerCount = trackerItems.filter((item) => trackerJob(item)).length;
 
-  // Of the ones that pass the search, keep only the picked tab's:
-  // "All" is picked, or its type is the picked one ("||" means "or")
-  const filtered = searched.filter((opportunity) => picked === "All" || opportunity.type === picked);
-
-  // Then sort what's left, the way the Sort dropdown says.
-  // "newest" keeps the backend's order (newest first), so there's nothing to do.
-  const shown = sortBy === "deadline" ? sortByDeadline(filtered) : filtered;
-
-  // The "Show all opportunities" button: empty search bar, back to All.
-  function showAll() {
-    setSearch("");
-    setPicked("All");
-  }
-
   return (
     <>
       <title>Opportunities | ScoutSearch</title>
       <NavBar />
       {/* One column, like a dashboard: the title and search, the summary
-          boxes, the tabs and Sort, then the table */}
+          boxes, the tabs and Sort, the filters, then the table */}
       <main className="discovery-page">
         <DiscoveryHeader search={search} setSearch={setSearch} />
-        <SummaryBoxes openCount={openCount} dueSoon={dueSoon} trackerCount={trackerCount} loading={loading} />
+        <SummaryBoxes total={results?.total ?? 0} dueSoon={dueSoon} trackerCount={trackerCount} loading={results === null} />
 
-        {/* The tabs on the left, Sort on the right */}
+        {/* The tabs on the left; Sort and Refresh on the right */}
         <div className="discovery-toolbar">
-          <TypeTabs picked={picked} setPicked={setPicked} counts={counts} />
+          <TypeTabs picked={picked} setPicked={setPicked} />
 
-          {/* The Sort dropdown. value is what's chosen right now; onChange
-              runs when you pick another one. */}
-          <div className="discovery-sort">
-            <label htmlFor="discovery-sort-select">Sort by</label>
-            <select
-              id="discovery-sort-select"
-              className="discovery-sort-select"
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value)}
-            >
-              {/* "Newest" is the order the backend sends: newest jobs first.
-                  (There's no "Best match" yet, because matching jobs to your
-                  profile isn't built.) */}
-              <option value="newest">Newest</option>
-              <option value="deadline">Deadline</option>
-            </select>
+          <div className="discovery-refresh">
+            {/* The Sort menu. value is what's chosen right now; onChange
+                runs when you pick another one. The backend sorts every job */}
+            <div className="discovery-sort">
+              <label htmlFor="discovery-sort-select">Sort by</label>
+              <select
+                id="discovery-sort-select"
+                className="discovery-sort-select"
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value)}
+              >
+                <option value="newest">Newest</option>
+                <option value="fit">Best fit for you</option>
+                <option value="deadline">Deadline (soonest)</option>
+                <option value="company">Company (A to Z)</option>
+              </select>
+            </div>
+            {/* Refresh: checks the job sites for new listings (see refresh above) */}
+            <button type="button" className="discovery-outline-button" onClick={refresh} disabled={refreshing}>
+              {refreshing ? "Checking..." : "Refresh"}
+            </button>
           </div>
         </div>
+        {/* What Refresh found. role="status" reads it out (WCAG) */}
+        <p className="discovery-refresh-message" role="status">
+          {refreshMessage}
+        </p>
+
+        <FilterBar
+          filters={filters}
+          change={changeFilter}
+          major={major}
+          forMajor={forMajor}
+          setForMajor={setMajorChoice}
+          hidden={hidden}
+          unhide={unhideCompany}
+          inUse={filtersInUse}
+          clear={clearFilters}
+        />
 
         <ResultsSection
-          shown={shown}
-          loading={loading}
+          results={shownResults}
           loadError={loadError}
           retry={retry}
+          updating={updating}
           sortBy={sortBy}
-          showAll={showAll}
+          showAll={clearFilters}
+          showMore={showMore}
+          loadingMore={loadingMore}
           openJobId={openJobId}
           onOpened={clearOpenJob}
+          onHide={hideCompany}
         />
 
         <ProfileTip />

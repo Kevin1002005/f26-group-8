@@ -3,12 +3,15 @@
 // docs: https://github.com/lever/postings-api
 import {
   fetchJson, isInternTitle, guessType, htmlToText, listItems, isWebLink, toTime,
+  isGone, isOutsideUS, atMostAtOnce, boardsResult, BOARDS_AT_ONCE,
   type ImportedJob, type SourceResult,
 } from './shared.js';
+import { boardsFor } from './found-boards.js';
 
 // site = the company's name in jobs.lever.co/<site>.
 // Lever doesn't send the company's name with each job, so we write it here.
 // checked 2026-11-13: each of these had intern jobs listed.
+// More are read from found-boards.json (found-boards.ts), which npm run find-boards fills
 const SITES = [
   { site: 'palantir', name: 'Palantir' },
   { site: 'zoox', name: 'Zoox' },
@@ -38,15 +41,21 @@ const SETTINGS: Record<string, ImportedJob['setting']> = {
 
 
 export async function fetchLever(): Promise<SourceResult> {
-  const jobs: ImportedJob[] = [];
-  let allFetchesWorked = true;
+  // the hand-picked sites, then the found ones (see greenhouse.ts: same order every run)
+  const sites = boardsFor('lever', SITES.map(({ site, name }) => ({ id: site, name })));
+  const jobsBySite: ImportedJob[][] = sites.map(() => []);
+  // the sites whose calls failed this time (their old jobs stay open, see boardsResult)
+  const failed = new Set<string>();
 
-  for (const { site, name } of SITES) {
+  await atMostAtOnce(sites, BOARDS_AT_ONCE, async ({ id: site, name }, index) => {
+    const jobs = jobsBySite[index]!;
     try {
       // Lever sends back a plain list of postings (not wrapped in { jobs: ... })
       const body = (await fetchJson(
-        `https://api.lever.co/v0/postings/${site}?mode=json`
+        `https://api.lever.co/v0/postings/${encodeURIComponent(site)}?mode=json`
       )) as LeverJob[];
+      // not a list means the answer changed shape, not "no jobs": count it as failed
+      if (!Array.isArray(body)) throw new Error('the answer had no job list');
 
       for (const job of body) {
         // same as greenhouse.ts: one job that can't be read (say, a currency code that
@@ -56,7 +65,8 @@ export async function fetchLever(): Promise<SourceResult> {
           if (typeof job.id !== 'string' || typeof job.text !== 'string' || !isWebLink(job.hostedUrl)) {
             continue;
           }
-          if (isInternTitle(job.text)) {
+          // a job clearly in another country is skipped (see isOutsideUS in shared.ts)
+          if (isInternTitle(job.text) && !isOutsideUS(job.categories?.location ?? null)) {
             jobs.push(toImportedJob(job, name));
           }
         } catch {
@@ -64,12 +74,19 @@ export async function fetchLever(): Promise<SourceResult> {
         }
       }
     } catch (err) {
+      // the company closed this board: no jobs here now, not a failure (see greenhouse.ts)
+      if (isGone(err)) {
+        console.log(`lever ${site}: no board there any more (npm run find-boards takes it off the list)`);
+        return;
+      }
       console.error(`lever ${site} failed:`, err);
-      allFetchesWorked = false;
+      failed.add(site);
     }
-  }
+  });
 
-  return { jobs, allFetchesWorked };
+  // Lever's ids don't say the company, but the link does: jobs.lever.co/<site>/<id>
+  return boardsResult('lever', jobsBySite.flat(), sites.length, failed,
+    (job) => /^https:\/\/jobs\.lever\.co\/([^/?#]+)/i.exec(job.apply_url ?? '')?.[1] ?? '');
 }
 
 

@@ -12,34 +12,85 @@
 // the public job post) count too, besides the words in the post. Nothing about the student is
 // sent anywhere: this file runs on our server.
 
-// The words job posts in each field tend to use. The names are the same as the site's list
+// The words a job TITLE uses when it's in each field. The names are the same as the site's list
 // (frontend/src/data/majors.js): if you add a major there, add it here too.
 // A major that isn't here ("Other") uses the words the student typed.
+// Each word should point to one field: words that show up in other fields' titles were left out
+// or made longer (checked against the 5,669 job titles of 2026-11-17). For example: "analyst" was
+// in "Data Analyst", "Summer Analyst" (banking) and "Security Operations Center Analyst", so it
+// counted for Business, Data Science, and Economics at once; "infrastructure" was mostly cloud
+// infrastructure, not civil; "lab" was "robotics lab" and "AI lab"; "school" was "High School
+// Internship, Software Engineering". A title with none of these words uses the AI's reading
+// instead (see fitsMajor below)
 export const MAJOR_WORDS: Record<string, string[]> = {
-  'Computer Science': ['software', 'developer', 'programming', 'computer science', 'web', 'frontend', 'front end', 'backend', 'back end',
-    'full stack', 'mobile', 'cloud', 'devops', 'cybersecurity', 'machine learning', 'artificial intelligence', 'ai', 'swe', 'coding'],
-  'Data Science': ['data', 'analytics', 'analyst', 'machine learning', 'statistics', 'statistical', 'data science', 'sql', 'visualization', 'ai'],
+  'Computer Science': ['software', 'developer', 'programming', 'computer science', 'web development', 'frontend', 'front end', 'backend',
+    'back end', 'full stack', 'mobile', 'cloud', 'devops', 'cybersecurity', 'machine learning', 'artificial intelligence', 'ai', 'swe', 'coding'],
+  'Data Science': ['data', 'analytics', 'machine learning', 'statistics', 'statistical', 'data science', 'sql', 'visualization'],
   'Computer or Electrical Engineering': ['hardware', 'electrical', 'embedded', 'firmware', 'circuit', 'fpga', 'asic', 'robotics', 'electronics',
-    'semiconductor', 'signal processing', 'controls', 'chip'],
+    'semiconductor', 'signal processing', 'controls engineer', 'controls engineering', 'control systems', 'chip', 'wireless',
+    'analog', 'mixed signal', 'verification', 'rtl', 'vlsi', 'cpu', 'gpu', 'silicon'],
   'Mechanical Engineering': ['mechanical', 'manufacturing', 'cad', 'solidworks', 'robotics', 'aerospace', 'automotive', 'thermal', 'design engineer'],
-  'Civil or Environmental Engineering': ['civil', 'structural', 'construction', 'transportation', 'infrastructure', 'environmental engineering',
-    'water', 'geotechnical'],
-  'Biology': ['biology', 'biological', 'lab', 'laboratory', 'biotech', 'life sciences', 'genetics', 'molecular', 'ecology', 'clinical research', 'wet lab'],
-  'Chemistry': ['chemistry', 'chemical', 'lab', 'laboratory', 'materials', 'pharmaceutical', 'analytical', 'synthesis'],
+  'Civil or Environmental Engineering': ['civil', 'structural', 'construction', 'transportation', 'environmental engineering', 'water',
+    'geotechnical', 'surveying', 'stormwater', 'land development'],
+  'Biology': ['biology', 'biological', 'biotech', 'biotechnology', 'life sciences', 'genetics', 'molecular', 'ecology', 'clinical research',
+    'wet lab', 'microbiology', 'biochemistry', 'neuroscience', 'lab technician', 'laboratory technician'],
+  'Chemistry': ['chemistry', 'chemical', 'pharmaceutical', 'analytical chemistry', 'synthesis', 'materials science', 'polymer', 'biochemistry',
+    'wet lab', 'lab technician', 'laboratory technician'],
   'Health Sciences or Nursing': ['health', 'healthcare', 'clinical', 'patient', 'nursing', 'hospital', 'medical', 'public health'],
   'Psychology': ['psychology', 'behavioral', 'mental health', 'counseling', 'human factors', 'user research', 'social science'],
-  'Business': ['business', 'operations', 'strategy', 'consulting', 'management', 'sales', 'analyst', 'entrepreneurship', 'supply chain'],
-  'Finance or Accounting': ['finance', 'financial', 'accounting', 'investment', 'banking', 'audit', 'tax', 'quantitative', 'trading', 'equity', 'wealth'],
-  'Economics': ['economics', 'economic', 'economist', 'policy', 'quantitative', 'finance', 'analyst'],
+  'Business': ['business', 'operations', 'strategy', 'consulting', 'management', 'sales', 'entrepreneurship', 'supply chain'],
+  'Finance or Accounting': ['finance', 'financial', 'accounting', 'accountant', 'investment', 'investments', 'banking', 'bank', 'audit', 'tax',
+    'treasury', 'quantitative', 'quant', 'trading', 'equities', 'equity research', 'private equity', 'public equity', 'wealth',
+    'asset management', 'bookkeeping', 'capital markets'],
+  'Economics': ['economics', 'economic', 'economist', 'econometrics'],
   'Marketing or Communications': ['marketing', 'communications', 'social media', 'content', 'brand', 'public relations', 'journalism', 'writing', 'media'],
   'Design': ['design', 'designer', 'ux', 'ui', 'user experience', 'product design', 'graphic', 'visual', 'figma', 'creative'],
   'Mathematics or Statistics': ['math', 'mathematics', 'statistics', 'statistical', 'quantitative', 'quant', 'actuarial', 'modeling'],
-  'Political Science or Public Policy': ['policy', 'government', 'public', 'political', 'legislative', 'law', 'advocacy', 'civic', 'nonprofit'],
-  'Environmental Science': ['environmental', 'sustainability', 'climate', 'energy', 'conservation', 'ecology', 'renewable'],
-  'Education': ['education', 'teaching', 'tutor', 'tutoring', 'teacher', 'school', 'curriculum', 'classroom'],
+  'Political Science or Public Policy': ['policy', 'government', 'public policy', 'public affairs', 'political', 'legislative', 'law',
+    'advocacy', 'civic', 'nonprofit'],
+  'Environmental Science': ['environmental', 'sustainability', 'climate', 'conservation', 'ecology', 'renewable', 'clean energy', 'solar'],
+  'Education': ['education', 'teaching', 'tutor', 'tutoring', 'teacher', 'curriculum', 'classroom'],
 };
+
+// The majors that engineering jobs belong to. A title that says engineer, developer, or software,
+// or names chip-design work ("Design Verification Engineer", "FPGA Design Verification Intern",
+// "Software Engineer Intern, Trading Systems", "Communications Engineering Intern") is an
+// engineering job, so it never counts for the OTHER majors, even when it also has one of their
+// words ("design", "trading", "communications") or the AI tagged it
+const ENGINEERING_MAJORS = new Set([
+  'Computer Science', 'Data Science', 'Computer or Electrical Engineering', 'Mechanical Engineering',
+  'Civil or Environmental Engineering', 'Chemistry',
+]);
+const ENGINEERING_TITLE = /\b(engineer|engineers|engineering|developer|developers|software|swe|devops|firmware|fpga|asic|rtl|vlsi|verification|analog|silicon|cpu|gpu)\b/i;
+
+// A title with its "non-" words taken out: "Summer Intern (Non-Tax)" says it is NOT a tax job
+const withoutNonWords = (title: string) => title.toLowerCase().replace(/\bnon-?\s?\p{L}+/gu, ' ');
 // "Undecided / exploring": no major, so every field shows
 export const UNDECIDED = 'Undecided / exploring';
+
+// The fields next to each major, for "Add jobs from related fields" on Opportunities when only
+// a few jobs fit your major (jobs.ts, &major=related). A Finance student is often a good fit for
+// an Economics or Business internship too. The names are MAJOR_WORDS' names
+export const RELATED_MAJORS: Record<string, string[]> = {
+  'Computer Science': ['Data Science', 'Computer or Electrical Engineering', 'Mathematics or Statistics'],
+  'Data Science': ['Computer Science', 'Mathematics or Statistics', 'Economics'],
+  'Computer or Electrical Engineering': ['Computer Science', 'Mechanical Engineering'],
+  'Mechanical Engineering': ['Computer or Electrical Engineering', 'Civil or Environmental Engineering'],
+  'Civil or Environmental Engineering': ['Environmental Science', 'Mechanical Engineering'],
+  'Biology': ['Chemistry', 'Health Sciences or Nursing', 'Environmental Science'],
+  'Chemistry': ['Biology', 'Environmental Science'],
+  'Health Sciences or Nursing': ['Biology', 'Psychology'],
+  'Psychology': ['Health Sciences or Nursing', 'Education'],
+  'Business': ['Economics', 'Finance or Accounting', 'Marketing or Communications'],
+  'Finance or Accounting': ['Economics', 'Business', 'Mathematics or Statistics'],
+  'Economics': ['Finance or Accounting', 'Business', 'Political Science or Public Policy'],
+  'Marketing or Communications': ['Business', 'Design'],
+  'Design': ['Marketing or Communications', 'Computer Science'],
+  'Mathematics or Statistics': ['Data Science', 'Finance or Accounting', 'Economics'],
+  'Political Science or Public Policy': ['Economics', 'Environmental Science'],
+  'Environmental Science': ['Civil or Environmental Engineering', 'Biology', 'Political Science or Public Policy'],
+  'Education': ['Psychology'],
+};
 
 // The most skills and resume job-title words a student's Best fit looks at (see studentFrom)
 const MOST_SKILLS = 60;
@@ -93,6 +144,8 @@ export type Student = {
   wantsRemote: boolean;
   paidOnly: boolean;
   experience: string[];    // words from the job titles on their resume
+  home: string;            // their city as they wrote it ("Worcester, MA"), so a city typed without
+                           // a state on Opportunities picks the one near them (places.ts)
 };
 
 // Builds a Student from their profile's data and their resume's data (either can be missing)
@@ -102,7 +155,8 @@ export function studentFrom(profileData: unknown, resumeData: unknown): Student 
   const lookingFor = isObject(profile.lookingFor) ? profile.lookingFor : {};
 
   const major = text(profile.major) === UNDECIDED ? '' : text(profile.major);
-  const majorWords = major === '' ? [] : MAJOR_WORDS[major] ?? wordsOf(major, 3);
+  // Object.hasOwn: a typed-in major like "constructor" must not pick up a built-in function
+  const majorWords = major === '' ? [] : Object.hasOwn(MAJOR_WORDS, major) ? MAJOR_WORDS[major]! : wordsOf(major, 3);
 
   // skills: the profile's list, then each item of the resume's Skills lines ("Python, SQL"),
   // at most MOST_SKILLS in all. (A resume's Skills boxes can hold thousands of tiny items, and
@@ -141,36 +195,80 @@ export function studentFrom(profileData: unknown, resumeData: unknown): Student 
   return {
     major, majorWords, skills, kinds, level, places, wantsRemote, paidOnly: lookingFor.paidOnly === true,
     experience: [...new Set(experience)].slice(0, MOST_EXPERIENCE_WORDS),
+    home: text(profile.city).slice(0, 100),
   };
 }
 
 // The parts of a job fitFor looks at. text is the job's title, company, description, and
 // requirements together, in lower case
-// ai_majors and ai_skills are the job's AI tags (empty, or missing, until it's been tagged)
+// ai_majors and ai_skills are the job's AI tags (empty, or missing, until it's been tagged),
+// and ai_tagged_at is when the AI read it (null until then)
 export type FitJob = {
   title: string; type: string; level: string; setting: string | null; paid: boolean | null; location: string | null;
-  ai_majors?: string[] | null; ai_skills?: string[] | null;
+  ai_majors?: string[] | null; ai_skills?: string[] | null; ai_tagged_at?: string | null;
 };
 export type Fit = { score: number | null; reasons: string[]; majorMatch: boolean };
 
+// The majors a job title names (MAJOR_WORDS), for fitsMajor. An engineering title only names
+// engineering majors (ENGINEERING_TITLE above). Kept per title, since every request asks about
+// every job (emptied if it ever gets big, like the patterns above)
+const titleMajors = new Map<string, string[]>();
+export function majorsInTitle(jobTitle: string): string[] {
+  const kept = titleMajors.get(jobTitle);
+  if (kept) return kept;
+  if (titleMajors.size >= 20000) titleMajors.clear();
+  const title = withoutNonWords(jobTitle);
+  const engineering = ENGINEERING_TITLE.test(title);
+  const named = Object.entries(MAJOR_WORDS)
+    .filter(([major, words]) => !(engineering && !ENGINEERING_MAJORS.has(major)) && words.some((w) => mentions(title, w)))
+    .map(([major]) => major);
+  titleMajors.set(jobTitle, named);
+  return named;
+}
+
+// Does a job fit a major? "For your major" shows only these, so it's strict: an accounting
+// student shouldn't see software jobs, and a CS student shouldn't see audit jobs.
+//  1. The TITLE decides. Not the description or the company name: "a wealth of experience" in a
+//     description made a Sonos software job count for Finance, and every job at Citizens
+//     *Financial* Group (software included) counted for Finance.
+//  2. A title that names no field at all ("Summer Analyst", "Summer Intern") uses the AI's reading
+//     of the post (ai-tags.ts), except an engineering title for a non-engineering major.
+//  3. The AI never overrides a title that names a field: "Software Engineer Intern" at a trading
+//     firm is a CS job, even if the AI also tagged it Finance.
+// word is the title's word for the major (for "Why it fits"), or null if the AI decided.
+// A major that isn't in MAJOR_WORDS ("Other") matches its own words (words) in the title.
+export function fitsMajor(job: FitJob, major: string, words?: string[]): { fits: boolean; word: string | null } {
+  const title = withoutNonWords(job.title);
+  if (!Object.hasOwn(MAJOR_WORDS, major)) {
+    const word = (words ?? []).find((w) => mentions(title, w)) ?? null;
+    return { fits: word !== null, word };
+  }
+  const named = majorsInTitle(job.title);
+  if (named.includes(major)) return { fits: true, word: MAJOR_WORDS[major]!.find((w) => mentions(title, w)) ?? null };
+  const engineeringOnly = ENGINEERING_TITLE.test(title) && !ENGINEERING_MAJORS.has(major);
+  const aiSays = named.length === 0 && !engineeringOnly && (job.ai_majors ?? []).includes(major);
+  return { fits: aiSays, word: null };
+}
+
 const TYPE_WORDS: Record<string, string> = { internship: 'An internship', 'co-op': 'A co-op', research: 'A research position', program: 'A program' };
 
-export function fitFor(job: FitJob, jobText: string, student: Student): Fit {
+// has(word) says if the job's text mentions a word (by default by reading jobText; jobs.ts passes
+// one that uses the word index in word-index.ts, which gives the same answers much faster)
+export function fitFor(job: FitJob, jobText: string, student: Student, has = (w: string) => mentions(jobText, w)): Fit {
   let earned = 0;
   let possible = 0;
   // [points, reason]: the reasons are sorted by points at the end
   const reasons: [number, string][] = [];
 
-  // major (30): the post mentions a word from the major, or the AI tagged the post with it
+  // major (30): the title names it, or the AI read the post as it (fitsMajor)
   let majorMatch = false;
   if (student.majorWords.length > 0) {
     possible += 30;
-    const word = student.majorWords.find((w) => mentions(jobText, w));
-    const aiSaysSo = (job.ai_majors ?? []).includes(student.major);
-    if (word || aiSaysSo) {
+    const { fits, word } = fitsMajor(job, student.major, student.majorWords);
+    if (fits) {
       earned += 30;
       majorMatch = true;
-      reasons.push([30, word ? `Fits your major (${student.major}): it mentions "${word}"` : `Fits your major (${student.major}), from an AI reading of the post`]);
+      reasons.push([30, word ? `Fits your major (${student.major}): the title says "${word}"` : `Fits your major (${student.major}), from an AI reading of the post`]);
     }
   }
 
@@ -179,7 +277,7 @@ export function fitFor(job: FitJob, jobText: string, student: Student): Fit {
     possible += 25;
     // a skill the post mentions, or one the AI found in it (written a bit differently, like "JS")
     const aiSkills = new Set((job.ai_skills ?? []).map((s) => s.toLowerCase()));
-    const found = student.skills.filter((s) => mentions(jobText, s) || aiSkills.has(s.toLowerCase()));
+    const found = student.skills.filter((s) => has(s) || aiSkills.has(s.toLowerCase()));
     if (found.length > 0) {
       const points = Math.min(25, found.length * 10);
       earned += points;
@@ -207,7 +305,7 @@ export function fitFor(job: FitJob, jobText: string, student: Student): Fit {
   // experience (10): a word from a job title on their resume
   if (student.experience.length > 0) {
     possible += 10;
-    const word = student.experience.find((w) => mentions(jobText, w));
+    const word = student.experience.find(has);
     if (word) {
       earned += 10;
       reasons.push([10, `Related to your experience ("${word}")`]);

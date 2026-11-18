@@ -121,31 +121,44 @@ function toOpportunity(job) {
 // a web address carries them ("type=co-op&sort=fit", see queryFor below).
 // It's "async", so it hands back a promise: the page arrives a moment later.
 // Gives back { list, total (how many match in all), more (true if there's
-// another page), major (your major, from your profile) }
+// another page), major (your major, from your profile), near (where the
+// "City or state" box was found on the map, or null), suggestions (ways to see
+// more when only a few match, see MoreSuggestions) }
 async function fetchPage(query, page) {
   const body = await api("/jobs/for-me?" + query + (page > 1 ? "&page=" + page : ""));
   // Our backend always sends a list. Anything else didn't come from it
   if (!Array.isArray(body.jobs)) {
     throw new Error("Couldn't reach the server. Try again in a minute.");
   }
-  return { list: body.jobs.map(toOpportunity), total: body.total ?? body.jobs.length, more: body.more === true, major: body.major ?? "" };
+  return {
+    list: body.jobs.map(toOpportunity),
+    total: body.total ?? body.jobs.length,
+    more: body.more === true,
+    major: body.major ?? "",
+    near: body.near ?? null,
+    suggestions: Array.isArray(body.suggestions) ? body.suggestions : [],
+  };
 }
 
-// The filters before you change any (see FilterBar)
-const noFilters = { level: "", setting: "", posted: "", deadline: "", paidOnly: false, include: "", exclude: "", location: "" };
+// The filters before you change any (see FilterBar). within is how many miles
+// around the city in "City or state" (25, like most job sites start at)
+const noFilters = { level: "", setting: "", posted: "", deadline: "", paidOnly: false, include: "", exclude: "", location: "", within: "25" };
 
 // Everything the page is showing, written as a web address's "?a=1&b=2" part
 // for the backend. URLSearchParams takes care of spaces and odd letters.
 // Empty filters are left out. Each hidden company is its own "hide=..."
-function queryFor({ search, picked, sortBy, filters, forMajor, hidden }) {
+// withRelated adds the fields next to your major (see MoreSuggestions)
+function queryFor({ search, picked, sortBy, filters, forMajor, withRelated, hidden }) {
   const query = new URLSearchParams();
   if (search.trim()) query.set("q", search.trim());
   if (picked !== "All") query.set("type", typeValues[picked]);
   if (sortBy !== "newest") query.set("sort", sortBy);
-  if (forMajor) query.set("major", "only");
+  if (forMajor) query.set("major", withRelated ? "related" : "only");
   for (const name of ["level", "setting", "posted", "deadline", "include", "exclude", "location"]) {
     if (filters[name].trim()) query.set(name, filters[name].trim());
   }
+  // the distance only matters with a city, and 25 is the backend's default too
+  if (filters.location.trim() && filters.within !== "25") query.set("within", filters.within);
   if (filters.paidOnly) query.set("paid", "true");
   for (const company of hidden) query.append("hide", company);
   return query.toString();
@@ -324,8 +337,8 @@ function DiscoveryHeader(props) {
 // The three summary boxes under the title: how many opportunities match your
 // filters, how many are due soon, and how many are on your tracker. Like the
 // number boxes at the top of a dashboard, so you see the big picture first.
-// props.total is how many match, props.dueSoon is { count, first } for every job
-// due in the next 14 days (null until it arrives), props.trackerCount is how many
+// props.total is how many match, props.dueSoon is { count, first } for the jobs
+// matching your filters that are due in the next 14 days (null until it arrives), props.trackerCount is how many
 // are on your tracker, and props.loading is true while the jobs are still on their
 // way (the numbers show "…" until then, not a wrong 0).
 function SummaryBoxes(props) {
@@ -852,6 +865,46 @@ function OpportunityRow(props) {
   );
 }
 
+// The words on each "Want more?" button. The backend sends what it found
+// (backend/src/jobs.ts, pickJobs): { kind, count, and within or majors }
+function suggestionWords(suggestion) {
+  const count = suggestion.count.toLocaleString();
+  if (suggestion.kind === "wider") return "Show " + count + " more within " + suggestion.within + " miles";
+  if (suggestion.kind === "remote") return "See " + count + " remote " + (suggestion.count === 1 ? "job" : "jobs") + " instead";
+  return "Add " + count + " from related fields (" + suggestion.majors.join(", ") + ")";
+}
+
+// "Want more?": when only a few jobs match, buttons that widen the search, so a
+// small city or a narrow major isn't a dead end. props.suggestions is the
+// backend's list, props.onPick(suggestion) changes the filters to match it.
+// props.inBox is true inside "No opportunities match" (it has its own box there)
+function MoreSuggestions(props) {
+  if (props.suggestions.length === 0) return null;
+  const list = (
+    // a list, so screen readers say how many buttons there are (WCAG)
+    <ul className="discovery-suggestion-list">
+      {props.suggestions.map((suggestion) => (
+        // kind is different for each one, so it works as the key
+        <li key={suggestion.kind}>
+          <button type="button" className="discovery-outline-button" onClick={() => props.onPick(suggestion)}>
+            {suggestionWords(suggestion)}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+  if (props.inBox) return list;
+  const word = props.total === 1 ? "opportunity matches" : "opportunities match";
+  return (
+    <div className="discovery-suggestions">
+      <p className="discovery-suggestions-text">
+        Only {props.total} {word}. Want more?
+      </p>
+      {list}
+    </div>
+  );
+}
+
 // The list of opportunities: the table, with the count and "Show more" under it.
 // props.results is what the backend sent ({ list, total, more }), or null while
 // the first answer is on its way. props.loadError is true if getting them
@@ -886,6 +939,8 @@ function ResultsSection(props) {
 
   const shown = props.results.list;
   const total = props.results.total;
+  // the "Want more?" buttons, but not while new filters load (they'd be for the old ones)
+  const suggestions = props.updating ? [] : props.results.suggestions;
   // "opportunity" for 1, "opportunities" for anything else.
   const word = total === 1 ? "opportunity" : "opportunities";
   // What the table is sorted by, for screen readers
@@ -905,14 +960,20 @@ function ResultsSection(props) {
       {shown.length === 0 ? (
         <div className="discovery-empty">
           <p className="discovery-empty-title">No opportunities match</p>
-          <p className="discovery-empty-text">Try different words, fewer filters, or another tab.</p>
+          <p className="discovery-empty-text">
+            {suggestions.length > 0 ? "Try one of these to see more:" : "Try different words, fewer filters, or another tab."}
+          </p>
+          <MoreSuggestions suggestions={suggestions} onPick={props.onSuggestion} inBox />
           <button type="button" className="discovery-outline-button" onClick={props.showAll}>
             Clear filters
           </button>
         </div>
       ) : (
-        // The white box around the table. On small screens the table can't
-        // fit, so it turns into one box per opportunity instead (index.css)
+        <>
+        {/* "Only 1 opportunity matches. Want more?" (only when a few match) */}
+        <MoreSuggestions suggestions={suggestions} total={total} onPick={props.onSuggestion} />
+        {/* The white box around the table. On small screens the table can't
+            fit, so it turns into one box per opportunity instead (index.css) */}
         <div className="discovery-table-box">
           <table className="discovery-table">
             {/* The table's name, for screen readers (WCAG) */}
@@ -958,6 +1019,7 @@ function ResultsSection(props) {
             )}
           </div>
         </div>
+        </>
       )}
     </section>
   );
@@ -991,7 +1053,8 @@ function FilterBar(props) {
           >
             {/* The check mark only shows while it's on; the words say the same */}
             {props.forMajor && <span aria-hidden="true">✓ </span>}
-            For your major ({props.major})
+            {/* "and related fields" after you pick "Add ... from related fields" */}
+            {props.forMajor && props.withRelated ? "For your major and related fields" : "For your major"} ({props.major})
           </button>
         ) : (
           <Link to="/editprofile#basics" className="discovery-text-link">
@@ -1074,11 +1137,41 @@ function FilterBar(props) {
               className="discovery-filter-input"
               type="text"
               autoComplete="address-level2"
-              placeholder="e.g. Boston or CA"
+              placeholder="e.g. Worcester or MA"
               value={filters.location}
               onChange={(e) => props.change("location", e.target.value)}
             />
           </label>
+          {/* How far around the city to look. Only shown once the box was
+              found as a city (not a state, or a place we couldn't find),
+              since it does nothing otherwise. props.nearCity is the last city
+              found, so it doesn't flicker while new results load */}
+          {filters.location.trim() && props.nearCity && (
+            <label className="discovery-filter">
+              Distance
+              <select className="discovery-sort-select" value={filters.within} onChange={(e) => props.change("within", e.target.value)}>
+                <option value="10">Within 10 miles</option>
+                <option value="25">Within 25 miles</option>
+                <option value="50">Within 50 miles</option>
+                <option value="100">Within 100 miles</option>
+              </select>
+            </label>
+          )}
+          {/* Where the backend found the city or state on the map, so you can
+              tell if it picked the right Worcester. role="status" reads it out
+              when it changes (WCAG). props.near is undefined while it loads,
+              and null when the place wasn't found */}
+          {filters.location.trim() && (
+            <p className="discovery-near" role="status">
+              {props.near === undefined
+                ? ""
+                : props.near?.city
+                  ? "Within " + props.near.within + " miles of " + props.near.city + "."
+                  : props.near?.state
+                    ? "Jobs in " + props.near.state + "."
+                    : "Couldn't find \"" + filters.location.trim() + "\" on the map, so this matches the words in each job's location."}
+            </p>
+          )}
         </div>
         <p className="discovery-filter-hint" id="discovery-words-hint">
           Put commas between words. Each one is matched as a whole word in the job's title, description, and requirements.
@@ -1154,9 +1247,30 @@ function Discovery() {
   const profile = useMyProfile();
   const major = profile.data.major === undecided ? "" : profile.data.major.trim();
   const forMajor = major !== "" && (majorChoice ?? true);
+  // "Add ... from related fields" (a "Want more?" button) turns this on: "For
+  // your major" then also shows the fields next to it. Turning "For your
+  // major" off turns this off too
+  const [withRelated, setWithRelated] = useState(false);
+
+  // "Who it's for" starts at your level, from the school on your profile: a high
+  // school senior starts on what high schoolers can apply to, a college student on
+  // college jobs, so nobody starts on a list of jobs they can't get. (The same
+  // check the backend's Best fit uses, backend/src/fit.ts.) levelChoice is null
+  // until you pick one yourself; picking "Anyone" shows everything
+  const [levelChoice, setLevelChoice] = useState(null);
+  const school = profile.data.school.trim();
+  // only when the name says which it is: "Worcester Academy" or "Boston Latin
+  // School" could be either, so those start on "Anyone"
+  const profileLevel = /high school|\bhs\b/i.test(school)
+    ? "high-school"
+    : /universit|college|institute|polytechnic/i.test(school)
+      ? "college"
+      : "";
+  // the filters as they show on screen, with that level in them
+  const shownFilters = { ...filters, level: levelChoice ?? profileLevel };
 
   // Everything above, written for the backend (see queryFor)
-  const query = queryFor({ search, picked, sortBy, filters, forMajor, hidden });
+  const query = queryFor({ search, picked, sortBy, filters: shownFilters, forMajor, withRelated, hidden });
 
   // What the backend sent: { query (which filters it's for), list, total, more,
   // page }. null until the first answer arrives
@@ -1203,20 +1317,28 @@ function Discovery() {
     };
   }, [query, tries]);
 
-  // Everything due in the next 2 weeks (any filters), for the summary box
+  // The jobs due in the next 2 weeks, for the summary box. Same filters as the
+  // list (your major, search, tab, ...), but only ones due soon, soonest first,
+  // so it agrees with "Match your filters" next to it. (It used to count every
+  // job on the site, so a CS major's "First up" could be any field's job)
+  const dueSoonQuery = queryFor({ search, picked, sortBy: "deadline", filters: { ...shownFilters, deadline: "soon" }, forMajor, withRelated, hidden });
   useEffect(() => {
     let ignore = false;
-    fetchPage("deadline=soon&sort=deadline", 1)
-      .then((page) => {
-        if (!ignore) setDueSoon({ count: page.total, first: page.list[0] });
-      })
-      .catch(() => {
-        // The box just keeps showing "…"
-      });
+    // waits 0.3 seconds like the list, so typing a word is one request, not one per letter
+    const timer = setTimeout(() => {
+      fetchPage(dueSoonQuery, 1)
+        .then((page) => {
+          if (!ignore) setDueSoon({ count: page.total, first: page.list[0] });
+        })
+        .catch(() => {
+          // The box just keeps showing "…"
+        });
+    }, 300);
     return () => {
       ignore = true;
+      clearTimeout(timer);
     };
-  }, [tries]);
+  }, [dueSoonQuery, tries]);
 
   // true while the list on screen is for older filters
   const updating = results !== null && results.query !== query;
@@ -1249,7 +1371,23 @@ function Discovery() {
 
   // Changes one filter
   function changeFilter(name, value) {
-    setFilters({ ...filters, [name]: value });
+    // "Who it's for" is kept on its own (see levelChoice above)
+    if (name === "level") setLevelChoice(value);
+    else setFilters({ ...filters, [name]: value });
+  }
+
+  // The "For your major" button: on or off (off also drops the related fields)
+  function chooseMajor(on) {
+    setMajorChoice(on);
+    if (!on) setWithRelated(false);
+  }
+
+  // A "Want more?" button (MoreSuggestions): changes the filters to what it said
+  function pickSuggestion(suggestion) {
+    if (suggestion.kind === "wider") changeFilter("within", String(suggestion.within));
+    // remote jobs aren't in a city, so the city comes out
+    if (suggestion.kind === "remote") setFilters({ ...filters, location: "", setting: "remote" });
+    if (suggestion.kind === "related") setWithRelated(true);
   }
 
   // "Clear filters" (and "Show all opportunities"): the search, the tab, and
@@ -1259,9 +1397,11 @@ function Discovery() {
     setSearch("");
     setPicked("All");
     setFilters(noFilters);
+    setLevelChoice("");
     setMajorChoice(false);
+    setWithRelated(false);
   }
-  const filtersInUse = JSON.stringify(filters) !== JSON.stringify(noFilters) || search.trim() !== "" || picked !== "All" || forMajor;
+  const filtersInUse = JSON.stringify(shownFilters) !== JSON.stringify(noFilters) || search.trim() !== "" || picked !== "All" || forMajor;
 
   // "Hide jobs from Acme" (in a job's pop-up), and "Show again" (under More filters)
   function hideCompany(company) {
@@ -1395,11 +1535,16 @@ function Discovery() {
         </p>
 
         <FilterBar
-          filters={filters}
+          filters={shownFilters}
           change={changeFilter}
           major={major}
           forMajor={forMajor}
-          setForMajor={setMajorChoice}
+          setForMajor={chooseMajor}
+          withRelated={withRelated}
+          // where "City or state" was found, or undefined while the answer for it is on its way
+          near={results && !updating ? results.near : undefined}
+          // the last city the box was found as, for showing the Distance menu
+          nearCity={results?.near?.city ?? ""}
           hidden={hidden}
           unhide={unhideCompany}
           inUse={filtersInUse}
@@ -1413,6 +1558,7 @@ function Discovery() {
           updating={updating}
           sortBy={sortBy}
           showAll={clearFilters}
+          onSuggestion={pickSuggestion}
           showMore={showMore}
           loadingMore={loadingMore}
           openJobId={openJobId}

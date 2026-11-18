@@ -3,11 +3,14 @@
 // docs: https://developers.ashbyhq.com/docs/public-job-posting-api
 import {
   fetchJson, isInternTitle, guessType, guessSetting, guessLevel, isWebLink, toTime,
+  isGone, isOutsideUS, atMostAtOnce, boardsResult, boardInId, BOARDS_AT_ONCE,
   type ImportedJob, type SourceResult,
 } from './shared.js';
+import { boardsFor } from './found-boards.js';
 
 // board names (the part after jobs.ashbyhq.com/), and the company's name to show.
-// checked 2026-11-16: Ramp, Notion, and OpenAI had intern roles. A wrong name logs "HTTP 404".
+// checked 2026-11-16: Ramp, Notion, and OpenAI had intern roles. A wrong name logs "no board there".
+// More are read from found-boards.json (found-boards.ts), which npm run find-boards fills
 const BOARDS = [
   { board: 'ramp', name: 'Ramp' },
   { board: 'notion', name: 'Notion' },
@@ -35,27 +38,38 @@ type AshbyJob = {
 const SETTINGS: Record<string, ImportedJob['setting']> = { Remote: 'remote', Hybrid: 'hybrid', OnSite: 'on-site' };
 
 export async function fetchAshby(): Promise<SourceResult> {
-  const jobs: ImportedJob[] = [];
-  let allFetchesWorked = true;
-  for (const { board, name } of BOARDS) {
+  // the hand-picked boards, then the found ones (see greenhouse.ts: same order every run)
+  const boards = boardsFor('ashby', BOARDS.map(({ board, name }) => ({ id: board, name })));
+  const jobsByBoard: ImportedJob[][] = boards.map(() => []);
+  // the boards whose calls failed this time (their old jobs stay open, see boardsResult)
+  const failed = new Set<string>();
+  await atMostAtOnce(boards, BOARDS_AT_ONCE, async ({ id: board, name }, index) => {
+    const jobs = jobsByBoard[index]!;
     try {
-      const body = (await fetchJson(`https://api.ashbyhq.com/posting-api/job-board/${board}?includeCompensation=true`)) as { jobs: AshbyJob[] };
+      const body = (await fetchJson(`https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(board)}?includeCompensation=true`)) as { jobs: AshbyJob[] };
       // no list at all means the answer changed shape, not "no jobs": count it as failed
       if (!Array.isArray(body?.jobs)) throw new Error('the answer had no job list');
       for (const job of body.jobs) {
         try {
           if (typeof job.id !== 'string' || typeof job.title !== 'string' || !isWebLink(job.jobUrl) || job.isListed === false) continue;
+          // a job clearly in another country is skipped (see isOutsideUS in shared.ts)
+          if (isOutsideUS(job.location ?? null)) continue;
           if (job.employmentType === 'Intern' || isInternTitle(job.title)) jobs.push(toImportedJob(job, board, name));
         } catch {
           console.error(`ashby ${board}: skipped one job that couldn't be read`);
         }
       }
     } catch (err) {
+      // the company closed this board: no jobs here now, not a failure (see greenhouse.ts)
+      if (isGone(err)) {
+        console.log(`ashby ${board}: no board there any more (npm run find-boards takes it off the list)`);
+        return;
+      }
       console.error(`ashby ${board} failed:`, err);
-      allFetchesWorked = false;
+      failed.add(board);
     }
-  }
-  return { jobs, allFetchesWorked };
+  });
+  return boardsResult('ashby', jobsByBoard.flat(), boards.length, failed, boardInId);
 }
 
 function toImportedJob(job: AshbyJob, board: string, name: string): ImportedJob {

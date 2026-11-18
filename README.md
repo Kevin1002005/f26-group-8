@@ -94,6 +94,15 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
   SmartRecruiters, and Workable company boards, USAJOBS, NSF ETAP (research programs), precollege-finder
   (high school programs), the SimplifyJobs, vanshb03, CO0Oper, and SpeedyApply GitHub lists, JSearch, and
   Adzuna. To add a company, add it to the list at the top of its file in `backend/src/job-sources/`.
+- The company-board sources also read every board in `backend/src/job-sources/found-boards.json`
+  (about 690 companies). `cd backend && npm run find-boards` fills that file. It looks through the
+  GitHub lists for links to company job boards, checks that each board is still there, and saves
+  them. It needs no keys and doesn't touch the database. Run it every few weeks, then commit the file.
+  Only jobs in the US (or that might be) are kept. If one company's board fails, only that company's
+  old jobs stay open, and the rest are closed as usual.
+- Adzuna searches every major nationwide, plus near Boston and Worcester. That's 76 requests per import,
+  so about one import a day fits its free plan. Its jobs (and JSearch's) stay listed for 14 days after
+  they last showed up in a search, because each search only sends back its newest results.
 - After each import, `backend/src/ai-tags.ts` has a free AI model (Gemini, if `AI_API_KEY` is set) tag
   the new jobs with the majors and skills they fit. Best fit (`backend/src/fit.ts`) uses the tags. Only
   public job posts are sent, never anything about a student. Run `jobs.sql` step 8 first.

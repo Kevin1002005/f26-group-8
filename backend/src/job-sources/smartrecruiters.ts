@@ -19,7 +19,7 @@ const COMPANIES = ['BoschGroup', 'NBCUniversal3', 'Equinox', 'Experian', 'Sodexo
 const MOST_PAGES = 10;
 
 // only the fields we use (the real response has more)
-type SmartPosting = {
+export type SmartPosting = {
   id: string;
   name: string;
   releasedDate: string | null;
@@ -75,7 +75,7 @@ export async function fetchSmartRecruiters(): Promise<SourceResult> {
   return boardsResult('smartrecruiters', jobsByCompany.flat(), companies.length, failed, boardInId);
 }
 
-function toImportedJob(posting: SmartPosting, company: string): ImportedJob {
+export function toImportedJob(posting: SmartPosting, company: string): ImportedJob {
   const where = posting.location ?? {};
   const location = [where.city, where.region, where.country?.toUpperCase()].filter((p) => typeof p === 'string' && p.trim() !== '').join(', ') || null;
   const url = `https://jobs.smartrecruiters.com/${company}/${posting.id}`;

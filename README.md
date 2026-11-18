@@ -113,7 +113,39 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
   skipped JSearch and ends with an error code on purpose: old JSearch jobs aren't closed.
 - The live site shows whatever is in Supabase's `jobs` table, so run the importer before a demo.
   It also fills in each job's posting date, so run it again after running `jobs.sql` (step 6).
+- **"Search the web"** on Opportunities (`backend/src/web-search.ts`): once a student types a search,
+  they can ask Gemini (with Google Search) for more postings. Only the typed words are sent, never the
+  profile (the Data Policy says so). Every link it gives is checked on its hiring site's own job feed
+  (Greenhouse, Lever, Ashby, SmartRecruiters, Workable: `backend/src/job-sources/web.ts`), so made-up and
+  closed postings are dropped. The real ones are saved for everyone as source `web`, and each import
+  checks them again. It needs `AI_API_KEY` on Render and `jobs.sql` step 4 run again (it adds `web`).
+  Limits: 10 searches per student per day and 200 for the whole site (`WEB_SEARCHES_PER_STUDENT`,
+  `WEB_SEARCHES_PER_DAY`), and at most 3 running at once. If the free key can't use Google Search,
+  the message under the button says web search isn't available (the search isn't counted, and web
+  search rests for 10 minutes). The company name shown for a find comes from the hiring site or
+  `found-boards.json`, never from the AI.
 - The routes, rules and what's planned next are in `backend/plans.md`.
+
+### Keeping jobs up to date (automatic)
+
+`.github/workflows/update-jobs.yml` has GitHub run the importer by itself: the sources with no daily
+limit every 6 hours, and everything (Adzuna too) once a day at about 6 AM Boston time. It runs on
+GitHub's computers, so it doesn't use the Render server's memory. Every run reads the company boards
+in the committed `found-boards.json` (to add new ones, run `npm run find-boards` and commit the file).
+To turn it on in a copy of the repo (a fork):
+
+1. **Actions** tab: if GitHub asks, click the button that turns workflows on for the fork.
+2. **Settings → Secrets and variables → Actions → Secrets:** add `SUPABASE_URL` and
+   `SUPABASE_SECRET_KEY` (the same values as `backend/secrets.env`), plus any of `ADZUNA_APP_ID`,
+   `ADZUNA_APP_KEY`, `USAJOBS_API_KEY`, `USAJOBS_EMAIL`, `JSEARCH_API_KEY` (or `OPENWEBNINJA_API_KEY`),
+   and `AI_API_KEY`. A source whose key is missing is just left out.
+3. **Same page → Variables:** add `RUN_JOB_IMPORTS` with the value `true`. Copies without it skip the job.
+   If `AI_API_KEY` is a Groq key instead of Gemini, also add `AI_BASE_URL` and `AI_MODEL` here
+   (and `AI_JOBS_PER_RUN` to tag more or fewer jobs per run).
+4. Try it: **Actions → Update job listings → Run workflow**. The log says what each source saved.
+
+GitHub pauses scheduled runs in a repo that gets no pushes for 60 days. By hand, the same options work:
+`npm run import-jobs -- --quick` (only the no-limit sources) and `-- --skip-unset`.
 
 ## Checks
 

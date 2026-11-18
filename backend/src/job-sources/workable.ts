@@ -13,7 +13,7 @@ import { boardsFor } from './found-boards.js';
 const ACCOUNTS = ['huggingface', 'raspberrypi', 'everlaw'];
 
 // only the fields we use (the real response has more)
-type WorkableJob = {
+export type WorkableJob = {
   title: string;
   shortcode: string;
   employment_type: string | null;
@@ -62,7 +62,7 @@ export async function fetchWorkable(): Promise<SourceResult> {
   return boardsResult('workable', jobsByAccount.flat(), accounts.length, failed, boardInId);
 }
 
-function toImportedJob(job: WorkableJob, account: string, name: string): ImportedJob {
+export function toImportedJob(job: WorkableJob, account: string, name: string): ImportedJob {
   const location = [job.city, job.state, job.country].filter((p) => typeof p === 'string' && p.trim() !== '').join(', ') || null;
   const description = htmlToText(job.description);
   return {

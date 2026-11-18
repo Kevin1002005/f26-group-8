@@ -1,0 +1,80 @@
+# Keeps Opportunities up to date by itself: GitHub runs the job importer (backend/src/import-jobs.ts)
+# on a timer, on GitHub's own computers, so nobody has to run it by hand and it doesn't use the
+# website server's memory.
+#
+#   every 6 hours   the sources with no daily limit (company boards, GitHub lists, NSF, USAJOBS, ...)
+#   once a day      everything, Adzuna too
+#
+# Every run reads the same company boards: the ones in the repo's found-boards.json. (New boards
+# come from running npm run find-boards by hand and committing the file. If a run found boards on
+# its own, the next run, and Refresh on the website, wouldn't read them and would close their jobs.)
+#
+# It only runs in a copy of the repo where the setting RUN_JOB_IMPORTS is "true" (Settings ->
+# Secrets and variables -> Actions -> Variables), so other copies of the repo just skip it.
+# The keys it needs go in that same page, under Secrets (README.md, "Keeping jobs up to date").
+# A run can also be started by hand: Actions tab -> Update job listings -> Run workflow.
+name: Update job listings
+
+on:
+  schedule:
+    # times are in UTC (Boston is 4 or 5 hours behind). Odd minutes, because GitHub is busiest
+    # on the hour and can delay those runs
+    - cron: '17 */6 * * *'   # every 6 hours: the quick run
+    - cron: '43 10 * * *'    # once a day at 10:43 UTC (about 6 AM in Boston): the full run
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run every source (Adzuna too), not just the quick ones'
+        type: boolean
+        default: false
+
+# only read access to the code: this job never changes the repo
+permissions:
+  contents: read
+
+# never two imports at the same time (a slow one finishes before the next starts)
+concurrency:
+  group: update-jobs
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: vars.RUN_JOB_IMPORTS == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # the full run: the daily timer, or "Run workflow" with full ticked
+      FULL_RUN: ${{ github.event.schedule == '43 10 * * *' || inputs.full == true }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Import jobs
+        run: npx tsx src/import-jobs.ts --skip-unset ${{ env.FULL_RUN != 'true' && '--quick' || '' }}
+        # the keys, from the repo's Actions secrets. Only this step gets them, and GitHub hides
+        # them in the log. A missing one just leaves that source out (--skip-unset)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          USAJOBS_API_KEY: ${{ secrets.USAJOBS_API_KEY }}
+          USAJOBS_EMAIL: ${{ secrets.USAJOBS_EMAIL }}
+          JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}
+          OPENWEBNINJA_API_KEY: ${{ secrets.OPENWEBNINJA_API_KEY }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          # not secret, so they're Variables (same page, Variables tab), and only needed if the
+          # AI isn't Google's Gemini (a Groq key needs AI_BASE_URL and AI_MODEL, see ai-tags.ts)
+          AI_BASE_URL: ${{ vars.AI_BASE_URL }}
+          AI_MODEL: ${{ vars.AI_MODEL }}
+          AI_JOBS_PER_RUN: ${{ vars.AI_JOBS_PER_RUN }}

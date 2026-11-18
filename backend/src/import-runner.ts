@@ -19,6 +19,7 @@ import { fetchPrecollege } from './job-sources/precollege.js';
 import { fetchCo0oper } from './job-sources/co0oper.js';
 import { fetchVansh, followVanshLinks } from './job-sources/vanshb03.js';
 import { fetchSpeedyApply } from './job-sources/speedyapply.js';
+import { fetchWebFinds } from './job-sources/web.js';
 import { tagNewJobs } from './ai-tags.js';
 import {
   isForOurStudents, mergeSimilarJobs, jobKey, simplifyUrl, storableJob,
@@ -61,7 +62,10 @@ export const SOURCES: Source[] = [
   // hand-checked high school summer programs (precollege-finder)
   { name: 'precollege', fetchJobs: fetchPrecollege },
   // lists that collect jobs from other sites, last. GitHub lists first (no limits), then the
-  // search services. The lists overlap, so each one only adds the jobs the ones before it don't have
+  // search services. The lists overlap, so each one only adds the jobs the ones before it don't have.
+  // First of them: the jobs students found with "Search the web" (web-search.ts), each checked
+  // again on its hiring site (a company board we read directly has the same job: that copy wins)
+  { name: 'web', fetchJobs: fetchWebFinds, aggregator: true },
   { name: 'simplify', fetchJobs: fetchSimplify, aggregator: true },
   { name: 'vanshb03', fetchJobs: fetchVansh, aggregator: true, finishJobs: followVanshLinks },
   { name: 'co0oper', fetchJobs: fetchCo0oper, aggregator: true },
@@ -72,6 +76,21 @@ export const SOURCES: Source[] = [
   { name: 'adzuna', fetchJobs: fetchAdzuna, aggregator: true, keepDays: SEARCH_KEEP_DAYS },
 ];
 
+// the settings each source needs before it can run (the others need none). Without them it skips
+// itself and counts as failed, so its old jobs aren't closed (see each source's file).
+// Each inner list is one way to set it up: JSearch works with either of its two keys (jsearch.ts)
+export const KEYS_NEEDED: Partial<Record<ImportedJob['source'], string[][]>> = {
+  jsearch: [['JSEARCH_API_KEY'], ['OPENWEBNINJA_API_KEY']],
+  adzuna: [['ADZUNA_APP_ID', 'ADZUNA_APP_KEY']],
+  usajobs: [['USAJOBS_API_KEY', 'USAJOBS_EMAIL']],
+};
+
+// true if a source has what it needs to run (all the keys of at least one of its ways)
+export function keysSet(name: ImportedJob['source']): boolean {
+  const ways = KEYS_NEEDED[name];
+  return !ways || ways.some((keys) => keys.every((key) => Boolean(process.env[key])));
+}
+
 // the ones Refresh on Opportunities runs (POST /api/jobs/refresh): everything without a daily
 // limit. JSearch (about 200 requests a month) and Adzuna (a daily limit) only run from the
 // importer, so a busy demo can't use them up. USAJOBS only if its key is set (without it, it
@@ -79,7 +98,7 @@ export const SOURCES: Source[] = [
 export function refreshSources(): ImportedJob['source'][] {
   const names: ImportedJob['source'][] = [
     'greenhouse', 'lever', 'ashby', 'smartrecruiters', 'workable', 'nsf', 'precollege',
-    'simplify', 'vanshb03', 'co0oper', 'speedyapply',
+    'web', 'simplify', 'vanshb03', 'co0oper', 'speedyapply',
   ];
   if (process.env.USAJOBS_API_KEY && process.env.USAJOBS_EMAIL) names.push('usajobs');
   return names;
@@ -318,7 +337,14 @@ export async function runImport(names?: ImportedJob['source'][]): Promise<boolea
   let everythingWorked = true;
   for (const source of SOURCES) {
     if (names && !names.includes(source.name)) continue;
-    const worked = await importSource(source);
+    // a source that crashes (a bug, or a list with something we didn't expect) counts as failed,
+    // and the next sources still run: its old jobs aren't closed, because the close step never ran
+    let worked = false;
+    try {
+      worked = await importSource(source);
+    } catch (err) {
+      console.error(`${source.name}: the import crashed, so it counts as failed:`, (err as Error).message);
+    }
     if (!worked) everythingWorked = false;
   }
   await tagNewJobs();

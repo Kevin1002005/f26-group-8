@@ -22,7 +22,9 @@ export const MOST_BOARDS = 1000;
 // (a few Ashby boards have spaces, like "Lambda Labs"; the sources put it through encodeURIComponent)
 const BOARD_ID = /^[A-Za-z0-9._ -]{1,100}$/;
 export function isBoardId(id: string): boolean {
-  return BOARD_ID.test(id);
+  // not only dots (".." in an address means "the folder above", so ".." would point the request
+  // at another page of that site), and no spaces at the ends (an address can't keep those)
+  return BOARD_ID.test(id) && !/^\.+$/.test(id) && id.trim() === id;
 }
 
 function readFound(): Partial<Record<BoardSite, unknown>> {
@@ -48,7 +50,7 @@ export function boardsFor(site: BoardSite, picked: Board[]): Board[] {
   for (const board of Array.isArray(found) ? found : []) {
     if (boards.length >= MOST_BOARDS) break;
     // the file is ours, but check each entry anyway: one bad line shouldn't stop the import
-    if (typeof board?.id !== 'string' || typeof board?.name !== 'string' || !BOARD_ID.test(board.id)) continue;
+    if (typeof board?.id !== 'string' || typeof board?.name !== 'string' || !isBoardId(board.id)) continue;
     const key = board.id.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);

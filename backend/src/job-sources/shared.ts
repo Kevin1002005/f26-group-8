@@ -8,7 +8,7 @@
 // saved at once, Supabase fills a key that's missing from one row with null.
 export type ImportedJob = {
   source: 'greenhouse' | 'lever' | 'usajobs' | 'adzuna' | 'jsearch' | 'simplify' | 'ashby' | 'smartrecruiters' | 'workable'
-    | 'co0oper' | 'vanshb03' | 'speedyapply' | 'nsf' | 'precollege';
+    | 'co0oper' | 'vanshb03' | 'speedyapply' | 'nsf' | 'precollege' | 'web';
   external_id: string;          // the job's id on the outside site
   title: string;
   organization: string;
@@ -64,10 +64,11 @@ export const boardInId = (job: { external_id: string }) => job.external_id.slice
 // and crash it for everyone. (SimplifyJobs' list, the biggest, is about 13 MB today)
 const MOST_BYTES = 40 * 1024 * 1024;
 
-// Reads an answer's body as text, but stops (and throws) once it passes MOST_BYTES
-async function readCapped(res: Response): Promise<string> {
+// Reads an answer's body as text, but stops (and throws) once it passes most bytes
+// (MOST_BYTES unless the caller wants less: web-search.ts reads Gemini's answer with a 5 MB limit)
+export async function readCapped(res: Response, most = MOST_BYTES): Promise<string> {
   const declared = Number(res.headers.get('content-length'));
-  if (declared > MOST_BYTES) throw new Error('the answer is too big');
+  if (declared > most) throw new Error('the answer is too big');
   if (!res.body) return '';
   const reader = res.body.getReader();
   const parts: Uint8Array[] = [];
@@ -76,7 +77,7 @@ async function readCapped(res: Response): Promise<string> {
     const { done, value } = await reader.read();
     if (done) break;
     total += value.byteLength;
-    if (total > MOST_BYTES) {
+    if (total > most) {
       await reader.cancel();
       throw new Error('the answer is too big');
     }
@@ -87,10 +88,11 @@ async function readCapped(res: Response): Promise<string> {
 
 // GET a URL and read the JSON. Throws if the site is down, too slow, answers with an
 // error code, or sends more than MOST_BYTES, so the caller's try/catch counts it as a failed fetch.
-export async function fetchJson(url: string, headers: Record<string, string> = {}): Promise<unknown> {
+// waitMs: how long to wait before giving up (web search waits less, so a student isn't left waiting)
+export async function fetchJson(url: string, headers: Record<string, string> = {}, waitMs = 60_000): Promise<unknown> {
   // give up after 60 seconds so one slow site can't hang the whole import.
   // (20 seconds was too short: big boards like Veeva's, with 800+ jobs, take a while to download)
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(60_000) });
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(waitMs) });
   if (!res.ok) {
     // only the status code, not the URL: some URLs (Adzuna's) have our API key in them,
     // and this message gets printed in the terminal
@@ -251,8 +253,12 @@ export function htmlToText(html: string | null | undefined, { escaped = false } 
 
 // true only for a normal web link. jobs.sql only allows http:// and https:// in apply_url,
 // so a job without one is skipped instead of making the whole save fail.
+// At most 500 letters too: a student's tracker keeps a job's link, and the tracker only takes
+// links up to 500 (applications.sql), so a longer one would make "Save" fail for that job.
+// (A real job link is far shorter; one that long is almost always tracking junk, or a broken list)
+export const MOST_LINK_LETTERS = 500;
 export function isWebLink(url: unknown): url is string {
-  return typeof url === 'string' && /^https?:\/\//i.test(url);
+  return typeof url === 'string' && url.length <= MOST_LINK_LETTERS && /^https?:\/\//i.test(url);
 }
 
 // "<ul><li>Python</li><li>SQL</li></ul>" -> ["Python", "SQL"]
@@ -483,7 +489,13 @@ export function simplifyUrl(url: string): string {
     const u = new URL(url);
     const kept = [...u.searchParams].filter(([name]) => !TRACKING_PARAMS.test(name)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     const query = kept.length > 0 ? '?' + new URLSearchParams(kept).toString() : '';
-    return ((u.host + u.pathname).replace(/\/+$/, '') + query).toLowerCase();
+    // the slashes on the end are taken off one by one (a pattern like /\/+$/ gets very slow on a
+    // link with thousands of slashes in a row, and this runs for every saved link on every import)
+    let path = u.host + u.pathname;
+    let end = path.length;
+    while (end > 0 && path[end - 1] === '/') end--;
+    path = path.slice(0, end);
+    return (path + query).toLowerCase();
   } catch {
     return url.toLowerCase();
   }

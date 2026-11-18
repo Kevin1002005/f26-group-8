@@ -6,6 +6,7 @@ import resumesRouter from './resumes.js';
 import accountRouter from './account.js';
 import studentProfileRouter from './student-profile.js';
 import feedRouter from './feed.js';
+import webSearchRouter from './web-search.js';
 
 const app: Express = express();
 // by default Express adds "X-Powered-By: Express" to every answer, which tells attackers
@@ -68,6 +69,9 @@ app.use('/api/feed', feedRouter);
 
 // Download my data, and Delete my account (the Settings page, and the Privacy Policy)
 app.use('/api/account', accountRouter);
+
+// "Search the web" on Opportunities: an AI looks for more internships on the web (web-search.ts)
+app.use('/api/web-search', webSearchRouter);
 
 // catch-all error handler: has to come after all the routes so it catches their errors.
 // Express knows this is an error handler because it takes 4 arguments (err comes first),

@@ -18,7 +18,7 @@ const BOARDS = [
 ];
 
 // only the fields we use (the real response has more)
-type GreenhouseJob = {
+export type GreenhouseJob = {
   id: number;
   title: string;
   company_name: string | null;
@@ -101,7 +101,7 @@ export async function fetchGreenhouse(): Promise<SourceResult> {
 
 
 // turns one Greenhouse job into one row for our jobs table
-function toImportedJob(job: GreenhouseJob, board: string): ImportedJob {
+export function toImportedJob(job: GreenhouseJob, board: string): ImportedJob {
   const location = job.location?.name?.trim() || null;
 
   return {

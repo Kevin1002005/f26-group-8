@@ -21,7 +21,7 @@ const BOARDS = [
 ];
 
 // only the fields we use (the real response has more)
-type AshbyJob = {
+export type AshbyJob = {
   id: string;
   title: string;
   employmentType: string | null;          // 'Intern', 'FullTime', ...
@@ -72,7 +72,7 @@ export async function fetchAshby(): Promise<SourceResult> {
   return boardsResult('ashby', jobsByBoard.flat(), boards.length, failed, boardInId);
 }
 
-function toImportedJob(job: AshbyJob, board: string, name: string): ImportedJob {
+export function toImportedJob(job: AshbyJob, board: string, name: string): ImportedJob {
   const location = job.location?.trim() || null;
   const pay = job.compensation?.compensationTierSummary?.trim() || null;
   const description = job.descriptionPlain?.trim() || null;

@@ -81,6 +81,8 @@ const sourceNames = {
   vanshb03: "the vanshb03 list",
   co0oper: "the CO0Oper list",
   speedyapply: "SpeedyApply",
+  // found by "Search the web" (WebSearch below), then checked on its hiring site
+  web: "AI web search",
 };
 
 // The tab names as the backend writes them (the other way round from typeNames)
@@ -447,9 +449,10 @@ function CloseIcon() {
 // needed here because React's rules check that a ref is never read while
 // the page is being drawn, and keeping it separate from the other props
 // makes that clear.
-function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApply, onHide }) {
-  // A unique id for the title, so the dialog can be named by it (WCAG)
-  const titleId = "discovery-dialog-title-" + opportunity.id;
+function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApply, onHide, idPrefix }) {
+  // A unique id for the title, so the dialog can be named by it (WCAG). idPrefix keeps it unique
+  // when the same job is in two tables (the main list and "Found on the web")
+  const titleId = (idPrefix ?? "discovery-dialog-title-") + opportunity.id;
   // true once the deadline has gone by: Apply then turns off (see the bottom)
   const closed = isPastDeadline(opportunity.deadline);
   // When it was posted (see postedOf above)
@@ -859,6 +862,7 @@ function OpportunityRow(props) {
           applied={applied}
           onApply={apply}
           onHide={props.onHide}
+          idPrefix={props.idPrefix}
         />
       </td>
     </tr>
@@ -1221,6 +1225,128 @@ function ProfileTip() {
   );
 }
 
+// "Search the web": the box under the search bar, once something is typed. An
+// AI (Google's Gemini) looks for more internships, co-ops, research positions,
+// and programs on the web (POST /api/web-search, backend/src/web-search.ts).
+// Only the words in the search bar are sent, never anything from the profile,
+// and the box says so every time (the Data Policy says the same). Every job it
+// finds is checked on its hiring site first, and saved for everyone.
+// props.search is what's typed, props.onFound reloads the list (new jobs are in
+// it now), props.onHide is "Hide jobs from this company", and props.hidden is
+// the list of companies hidden so far (their jobs aren't shown here either)
+function WebSearch(props) {
+  // "searching" while it runs, "" otherwise
+  const [searching, setSearching] = useState(false);
+  // what it says after (read out by screen readers: role="status")
+  const [message, setMessage] = useState("");
+  // what it found: { words (what was searched), list } or null before the first search
+  const [found, setFound] = useState(null);
+
+  const words = props.search.trim();
+  // nothing typed and nothing found yet: no box (it only helps a search)
+  if (words.replace(/[^\p{L}\p{N}]/gu, "").length < 2 && !found) return null;
+
+  // The jobs found, minus companies hidden with "Hide jobs from this company"
+  // (so hiding one in a pop-up takes it out of this table right away too)
+  const hiddenNames = (props.hidden ?? []).map((name) => name.toLowerCase());
+  const shown = found ? found.list.filter((opportunity) => !hiddenNames.includes(String(opportunity.organization).toLowerCase())) : [];
+
+  async function searchTheWeb() {
+    setSearching(true);
+    setMessage("Searching the web. This usually takes 10 to 30 seconds...");
+    try {
+      const body = await api("/web-search", { method: "POST", body: JSON.stringify({ q: words }) });
+      const list = Array.isArray(body.jobs) ? body.jobs.map(toOpportunity) : [];
+      setFound({ words, list });
+      if (list.length === 0) {
+        setMessage("The web search didn't find any open postings it could check. Try other words.");
+      } else {
+        const added = body.added ?? 0;
+        setMessage(
+          "Found " + list.length + " open " + (list.length === 1 ? "posting" : "postings") +
+          (added > 0 ? ", " + added + " of them new to ScoutSearch (now on the list for everyone)." : ", all already on ScoutSearch.")
+        );
+        // the new ones are in the main list now too (if they match its filters)
+        if (added > 0) props.onFound();
+      }
+    } catch (error) {
+      if (error.status === 401) {
+        // the login ran out while the page was open
+        setMessage("Your login has run out. Log in again, then search once more.");
+      } else if (error.status === 400 || error.status === 429 || error.status === 503) {
+        // the backend's own words ("You've used today's 10 web searches...")
+        setMessage(error.message || "Web search isn't available right now. Try again later.");
+      } else {
+        // no answer at all, or the server broke: its words ("Database error") wouldn't help
+        setMessage("Something went wrong with the web search. Try again in a minute.");
+      }
+    }
+    setSearching(false);
+  }
+
+  return (
+    <>
+      {/* The box: what it does, what's sent, and the button */}
+      <div className="discovery-web">
+        <div className="discovery-web-words">
+          <p className="discovery-web-title">
+            {words ? "Not finding it? Search the web for “" + words + "”" : "Search the web"}
+          </p>
+          {/* Said every time, so nobody sends words without knowing where they go */}
+          <p className="discovery-web-note">
+            Only these search words go to Google's Gemini AI, never your profile or resume. Google may use them to
+            improve its products, so don't type personal details.
+          </p>
+        </div>
+        <button type="button" className="discovery-outline-button" onClick={searchTheWeb} disabled={searching || !words}>
+          {searching ? "Searching..." : "Search the web"}
+        </button>
+      </div>
+      <p className="discovery-web-message" role="status">
+        {message}
+      </p>
+
+      {/* What it found, in the same table as the main list */}
+      {shown.length > 0 && (
+        <section className="discovery-web-results" aria-labelledby="discovery-web-results-title">
+          <h2 id="discovery-web-results-title" className="discovery-web-results-title">
+            Found on the web for {"“" + found.words + "”"}
+          </h2>
+          <div className="discovery-table-box">
+            <table className="discovery-table">
+              <caption className="sr-only">Opportunities found on the web</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Role</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Location</th>
+                  <th scope="col">Pay</th>
+                  <th scope="col">Apply by</th>
+                  <th scope="col">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((opportunity) => (
+                  <OpportunityRow
+                    key={opportunity.id}
+                    opportunity={opportunity}
+                    openOnArrival={false}
+                    onOpened={() => {}}
+                    onHide={props.onHide}
+                    idPrefix="discovery-web-dialog-title-"
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
 // Waits this many milliseconds (for checking how Refresh is going)
 function wait(ms) {
   return new Promise((done) => setTimeout(done, ms));
@@ -1500,6 +1626,8 @@ function Discovery() {
           boxes, the tabs and Sort, the filters, then the table */}
       <main className="discovery-page">
         <DiscoveryHeader search={search} setSearch={setSearch} />
+        {/* "Search the web" (only once something is typed in the search bar) */}
+        <WebSearch search={search} onFound={() => setTries((count) => count + 1)} onHide={hideCompany} hidden={hidden} />
         <SummaryBoxes total={results?.total ?? 0} dueSoon={dueSoon} trackerCount={trackerCount} loading={results === null} />
 
         {/* The tabs on the left; Sort and Refresh on the right */}

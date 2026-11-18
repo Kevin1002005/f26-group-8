@@ -1,7 +1,7 @@
 // DataPolicy.jsx is the Privacy Policy (yoursite.com/privacy-policy).
 // (The file is named so that ad and cookie-banner blockers leave it alone: their lists block
 // files named like "PrivacyPolicy.js" or "CookiePolicy.js", which would stop the page loading.)
-// Everything it says was checked against what the site really does (2026-11-16):
+// Everything it says was checked against what the site really does (2026-11-16, and the AI section again 2026-11-17):
 // no analytics, no ads, no trackers, no cookies. The facts it's built from (who runs
 // the site, the contact email, the services we use) are in data/legal.js; anything
 // not decided yet shows as a highlighted [To fill in: ...].
@@ -94,7 +94,8 @@ const sections = [
     body: (
       <>
         <p>
-          ScoutSearch doesn't use AI to process your information, and your information isn't used to train AI.
+          ScoutSearch doesn't use AI on your profile, resume, tracker, or Feed posts, and none of them is sent to
+          an AI service or used to train AI.
         </p>
         <p>
           We do use a free AI model (Google's Gemini) to read <strong>public job posts</strong>: it tags which
@@ -103,8 +104,17 @@ const sections = [
           about you is sent: matching jobs to your profile happens on our own server.
         </p>
         <p>
-          If we ever add an AI feature that uses your information (like suggestions for your resume), we'll
-          update this policy first and say exactly what's sent and to whom.
+          <strong>"Search the web"</strong> on Opportunities is the one time words of yours go to an AI, and only
+          when you press it. The words you typed in the search bar are sent to Google's Gemini, which looks for
+          matching postings on the web. Nothing else is sent: not your profile, resume, name, or email. Because we
+          use Gemini's free service, Google may use those search words to improve its products, and its reviewers
+          may read them, so don't type personal details in the search bar. The postings it finds are checked on
+          the hiring site, then added to ScoutSearch for everyone, without saying who searched. We use your profile
+          only on our own server, to show how well each one fits you.
+        </p>
+        <p>
+          If we ever add an AI feature that uses more of your information (like suggestions for your resume),
+          we'll update this policy first and say exactly what's sent and to whom.
         </p>
       </>
     ),
@@ -119,7 +129,8 @@ const sections = [
           {services.map((service) => (
             <li key={service.name}>
               <strong>{service.name}:</strong> {service.what} Servers in: <Fill value={service.region} what={service.name + "'s region"} />.
-              {" "}<a href={service.link} target="_blank" rel="noopener noreferrer">{service.name}'s privacy policy (opens in a new tab)</a>
+              {/* most link to the service's privacy policy; one can name its own page (linkText) */}
+              {" "}<a href={service.link} target="_blank" rel="noopener noreferrer">{service.linkText ?? service.name + "'s privacy policy"} (opens in a new tab)</a>
             </li>
           ))}
         </ul>

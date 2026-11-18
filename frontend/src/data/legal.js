@@ -11,9 +11,10 @@
 
 export const legal = {
   // Bump this (to today's date) whenever a policy really changes
-  policyVersion: "2026-11-16",
+  // (2026-11-17: "Search the web" on Opportunities sends the search words to Google's Gemini)
+  policyVersion: "2026-11-17",
   // The day the policies take effect, like "November 20, 2026"
-  effectiveDate: "November 16, 2026",
+  effectiveDate: "November 17, 2026",
   // Who runs ScoutSearch and is responsible for the data: a person, a student team, or an
   // organization (for example, whether it's Oasis @ Northeastern or the team members)
   operator: "the ScoutSearch team, a student team formed in Oasis at Northeastern University",
@@ -53,6 +54,16 @@ export const services = [
     what: "Only if you choose \"Continue with Google\": Google confirms who you are and tells Supabase your name, email, and profile picture.",
     region: "Google's servers worldwide",
     link: "https://policies.google.com/privacy",
+  },
+  {
+    // backend/src/web-search.ts: only the search words are sent, on the free Gemini key
+    name: "Google (Gemini AI)",
+    what: "Only if you press \"Search the web\" on Opportunities: the words in the search bar, so it can look for matching postings. Not your profile, resume, name, or email. On the free Gemini service we use, Google may use those words to improve its products, and its reviewers may read them.",
+    region: "Google's servers worldwide",
+    link: "https://ai.google.dev/gemini-api/terms",
+    // the page above is the Gemini API's terms (they say how Google uses what's sent on the free
+    // service), not a privacy policy, so the link says that instead of "...'s privacy policy"
+    linkText: "Gemini API terms, which say how Google uses what's sent",
   },
 ];
 

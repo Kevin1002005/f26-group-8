@@ -8101,6 +8101,67 @@ textarea.feed-composer-input {
   color: var(--muted);                    /* gray-blue (7.4:1 on the page) */
 }
 
+/* "Search the web": the box under the search bar, once something is typed. The words on the
+   left, the button on the right (they stack on a phone, since the row wraps) */
+.discovery-web {
+  display: flex;
+  flex-wrap: wrap;                        /* the button drops below the words on a narrow screen */
+  align-items: center;
+  justify-content: space-between;         /* words left, button right */
+  gap: 12px 20px;                         /* space between them: down, across */
+  padding: 14px 18px;                     /* space inside: top/bottom, left/right */
+  background-color: var(--card);          /* the off-white of the other boxes */
+  border: 1px solid var(--line);          /* thin soft blue edge */
+  border-radius: var(--radius-box);       /* the same rounded corners as the other boxes */
+}
+
+/* the words: "Not finding it?" and the line under it */
+.discovery-web-words {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;                           /* lets long words wrap instead of pushing the box wider */
+}
+
+/* "Not finding it? Search the web for "..."" */
+.discovery-web-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;                       /* a bit bolder than the line under it */
+  color: var(--text);                     /* navy */
+  overflow-wrap: anywhere;                /* a very long search still wraps */
+}
+
+/* what gets sent, every time (the Data Policy says the same) */
+.discovery-web-note {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);                    /* gray-blue (7.4:1 on the box) */
+}
+
+/* "Searching the web..." and what it found (role="status") */
+.discovery-web-message {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);                    /* gray-blue, like Refresh's message */
+}
+
+/* The jobs it found: a heading, then the same table as the main list */
+.discovery-web-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;                              /* space between the heading and the table */
+}
+
+/* "Found on the web for "..."" */
+.discovery-web-results-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);                     /* navy */
+  overflow-wrap: anywhere;                /* a very long search still wraps */
+}
+
 /* "86% fit" under a job's company */
 .discovery-fit {
   display: inline-block;

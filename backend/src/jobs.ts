@@ -18,7 +18,7 @@ const router = express.Router();
 
 // the columns we send to the frontend: the contract's Job, plus source and status.
 // external_id and last_seen_at are only for the importer, so they stay out.
-const JOB_COLUMNS =
+export const JOB_COLUMNS =
   'id, title, organization, type, level, location, setting, paid, pay_text, deadline, ' +
   'description, requirements, apply_url, posted_by, created_at, posted_at, source, status';
 
@@ -524,10 +524,22 @@ async function readRefresh(): Promise<RefreshRow | null | undefined> {
 router.get('/refresh', authenticateToken, async (req, res) => {
   const row = await readRefresh();
   if (row === undefined) return res.status(500).json({ error: 'Database error' });
-  res.json({ refresh: refreshInfo(row) });
+  const info = refreshInfo(row);
+  // still going here, even if it started over 30 minutes ago (refreshRunning, below)
+  res.json({ refresh: { ...info, running: info.running || refreshRunning } });
 });
 
+// true while this server is running a Refresh import. The 30-minute turn only limits how often one
+// STARTS; a slow one (many boards, slow sites) could still be going 30 minutes later, and two at
+// once would hold twice the memory. So a new turn isn't taken while one is still running here
+let refreshRunning = false;
+
 router.post('/refresh', authenticateToken, async (req, res) => {
+  if (refreshRunning) {
+    const current = await readRefresh();
+    if (current === undefined) return res.status(500).json({ error: 'Database error' });
+    return res.json({ started: false, refresh: { ...refreshInfo(current), running: true } });
+  }
   const now = new Date();
   // "take the turn": one update that only matches if the last check started over 30 minutes
   // ago. Two people pressing Refresh at the same moment can't both get it
@@ -570,11 +582,15 @@ router.post('/refresh', authenticateToken, async (req, res) => {
       .eq('started_at', row!.started_at);
     if (finishError) console.error('refresh finish failed:', finishError);
   };
+  refreshRunning = true;
   runImport(refreshSources())
     .then((worked) => finish(worked))
     .catch((err) => {
       console.error('refresh import failed:', err);
       return finish(false);
+    })
+    .finally(() => {
+      refreshRunning = false;
     });
   res.status(202).json({ started: true, refresh: refreshInfo(row) });
 });

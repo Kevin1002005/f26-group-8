@@ -19,7 +19,7 @@ const SITES = [
 ];
 
 // only the fields we use (the real response has more)
-type LeverJob = {
+export type LeverJob = {
   id: string;
   text: string;                  // the job title
   hostedUrl: string;             // the posting's page on jobs.lever.co
@@ -91,7 +91,7 @@ export async function fetchLever(): Promise<SourceResult> {
 
 
 // turns one Lever job into one row for our jobs table
-function toImportedJob(job: LeverJob, organization: string): ImportedJob {
+export function toImportedJob(job: LeverJob, organization: string): ImportedJob {
   // the section whose heading mentions requirements or qualifications, if there is one
   const requirementsList = job.lists?.find((list) => /require|qualif/i.test(list.text));
 

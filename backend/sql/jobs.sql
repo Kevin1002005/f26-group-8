@@ -41,7 +41,7 @@ create table if not exists public.jobs (
   -- new columns for JB1a
   -- (if you add a source here, also add it to step 4 below, which updates the existing table)
   source        text not null check (source in ('employer', 'greenhouse', 'lever', 'usajobs', 'adzuna', 'jsearch', 'simplify', 'ashby', 'smartrecruiters', 'workable',
-    'nsf', 'precollege', 'vanshb03', 'co0oper', 'speedyapply')),
+    'nsf', 'precollege', 'vanshb03', 'co0oper', 'speedyapply', 'web')),
   external_id   text,         -- the job's id on the outside site. null for employer jobs
   -- defaults to 'pending' so a job is hidden unless something deliberately opens it
   status        text not null default 'pending' check (status in ('pending', 'open', 'closed')),
@@ -83,7 +83,7 @@ alter table public.jobs add constraint jobs_apply_url_is_web_link
 
 -- 4. the list of allowed sources (with 'jsearch' added, then on 2026-11-16 'simplify', 'ashby',
 -- 'smartrecruiters', and 'workable', then on 2026-11-17 'nsf', 'precollege', 'vanshb03', 'co0oper',
--- and 'speedyapply').
+-- and 'speedyapply', and later that day 'web': jobs found with "Search the web" on Opportunities).
 -- the table already exists, so the new list inside "create table" above isn't applied to it
 -- (see the note at the top). This replaces the old rule on the existing table.
 -- jobs_source_check is the name Postgres gave the "check (source in ...)" rule above
@@ -91,7 +91,7 @@ alter table public.jobs add constraint jobs_apply_url_is_web_link
 alter table public.jobs drop constraint if exists jobs_source_check;
 alter table public.jobs add constraint jobs_source_check
   check (source in ('employer', 'greenhouse', 'lever', 'usajobs', 'adzuna', 'jsearch', 'simplify', 'ashby', 'smartrecruiters', 'workable',
-  'nsf', 'precollege', 'vanshb03', 'co0oper', 'speedyapply'));
+  'nsf', 'precollege', 'vanshb03', 'co0oper', 'speedyapply', 'web'));
 
 
 -- 5. only jobs for high schoolers and college undergrads.

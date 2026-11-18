@@ -6,13 +6,19 @@
 //   | <a href="https://about.meta.com"><strong>Meta</strong></a> | Research Intern | Burlingame, CA | $50/hr | <a href="https://www.metacareers.com/jobs/1"><img src="..." alt="Apply"/></a> | 6d |
 // It has no ids, so the link is the id. "6d" (its Age column) means it was posted 6 days ago.
 // (Its internship README is US-only. Its other pages, for new grads and other countries, aren't read.)
+// Its 2027-AI-College-Jobs list (AI, machine learning, and data science) has the same tables, so
+// both READMEs are read (added 2026-11-17)
 // It collects jobs from other sites, so it's an "aggregator" (import-runner.ts).
 import {
   fetchText, guessSetting, guessType, htmlToText, isWebLink, simplifyUrl, toTime,
   type ImportedJob, type SourceResult,
 } from './shared.js';
 
-const README_URL = 'https://raw.githubusercontent.com/speedyapply/2027-SWE-College-Jobs/main/README.md';
+// each README, and what its list is about (for the job's description)
+const READMES = [
+  { url: 'https://raw.githubusercontent.com/speedyapply/2027-SWE-College-Jobs/main/README.md', about: 'software engineering' },
+  { url: 'https://raw.githubusercontent.com/speedyapply/2027-AI-College-Jobs/main/README.md', about: 'AI, machine learning, and data science' },
+];
 
 // Every table in a README: its column names (lower case), and each row as
 // { column name: what's in that cell }.
@@ -46,11 +52,26 @@ export function tablesIn(markdown: string): Table[] {
 }
 
 export async function fetchSpeedyApply(): Promise<SourceResult> {
+  const jobs: ImportedJob[] = [];
+  let allFetchesWorked = true;
+  // each README on its own: one failing still keeps the other's jobs, but nothing gets closed
+  for (const { url, about } of READMES) {
+    const result = await readReadme(url, about);
+    jobs.push(...result.jobs);
+    if (!result.allFetchesWorked) allFetchesWorked = false;
+  }
+  return { jobs, allFetchesWorked };
+}
+
+// the jobs in one of speedyapply's READMEs
+async function readReadme(url: string, about: string): Promise<SourceResult> {
+  // which list it is, for the log ("2027-AI-College-Jobs")
+  const list = url.split('/')[4];
   let readme: string;
   try {
-    readme = await fetchText(README_URL);
+    readme = await fetchText(url);
   } catch (err) {
-    console.error('speedyapply failed:', err);
+    console.error(`speedyapply ${list} failed:`, err);
     return { jobs: [], allFetchesWorked: false };
   }
 
@@ -62,30 +83,30 @@ export async function fetchSpeedyApply(): Promise<SourceResult> {
     // a job table without the columns we need: they renamed one. Its jobs can't be read, so
     // say it failed (otherwise every job in that table would be closed)
     if (!table.columns.includes('position') || !table.columns.includes('posting')) {
-      console.error(`speedyapply: a table has columns we don't know (${table.columns.join(', ')})`);
+      console.error(`speedyapply ${list}: a table has columns we don't know (${table.columns.join(', ')})`);
       allFetchesWorked = false;
       continue;
     }
     for (const row of table.rows) {
       // one row that can't be read is skipped on its own (see greenhouse.ts)
       try {
-        const job = toImportedJob(row);
+        const job = toImportedJob(row, about);
         if (job) jobs.push(job);
       } catch {
-        console.error('speedyapply: skipped one row that couldn\'t be read');
+        console.error(`speedyapply ${list}: skipped one row that couldn't be read`);
       }
     }
   }
   if (jobs.length === 0) {
     // a README with no rows at all probably means they changed how it looks, not that every
     // internship is gone: say it failed, so the importer doesn't close all of them
-    console.error('speedyapply failed: no job rows found in its README');
+    console.error(`speedyapply ${list} failed: no job rows found in its README`);
     return { jobs: [], allFetchesWorked: false };
   }
   return { jobs, allFetchesWorked };
 }
 
-function toImportedJob(row: Record<string, string>): ImportedJob | null {
+function toImportedJob(row: Record<string, string>, about: string): ImportedJob | null {
   const organization = htmlToText(row.company);
   const title = htmlToText(row.position);
   // the link is in the Apply button: <a href="https://..."><img ...></a>.
@@ -117,7 +138,7 @@ function toImportedJob(row: Record<string, string>): ImportedJob | null {
     paid: salary && /\$\s?\d/.test(salary) ? true : null,   // a $ amount means it's paid
     pay_text: salary && /\$\s?\d/.test(salary) ? salary : null,
     deadline: null,
-    description: 'Listed on the SpeedyApply software engineering internship list.',
+    description: `Listed on the SpeedyApply ${about} internship list.`,
     requirements: [],
     apply_url: link,
     posted_at: postedAt,

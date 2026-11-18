@@ -25,6 +25,9 @@ import {
   type ImportedJob, type SourceResult,
 } from './job-sources/shared.js';
 
+// how long a search service's job stays listed after it last showed up in a search (see keepDays)
+const SEARCH_KEEP_DAYS = 14;
+
 // every source we import from, in this order.
 //
 // aggregator: true is for sites that collect jobs from OTHER sites (JSearch gets them from
@@ -33,11 +36,16 @@ import {
 // that's also why aggregators go LAST in this list: the direct sources save first.
 // finishJobs is for a source that needs one more step once the duplicates are gone
 // (vanshb03 follows its short links then, so it never follows the links of jobs we won't save)
+// keepDays is for search services (JSearch, Adzuna): each search only sends back its top results,
+// so a job missing from today's answer is usually still open, just pushed down by newer ones.
+// Their jobs are only closed once they haven't come back for keepDays days. (Company boards and
+// the GitHub lists send their whole list, so a missing job there really is gone: closed right away)
 type Source = {
   name: ImportedJob['source'];
   fetchJobs: () => Promise<SourceResult>;
   aggregator?: boolean;
   finishJobs?: (jobs: ImportedJob[]) => Promise<ImportedJob[]>;
+  keepDays?: number;
 };
 export const SOURCES: Source[] = [
   // company job boards (no key)
@@ -59,9 +67,9 @@ export const SOURCES: Source[] = [
   { name: 'co0oper', fetchJobs: fetchCo0oper, aggregator: true },
   { name: 'speedyapply', fetchJobs: fetchSpeedyApply, aggregator: true },
   // skips itself (and says so) if JSEARCH_API_KEY isn't in secrets.env
-  { name: 'jsearch', fetchJobs: fetchJSearch, aggregator: true },
+  { name: 'jsearch', fetchJobs: fetchJSearch, aggregator: true, keepDays: SEARCH_KEEP_DAYS },
   // skips itself (and says so) without ADZUNA_APP_ID and ADZUNA_APP_KEY
-  { name: 'adzuna', fetchJobs: fetchAdzuna, aggregator: true },
+  { name: 'adzuna', fetchJobs: fetchAdzuna, aggregator: true, keepDays: SEARCH_KEEP_DAYS },
 ];
 
 // the ones Refresh on Opportunities runs (POST /api/jobs/refresh): everything without a daily
@@ -105,9 +113,34 @@ async function jobsFromOtherSources(name: string): Promise<Set<string> | null> {
 }
 
 
+// For a search service (keepDays): the ids of its open jobs that weren't in this run and that
+// another source has (same company + title, or same link: taken). null if the database call fails
+async function olderCopiesOf(name: string, runStartedAt: string, taken: Set<string>): Promise<string[] | null> {
+  const ids: string[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('jobs')
+      .select('id, organization, title, apply_url')
+      .eq('source', name)
+      .eq('status', 'open')
+      .lt('last_seen_at', runStartedAt)
+      .order('id')
+      .range(from, from + 999);
+    if (error) {
+      console.error(`${name}: reading its older jobs failed`, error);
+      return null;
+    }
+    for (const job of data) {
+      if (taken.has(jobKey(job)) || (job.apply_url && taken.has(simplifyUrl(job.apply_url)))) ids.push(job.id);
+    }
+    if (data.length < 1000) return ids;
+  }
+}
+
+
 // JB2b, for one source: fetch -> drop duplicate ids -> save -> close jobs the source took down.
 // returns false if something went wrong, so we can report it at the end
-async function importSource({ name, fetchJobs, aggregator, finishJobs }: Source): Promise<boolean> {
+async function importSource({ name, fetchJobs, aggregator, finishJobs, keepDays }: Source): Promise<boolean> {
   // every row saved in this run gets this exact time as last_seen_at.
   // afterwards, an open job from this source with an OLDER last_seen_at wasn't in
   // today's list, which means the company took it down.
@@ -198,27 +231,83 @@ async function importSource({ name, fetchJobs, aggregator, finishJobs }: Source)
     }
   }
 
+  // a search service's older copy of a job that another source has now (step 3 skipped it) is
+  // closed right away, not after keepDays, so the same job isn't listed twice
+  if (keepDays && taken) {
+    const copies = await olderCopiesOf(name, runStartedAt, taken);
+    if (copies === null) return false;
+    for (let from = 0; from < copies.length; from += 100) {
+      const { error } = await supabase.from('jobs').update({ status: 'closed' }).in('id', copies.slice(from, from + 100));
+      if (error) {
+        console.error(`${name}: closing copies of other sources' jobs failed`, error);
+        return false;
+      }
+    }
+    if (copies.length > 0) console.log(`${name}: closed ${copies.length} older copies of jobs another source has`);
+  }
+
   if (!allFetchesWorked) {
     console.log(`${name}: saved ${rows.length} jobs. Some companies failed, so no old jobs were closed.`);
     return false;
   }
 
-  // 5. close this source's open jobs that weren't in today's list
-  const { data: closed, error } = await supabase
-    .from('jobs')
-    .update({ status: 'closed' })
-    .eq('source', name)
-    .eq('status', 'open')
-    .lt('last_seen_at', runStartedAt)
-    .select('id');   // ask for the closed rows back, just so we can count them
+  // 5. close this source's open jobs that weren't in today's list (for a search service, the
+  // ones that haven't come back for keepDays days)
+  const closeBefore = keepDays
+    ? new Date(Date.parse(runStartedAt) - keepDays * 24 * 60 * 60 * 1000).toISOString()
+    : runStartedAt;
+  const closed = await closeOldJobs(name, closeBefore, result.keepOpen);
+  if (closed === null) return false;
 
-  if (error) {
-    console.error(`${name}: closing old jobs failed`, error);
-    return false;
-  }
-
-  console.log(`${name}: saved ${rows.length} jobs, closed ${closed.length} that are gone`);
+  console.log(`${name}: saved ${rows.length} jobs, closed ${closed} that are gone`);
   return true;
+}
+
+// Closes a source's open jobs last seen before closeBefore, and gives back how many (null if the
+// database call fails). keepOpen (see SourceResult in shared.ts): the jobs from company boards that
+// failed this time are left open, so those are looked at one by one first
+async function closeOldJobs(name: string, closeBefore: string, keepOpen?: SourceResult['keepOpen']): Promise<number | null> {
+  if (!keepOpen) {
+    const { data: closed, error } = await supabase
+      .from('jobs')
+      .update({ status: 'closed' })
+      .eq('source', name)
+      .eq('status', 'open')
+      .lt('last_seen_at', closeBefore)
+      .select('id');   // ask for the closed rows back, just so we can count them
+    if (error) {
+      console.error(`${name}: closing old jobs failed`, error);
+      return null;
+    }
+    return closed.length;
+  }
+  // read every old open job first (1000 at a time), then close the ones not kept open
+  const ids: string[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('jobs')
+      .select('id, external_id, apply_url')
+      .eq('source', name)
+      .eq('status', 'open')
+      .lt('last_seen_at', closeBefore)
+      .order('id')
+      .range(from, from + 999);
+    if (error) {
+      console.error(`${name}: reading old jobs failed`, error);
+      return null;
+    }
+    for (const job of data) if (!keepOpen(job)) ids.push(job.id);
+    if (data.length < 1000) break;
+  }
+  // 100 ids per request, so the address doesn't get too long
+  for (let from = 0; from < ids.length; from += 100) {
+    const { error } = await supabase.from('jobs').update({ status: 'closed' }).in('id', ids.slice(from, from + 100));
+    if (error) {
+      console.error(`${name}: closing old jobs failed`, error);
+      return null;
+    }
+  }
+  return ids.length;
 }
 
 

@@ -9,8 +9,10 @@
 import express from 'express';
 import { supabase } from './db.js';
 import { authenticateToken } from './middleware.js';
-import { fitFor, mentions, studentFrom } from './fit.js';
+import { fitFor, fitsMajor, mentions, studentFrom, RELATED_MAJORS, type Student } from './fit.js';
 import { refreshSources, runImport } from './import-runner.js';
+import { closestMiles, findPlace, nameKey, placesIn, statesIn, STATES, type Place, type Where } from './places.js';
+import { buildIndex, jobsMentioning, type WordIndex } from './word-index.js';
 
 const router = express.Router();
 
@@ -148,38 +150,51 @@ router.get('/', async (req, res) => {
 // &exclude=      words it must NOT mention ("phd,us citizen")
 // &posted=       day | week | month (when the company posted it)
 // &deadline=     has (it has one) | soon (due in the next 2 weeks)
-// &location=     a city or state, like "Boston" or "CA"
+// &location=     a city or state, like "Worcester", "Boston, MA", or "CA" (places.ts finds it on the map)
+// &within=       10 | 25 (the default) | 50 | 100: miles from that city
 // &hide=         a company to leave out (repeat it for more: &hide=A&hide=B)
 // &major=only    only jobs that fit your major (from your profile)
+//       =related your major, or a field next to it (RELATED_MAJORS in fit.ts)
 // &sort=         newest (the default) | fit | deadline | company
 // &page=         1, 2, 3... (50 jobs a page)
-// -> { jobs: [each job, plus fit: { score, reasons }], total, more, major }
+// -> { jobs: [each job, plus fit: { score, reasons }], total, more, major,
+//      near: where &location= was found ({ city: "Worcester, MA", within: 25 } or { state: "Massachusetts" }),
+//            or null (no location, or one we couldn't find: then it matches the words, the old way),
+//      suggestions: when fewer than 10 jobs match, ways to see more (see pickJobs) }
 
-// How long the list of open jobs is kept before asking the database again. A minute, so a
-// student changing filters doesn't load thousands of jobs every time. (Tests set it to 0)
-const CACHE_MS = Number(process.env.JOBS_CACHE_SECONDS ?? 60) * 1000;
+// How long the list of open jobs is kept before asking the database again: 5 minutes, so a
+// student changing filters doesn't load thousands of jobs every time, and the word index
+// (word-index.ts) isn't rebuilt every minute. Refresh forgets it right away (forgetOpenJobs), so
+// only a CLI import (npm run import-jobs, another process) waits up to 5 minutes to show.
+// (Tests set JOBS_CACHE_SECONDS=0)
+const CACHE_MS = Number(process.env.JOBS_CACHE_SECONDS ?? 300) * 1000;
 type ListedJob = Record<string, unknown> & {
   id: string; title: string; organization: string; type: string; level: string; setting: string | null;
   paid: boolean | null; location: string | null; deadline: string | null; posted_at: string | null;
   description: string | null; requirements: string[] | null;
-  ai_majors?: string[] | null; ai_skills?: string[] | null;
+  ai_majors?: string[] | null; ai_skills?: string[] | null; ai_tagged_at?: string | null;
 };
-type OpenJob = { job: ListedJob; text: string };
-// each open job, with all its words in lower case (text), for matching
-let openJobsCache: { at: number; jobs: OpenJob[] } | null = null;
+export type OpenJob = { job: ListedJob; text: string; places: Place[]; states: string[] };
+// each open job, with all its words in lower case (text), for matching, and the US places in
+// its location (places.ts), for "within 25 miles of Worcester", and the states it's in (for a
+// state search like "MA"). texts is every job's text in
+// the same order, and index says which jobs use each word (word-index.ts), so matching a word
+// is one lookup instead of reading every job
+export type OpenJobs = { jobs: OpenJob[]; texts: string[]; index: WordIndex };
+let openJobsCache: { at: number; open: OpenJobs } | null = null;
 // Best fit also reads each job's AI tags (ai-tags.ts). If jobs.sql step 8 hasn't been run yet,
 // those columns don't exist, so we ask without them instead of breaking Opportunities
-const AI_COLUMNS = ', ai_majors, ai_skills';
+const AI_COLUMNS = ', ai_majors, ai_skills, ai_tagged_at';
 let aiColumnsMissing = false;
 
 // The load that's running right now, if one is. Students who ask while it runs wait for that
 // same load instead of starting their own: 20 students opening Opportunities in the same
 // second used to mean 20 full copies of every job in memory at once (over 1 GB in the stress test)
-let openJobsLoading: Promise<OpenJob[] | null> | null = null;
+let openJobsLoading: Promise<OpenJobs | null> | null = null;
 
-// Every open job, newest posted first. null if the database can't be reached
-async function openJobs(): Promise<OpenJob[] | null> {
-  if (openJobsCache && Date.now() - openJobsCache.at < CACHE_MS) return openJobsCache.jobs;
+// Every open job, newest posted first, and its word index. null if the database can't be reached
+export async function openJobs(): Promise<OpenJobs | null> {
+  if (openJobsCache && Date.now() - openJobsCache.at < CACHE_MS) return openJobsCache.open;
   if (!openJobsLoading) {
     // .finally runs when the load ends either way, so the next miss starts a fresh one
     openJobsLoading = loadOpenJobs().finally(() => { openJobsLoading = null; });
@@ -188,7 +203,7 @@ async function openJobs(): Promise<OpenJob[] | null> {
 }
 
 // Loads every open job (Supabase sends at most 1000 rows a call, so it asks 1000 at a time)
-async function loadOpenJobs(): Promise<OpenJob[] | null> {
+async function loadOpenJobs(): Promise<OpenJobs | null> {
   const jobs: OpenJob[] = [];
   for (let from = 0; from < 20000; from += 1000) {
     const { data, error } = await supabase
@@ -213,12 +228,21 @@ async function loadOpenJobs(): Promise<OpenJob[] | null> {
     }
     for (const job of data as unknown as ListedJob[]) {
       const words = [job.title, job.organization, job.description ?? '', ...(job.requirements ?? [])].join(' ');
-      jobs.push({ job, text: words.toLowerCase() });
+      jobs.push({ job, text: words.toLowerCase(), places: placesIn(job.location), states: statesIn(job.location) });
     }
     if (data.length < 1000) break;
   }
-  openJobsCache = { at: Date.now(), jobs };
-  return jobs;
+  const open = indexJobs(jobs);
+  openJobsCache = { at: Date.now(), open };
+  return open;
+}
+
+// The jobs, with their texts and word index (word-index.ts). Building the index reads every job
+// once (about 80 ms for the 6,700 jobs of 2026-11-17, most without a description; longer
+// descriptions make it slower), so it's kept with the jobs (CACHE_MS)
+export function indexJobs(jobs: OpenJob[]): OpenJobs {
+  const texts = jobs.map((j) => j.text);
+  return { jobs, texts, index: buildIndex(texts) };
 }
 
 // Forget the kept list, so the next request sees new jobs right away (after a Refresh import)
@@ -258,12 +282,13 @@ router.get('/for-me', authenticateToken, async (req, res) => {
   const posted = readFilter(req.query.posted, ['day', 'week', 'month']);
   const deadline = readFilter(req.query.deadline, ['has', 'soon']);
   const sortChoice = readFilter(req.query.sort, ['newest', 'fit', 'deadline', 'company']);
-  const major = readFilter(req.query.major, ['only']);
+  const major = readFilter(req.query.major, ['only', 'related']);
+  const withinChoice = readFilter(req.query.within, ['10', '25', '50', '100']);
   const include = readWords(req.query.include);
   const exclude = readWords(req.query.exclude);
   const hide = readCompanies(req.query.hide);
   if (type === null || level === null || setting === null || paid === null || posted === null || deadline === null
-    || sortChoice === null || major === null || include === null || exclude === null || hide === null) {
+    || sortChoice === null || major === null || withinChoice === null || include === null || exclude === null || hide === null) {
     return res.status(400).json({ error: 'Unknown filter value' });
   }
   const sort = sortChoice ?? 'newest';
@@ -293,52 +318,174 @@ router.get('/for-me', authenticateToken, async (req, res) => {
   }
   if (all === null) return res.status(500).json({ error: 'Database error' });
   const student = studentFrom(profile.data?.data, resume.data?.data);
-  if (major === 'only' && student.majorWords.length === 0) {
+  if (major && student.majorWords.length === 0) {
     return res.status(400).json({ error: 'Add your major to your profile first' });
   }
 
-  const day = 24 * 60 * 60 * 1000;
-  const postedDays: Record<string, number> = { day: 1, week: 7, month: 31 };
-  const postedSince = posted ? Date.now() - (postedDays[posted] ?? 0) * day : 0;
-  // "due soon" = by 2 weeks from today (Boston time, like the rest of this file)
-  const soon = new Date(Date.parse(today() + 'T12:00:00Z') + 14 * day).toISOString().slice(0, 10);
+  // &location= on the map (places.ts). A city typed without a state ("Worcester") is their own
+  // city if it has that name, or else the one in their home state (from the city on their
+  // profile) when that's a real town there, or else the biggest
+  const home = findPlace(student.home);
+  const homeState = home?.kind === 'city' ? home.place.state : home?.state;
+  const near = location ? findPlace(location, homeState ? [homeState] : [], home?.kind === 'city' ? home.place : null) : null;
+  const within = Number(withinChoice ?? 25);
 
-  // 1. filter, and work out each job's fit
-  const kept: { job: ListedJob; score: number | null; reasons: string[] }[] = [];
-  for (const { job, text } of all) {
-    if (type && job.type !== type) continue;
-    // a job for "both" fits high schoolers AND college students
-    if (level && level !== 'both' && job.level !== level && job.level !== 'both') continue;
-    if (level === 'both' && job.level !== 'both') continue;
-    if (setting && job.setting !== setting) continue;
-    if (paid && job.paid !== (paid === 'true')) continue;
-    if (postedSince && !(job.posted_at && Date.parse(job.posted_at) >= postedSince)) continue;
-    if (deadline === 'has' && !job.deadline) continue;
-    if (deadline === 'soon' && !(job.deadline && job.deadline <= soon)) continue;
-    if (q && !q.split(' ').every((w) => [job.title, job.organization, job.location ?? ''].join(' ').toLowerCase().includes(w))) continue;
-    if (location && !(job.location ?? '').toLowerCase().includes(location)) continue;
-    if (hide.includes(job.organization.toLowerCase())) continue;
-    if (!include.every((w) => mentions(text, w))) continue;
-    if (exclude.some((w) => mentions(text, w))) continue;
-    const fit = fitFor(job, text, student);
-    if (major === 'only' && !fit.majorMatch) continue;
-    kept.push({ job, score: fit.score, reasons: fit.reasons });
-  }
-
-  // 2. sort. The list is already newest posted first, and .sort() keeps that order for ties
-  if (sort === 'fit') kept.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-  if (sort === 'deadline') kept.sort((a, b) => (a.job.deadline ?? '9999-12-31').localeCompare(b.job.deadline ?? '9999-12-31'));
-  if (sort === 'company') kept.sort((a, b) => a.job.organization.localeCompare(b.job.organization) || a.job.title.localeCompare(b.job.title));
-
-  // 3. one page of 50
-  const from = (page - 1) * PAGE_SIZE;
+  // filter, sort, one page of 50 (each with its fit), and the "see more" suggestions
+  const picked = pickJobs(all, student, {
+    type, level, setting, paid, posted, deadline, q, location, near, within, hide, include, exclude, major, sort, page,
+  });
+  // { jobs, total, more, suggestions } from pickJobs, plus your major and where it looked
   res.json({
-    jobs: kept.slice(from, from + PAGE_SIZE).map(({ job, score, reasons }) => ({ ...job, fit: { score, reasons } })),
-    total: kept.length,
-    more: from + PAGE_SIZE < kept.length,
+    ...picked,
     major: student.major,
+    near: near?.kind === 'city' ? { city: `${near.place.city}, ${near.place.state}`, within }
+      : near?.kind === 'state' ? { state: STATES[near.state] } : null,
   });
 });
+
+// The filters pickJobs uses: the ones read from the address above, plus where &location= is
+// on the map (near: null if it isn't on it, or wasn't given) and how many miles around it
+// sort and page too, since pickJobs also sorts and picks the page (see there)
+export type Picks = {
+  type?: string; level?: string; setting?: string; paid?: string; posted?: string; deadline?: string;
+  q: string; location: string; near: Where | null; within: number;
+  hide: string[]; include: string[]; exclude: string[]; major?: string;
+  sort?: string; page?: number;
+};
+
+// "See more" suggestions, for when only a few jobs match (fewer than FEW):
+//   { kind: 'wider', within: 50, count }   this many more within 50 miles
+//   { kind: 'remote', count }              this many remote jobs (they'd replace the city)
+//   { kind: 'related', majors, count }     this many more from the fields next to your major
+// The page turns each into a button. Like Handshake's and Indeed's "expand your search": a
+// short list in a small city shouldn't be a dead end
+export type Suggestion =
+  | { kind: 'wider'; within: number; count: number }
+  | { kind: 'remote'; count: number }
+  | { kind: 'related'; majors: string[]; count: number };
+const FEW = 10;
+// the next distance up, for 'wider'
+const WIDER: Record<number, number> = { 10: 25, 25: 50, 50: 100 };
+
+// The jobs that pass every filter, sorted, one page of them (each with its fit), and the
+// suggestions above: { jobs, total, more, suggestions }.
+// It's its own function (not inside the route) so it can be tried on the real jobs without a login.
+// Fast checks come first, and a job's Best fit is only worked out when it's needed: for every
+// matching job when sorting by best fit, otherwise only for the 50 on the page.
+// Words are matched with the word index (word-index.ts); useIndex: false reads every job instead,
+// which is slower but gives the same answers (pick-jobs.test.ts checks that it does)
+export function pickJobs(open: OpenJobs, student: Student, f: Picks, useIndex = true) {
+  const day = 24 * 60 * 60 * 1000;
+  const postedDays: Record<string, number> = { day: 1, week: 7, month: 31 };
+  const postedSince = f.posted ? Date.now() - (postedDays[f.posted] ?? 0) * day : 0;
+  // "due soon" = by 2 weeks from today (Boston time, like the rest of this file)
+  const soon = new Date(Date.parse(today() + 'T12:00:00Z') + 14 * day).toISOString().slice(0, 10);
+  // (Object.hasOwn: the major is free text from the profile, see fitsMajor in fit.ts)
+  const related = f.major && Object.hasOwn(RELATED_MAJORS, student.major) ? RELATED_MAJORS[student.major]! : [];
+  const wider = f.near?.kind === 'city' ? WIDER[f.within] : undefined;
+  let widerCount = 0;
+  let remoteCount = 0;
+  let relatedCount = 0;
+
+  // Which jobs mention a word, from the index: worked out the first time a word comes up in this
+  // request, then kept (each word is checked against every job, so this saves thousands of lookups).
+  // Kept under the word as it's written ("Excel"): jobsMentioning ignores upper/lower case itself
+  const marks = new Map<string, Uint8Array>();
+  const jobsWith = (word: string) => {
+    let found = marks.get(word);
+    if (!found) {
+      found = jobsMentioning(open.index, open.texts, word);
+      marks.set(word, found);
+    }
+    return found;
+  };
+
+  // each job that passes, and how to check its words (has), for working out its fit later
+  const kept: { job: ListedJob; text: string; has: (w: string) => boolean }[] = [];
+  open.jobs.forEach(({ job, text, places, states }, i) => {
+    if (f.type && job.type !== f.type) return;
+    // a job for "both" fits high schoolers AND college students
+    if (f.level && f.level !== 'both' && job.level !== f.level && job.level !== 'both') return;
+    if (f.level === 'both' && job.level !== 'both') return;
+    if (f.setting && job.setting !== f.setting) return;
+    if (f.paid && job.paid !== (f.paid === 'true')) return;
+    if (postedSince && !(job.posted_at && Date.parse(job.posted_at) >= postedSince)) return;
+    if (f.deadline === 'has' && !job.deadline) return;
+    if (f.deadline === 'soon' && !(job.deadline && job.deadline <= soon)) return;
+    if (f.q) {
+      const shown = [job.title, job.organization, job.location ?? ''].join(' ').toLowerCase();
+      if (!f.q.split(' ').every((w) => shown.includes(w))) return;
+    }
+    if (f.hide.includes(job.organization.toLowerCase())) return;
+    // does this job mention a word? (mentions() in fit.ts, but with the index)
+    const has = useIndex ? (w: string) => jobsWith(w)[i] === 1 : (w: string) => mentions(text, w);
+    if (!f.include.every(has)) return;
+    if (f.exclude.some(has)) return;
+
+    // where: within f.within miles of the city, in the state, or (a place we couldn't find on the
+    // map) the words in the job's location, the old way. miles is how far its closest place is
+    let miles = Infinity;
+    let inPlace = true;
+    if (f.near?.kind === 'city') {
+      miles = closestMiles(places, f.near.place);
+      // a job whose location is just a city name we can't put on the map ("Worcester", "Greater
+      // Boston Area", "Cambridge (Hybrid)") still counts when it names this city, as it did before.
+      // (Not one with a comma, like "Worcester, England": that one we read, and it isn't in the US)
+      const location = (job.location ?? '').toLowerCase();
+      const namesIt = places.length === 0 && !location.includes(',') && mentions(location, nameKey(f.near.place.city));
+      inPlace = miles <= f.within || namesIt;
+    } else if (f.near?.kind === 'state') {
+      // the states it's in (statesIn in places.ts): "Washington, DC" isn't in Washington state
+      inPlace = states.includes(f.near.state);
+    } else if (f.location) {
+      inPlace = (job.location ?? '').toLowerCase().includes(f.location);
+    }
+
+    // a job too far away that can't count toward a suggestion either: nothing more to check
+    // (most jobs, when there's a city: this skips the major check for them)
+    const remoteJob = f.location !== '' && !f.setting && job.setting === 'remote';
+    const inWider = !inPlace && wider !== undefined && miles <= wider;
+    if (!inPlace && !remoteJob && !inWider) return;
+
+    // your major (the same check Best fit uses), and with &major=related, a field next to it too
+    const inRelated = () => related.some((m) => fitsMajor(job, m).fits);
+    const inMajor = !f.major || fitsMajor(job, student.major, student.majorWords).fits
+      || (f.major === 'related' && inRelated());
+
+    // counted for the suggestions, whether or not it's shown
+    if (remoteJob && inMajor) remoteCount++;
+    if (inPlace && inMajor) {
+      kept.push({ job, text, has });
+    } else if (inMajor && inWider) {
+      widerCount++;
+    } else if (inPlace && f.major === 'only' && inRelated()) {
+      relatedCount++;
+    }
+  });
+
+  const suggestions: Suggestion[] = [];
+  if (kept.length < FEW) {
+    if (wider && widerCount > 0) suggestions.push({ kind: 'wider', within: wider, count: widerCount });
+    if (remoteCount > 0) suggestions.push({ kind: 'remote', count: remoteCount });
+    if (relatedCount > 0) suggestions.push({ kind: 'related', majors: related, count: relatedCount });
+  }
+
+  // sort. The list is already newest posted first, and .sort() keeps that order for ties.
+  // Best fit needs every job's fit; the other sorts don't, so their fits wait for the page
+  const scored = f.sort === 'fit'
+    ? kept.map((k) => ({ ...k, fit: fitFor(k.job, k.text, student, k.has) })).sort((a, b) => (b.fit.score ?? -1) - (a.fit.score ?? -1))
+    : kept;
+  if (f.sort === 'deadline') scored.sort((a, b) => (a.job.deadline ?? '9999-12-31').localeCompare(b.job.deadline ?? '9999-12-31'));
+  if (f.sort === 'company') scored.sort((a, b) => a.job.organization.localeCompare(b.job.organization) || a.job.title.localeCompare(b.job.title));
+
+  // one page of 50, each with its fit: { score, reasons }
+  const from = ((f.page ?? 1) - 1) * PAGE_SIZE;
+  const jobs = scored.slice(from, from + PAGE_SIZE).map((k) => {
+    const fit = 'fit' in k ? (k.fit as ReturnType<typeof fitFor>) : fitFor(k.job, k.text, student, k.has);
+    return { ...k.job, fit: { score: fit.score, reasons: fit.reasons } };
+  });
+  return { jobs, total: kept.length, more: from + PAGE_SIZE < kept.length, suggestions };
+}
 
 
 // ---------- Refresh: check the job sites for new listings ----------

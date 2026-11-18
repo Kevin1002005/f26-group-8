@@ -7,7 +7,10 @@
     "dev": "tsx watch --env-file=secrets.env src/app.ts",
     "start": "tsx --env-file=secrets.env src/app.ts",
     "start:host": "tsx src/app.ts",
-    "import-jobs": "tsx --env-file=secrets.env src/import-jobs.ts"
+    "import-jobs": "tsx --env-file=secrets.env src/import-jobs.ts",
+    "tag-jobs": "tsx --env-file=secrets.env src/tag-jobs.ts",
+    "find-boards": "tsx src/find-boards.ts",
+    "test": "tsx --test src/*.test.ts"
   },
   "engines": {
     "node": ">=22"

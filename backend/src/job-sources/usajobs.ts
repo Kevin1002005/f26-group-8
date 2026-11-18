@@ -66,7 +66,8 @@ export async function fetchUsaJobs(): Promise<SourceResult> {
       console.error('usajobs: skipped one job that couldn\'t be read');
     }
   }
-  return { jobs, allFetchesWorked: true };
+  // a full page (500) means there were more than we read: then nothing may be closed (see above)
+  return { jobs, allFetchesWorked: complete };
 }
 
 function toImportedJob(item: UsaJob): ImportedJob {

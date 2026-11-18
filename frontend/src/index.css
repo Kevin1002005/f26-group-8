@@ -8185,6 +8185,55 @@ textarea.feed-composer-input {
   }
 }
 
+/* ----- "Want more?" suggestions (2026-11-17) ----- */
+/* When only a few jobs match (a small city, a narrow major), buttons that widen
+   the search: "Show 15 more within 50 miles", "See 3 remote jobs instead",
+   "Add 12 from related fields". Above the table, or inside "No opportunities match" */
+
+/* The light blue strip above the table */
+.discovery-suggestions {
+  display: flex;
+  flex-wrap: wrap;                        /* the buttons go onto a new line when there's no room */
+  align-items: center;
+  gap: 10px 12px;                         /* space between rows, then between buttons */
+  padding: 12px 16px;                     /* space inside: top/bottom, left/right */
+  border: 1px solid var(--line);          /* a light edge, like the other boxes */
+  border-radius: var(--radius-box);
+  background-color: var(--accent-soft);   /* light blue (navy words on it are 12.9:1, WCAG) */
+}
+
+/* "Only 1 opportunity matches." */
+.discovery-suggestions-text {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);                     /* navy */
+}
+
+/* The row of buttons (a list, so screen readers say how many there are) */
+.discovery-suggestion-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;                /* centered inside "No opportunities match" */
+  gap: 8px;                               /* space between buttons */
+  margin: 0;
+  padding: 0;
+  list-style: none;                       /* no bullet points */
+}
+
+/* In the strip, the buttons start at the left, after the words */
+.discovery-suggestions .discovery-suggestion-list {
+  justify-content: flex-start;
+}
+
+/* The line under "City or state" saying where it looked ("Within 25 miles of Worcester, MA") */
+.discovery-near {
+  flex: 1 1 100%;                         /* its own line under the boxes */
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);                    /* gray-blue (7.8:1, WCAG) */
+}
+
 /* ----- Motion ----- */
 /* Colors fade instead of snapping, for people who allow motion (and haven't
    turned on the Settings page's "Reduce motion") */

@@ -28,10 +28,35 @@ export type ImportedJob = {
 // what each source's fetch function hands back to import-jobs.ts.
 // allFetchesWorked is false if any company's call failed. Then the importer won't close
 // that source's old jobs: a job might only be missing because its company's call failed.
+// keepOpen is for a source that reads many company boards: it says if one of our saved jobs comes
+// from a board whose call failed this time. Those jobs stay open (they might only be missing
+// because of that call), and the importer still closes the source's other old jobs as usual
 export type SourceResult = {
   jobs: ImportedJob[];
   allFetchesWorked: boolean;
+  keepOpen?: (job: { external_id: string; apply_url: string | null }) => boolean;
 };
+
+// What a source that reads many company boards hands back (greenhouse.ts, lever.ts, ...).
+// failed: the boards whose call failed or was only partly read, and boardOf: which board one of
+// our saved jobs came from. With hundreds of boards, a failure or two is normal, so only those
+// boards' old jobs stay open. If more than half failed, the site itself is probably down: then the
+// whole source counts as failed, and nothing gets closed
+export function boardsResult(
+  source: string, jobs: ImportedJob[], boardCount: number, failed: Set<string>,
+  boardOf: (job: { external_id: string; apply_url: string | null }) => string,
+): SourceResult {
+  if (failed.size > 0) console.log(`${source}: ${failed.size} of ${boardCount} boards failed, so their old jobs stay open`);
+  const failedNames = new Set([...failed].map((board) => board.toLowerCase()));
+  return {
+    jobs,
+    allFetchesWorked: failed.size <= boardCount / 2,
+    keepOpen: failed.size > 0 ? (job) => failedNames.has(boardOf(job).toLowerCase()) : undefined,
+  };
+}
+// the board at the start of an external_id ("stripe:123" -> "stripe"): Greenhouse, Ashby,
+// SmartRecruiters, and Workable all write their ids that way
+export const boardInId = (job: { external_id: string }) => job.external_id.slice(0, job.external_id.indexOf(':'));
 
 
 // The biggest answer we read from a job site: 40 MB. The importer runs inside the same server
@@ -80,6 +105,32 @@ export async function fetchText(url: string, headers: Record<string, string> = {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return readCapped(res);
 }
+
+// true when fetchJson failed because the page isn't there any more: 404 (Not Found) or 410 (Gone).
+// For a company board, that means the company closed it or moved to another hiring site. That's
+// different from the site being down: the company really has no jobs there now, so the importer
+// can close its old ones, instead of counting a failed fetch (which closes nothing for the whole source)
+export function isGone(err: unknown): boolean {
+  return err instanceof Error && /^HTTP (404|410)$/.test(err.message);
+}
+
+// Runs work(item) for every item, with at most `limit` running at the same time, like a few
+// checkout lines instead of one. Hundreds of company boards one at a time took many minutes; all
+// at once would flood the sites. work() must catch its own errors (each source's loop already does)
+export async function atMostAtOnce<T>(items: T[], limit: number, work: (item: T, index: number) => Promise<void>): Promise<void> {
+  let next = 0;
+  // each "line" takes the next item until none are left
+  const line = async () => {
+    while (next < items.length) {
+      const index = next++;
+      await work(items[index]!, index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, line));
+}
+
+// How many company boards each hiring site's source reads at the same time
+export const BOARDS_AT_ONCE = 4;
 
 
 // matches "intern", "interns", "internship(s)", "co-op(s)", "coop(s)".
@@ -265,17 +316,33 @@ const GRAD_ONLY_DESCRIPTION = [
   /\b(ph\.?\s?d|doctoral|master['’]?s|mba|graduate)\s+students\s+only\b/i,
 ];
 
+// titles for law, pharmacy, or nursing-graduate students: an undergrad or a high schooler can't
+// get these. "Legal Intern" is a law-school internship (the ACLU's and companies' alike: checked
+// 2026-11-17, all 28 open ones), "Law Clerk (J.D. Students)" and "(LL.M. Students)" too, and a
+// "Pharmacy Intern" is a licensed role for pharmacy-school students. Business jobs that only
+// mention pharmacy ("Pharmacy Aggregation Intern") still pass.
+// (This one is only checked by the importer, not by a database rule like the list above)
+// (LL.M. needs its dots: plain "LLM" is a large language model, as in "LLM Research Intern")
+export const PROFESSIONAL_SCHOOL_TITLE = /\b(legal intern(ship)?s?|law clerks?|j\.?d\.? students?|ll\.m\b\.?|pharmacy intern(ship)?s?|pharm\.?\s?d|nurse practitioner)\b/i;
+
 // true if high schoolers or college undergrads can apply
 export function isForOurStudents(title: string, description: string | null): boolean {
   if (NOT_FOR_OUR_STUDENTS.test(title)) return false;
+  if (PROFESSIONAL_SCHOOL_TITLE.test(title)) return false;
   if (description && GRAD_ONLY_DESCRIPTION.some((rule) => rule.test(description))) return false;
   return true;
 }
 
 // 'high-school' if the post only mentions high school, 'both' if it mentions high school
 // AND college, otherwise 'college' (most internships are for college students)
+// Some posts say "high school" without being for high schoolers: "2 years of post-high school
+// study" (that's college), or "a high school diploma or GED" (they have to have FINISHED high
+// school). Those are taken out first, so they don't make a college job look open to high schoolers
+// (2026-11-17: 15 of the 71 jobs marked for high schoolers were like this)
+const NOT_FOR_HIGH_SCHOOLERS = /\bpost[\s-]?high[\s-]?school\b|\bhigh[\s-]?school (diploma|graduates?|education|equivalen\w*|degree)\b|\b(ged|hiset)\b/gi;
+
 export function guessLevel(title: string, description: string | null): ImportedJob['level'] {
-  const text = `${title} ${description ?? ''}`;
+  const text = `${title} ${description ?? ''}`.replace(NOT_FOR_HIGH_SCHOOLERS, ' ');
   const highSchool = /\bhigh[\s-]?school(ers?)?\b/i.test(text);
   const college = /\b(college|undergrad(uate)?s?|university|bachelor['’]?s)\b/i.test(text);
   if (highSchool && college) return 'both';
@@ -324,6 +391,12 @@ const OTHER_PLACES = new RegExp('(?<![a-z])(' + [
   'kyiv', 'ukraine', 'bucharest', 'sofia', 'bulgaria', 'belgrade', 'serbia', 'zagreb', 'croatia', 'estonia', 'latvia',
   'lithuania', 'edinburgh', 'manchester', 'glasgow', 'belfast', 'cork', 'lyon', 'toulouse', 'valencia', 'porto',
   'brussels', 'copenhagen', 'oslo', 'helsinki', 'athens', 'cape town', 'johannesburg', 'accra', 'ghana',
+  // added 2026-11-17, from the company boards (find-boards.ts). Not names that are also US towns
+  // (Lebanon, Cairo, Panama City, Georgia...)
+  'united arab emirates', 'abu dhabi', 'qatar', 'doha', 'riyadh', 'pakistan', 'karachi', 'lahore', 'bangladesh',
+  'dhaka', 'sri lanka', 'nepal', 'cyprus', 'luxembourg', 'slovakia', 'slovenia', 'iceland', 'nairobi', 'lagos',
+  'uganda', 'rwanda', 'ethiopia', 'hanoi', 'ho chi minh', 'osaka', 'kyoto', 'auckland', 'brisbane', 'buenos aires',
+  'sao paulo', 'são paulo', 'rio de janeiro', 'montevideo', 'uruguay', 'costa rica', 'guatemala',
 ].join('|') + ')(?![a-z])', 'i');
 
 // Canada's provinces, written the same way ("Mississauga, ON"): none of them is a US state
@@ -352,6 +425,20 @@ export function isInUS(location: string | null): boolean {
   // just "Remote" (or "Anywhere"), with no country
   const words = location.toLowerCase().replace(/[^a-z]+/g, ' ').trim();
   return ['remote', 'anywhere', 'remote anywhere', 'fully remote'].includes(words);
+}
+
+// The other way around, for company boards: true only when the location is clearly NOT in the US
+// ("London, UK", "Toronto, ON", "Hong Kong, Hong Kong", "Remote - Canada"). Unlike !isInUS, a
+// place we can't tell ("Multiple Locations", "Hybrid", a small US town) or no location counts as
+// maybe in the US, and is kept: a company board's jobs are real, we only drop the foreign ones.
+// A location naming the US AND another country ("London; New York, NY") is kept too
+export function isOutsideUS(location: string | null): boolean {
+  if (!location) return false;
+  const place = location.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').slice(0, 400);
+  const country = /,\s*[A-Z]{2}\s*,\s*([A-Z]{2})\s*$/.exec(place)?.[1];
+  if (country) return country !== 'US';
+  if (US_PLACES.test(place)) return false;
+  return OTHER_PLACES.test(place) || hasCode(place, CANADA_CODES);
 }
 
 

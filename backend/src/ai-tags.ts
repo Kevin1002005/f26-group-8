@@ -1,7 +1,8 @@
 // AI tags for job posts. After each import, a free AI model reads the newest job posts we
 // haven't tagged yet and says which majors each one fits and which skills it names. Best fit
-// and "For your major" on Opportunities use those tags (fit.ts), so a "Quantitative Research
-// Intern" post counts for Mathematics students even if it never says the word "math".
+// and "For your major" on Opportunities use those tags (fit.ts fitsMajor) for titles that don't
+// name a field themselves, so a "Summer Analyst" post at a bank counts for Finance students even
+// though its title never says "finance". A title that names a field always wins over the tags.
 //
 // Only PUBLIC job posts are sent: the title, company, and description anyone can read on the
 // job site. Nothing about any student is ever sent. Matching jobs to a student's profile
@@ -45,7 +46,9 @@ type Tags = { majors: string[]; skills: string[] };
 // CODE is random for every request, so a job post can't fake the start of another post (it
 // can't know the code). A post could still TRY to talk the AI into tagging the other posts in
 // its request wrongly; the worst that can do is give those few jobs (at most 10) the wrong
-// majors or skills, which only changes how they're sorted on Opportunities.
+// majors or skills. Skills are checked against each job's own post (saveTags), and majors only
+// decide "For your major" for jobs whose title names no field (fit.ts fitsMajor), but for those
+// jobs a wrong major does change who sees them (an open audit lead: run-3 NEEDS-VALIDATION.md).
 function instructions(code: string): string {
   return [
     'You label internship and job posts for a job board for high school and college students.',
@@ -59,13 +62,14 @@ function instructions(code: string): string {
 }
 
 
-// Tags up to AI_JOBS_PER_RUN open jobs that haven't been tagged yet, newest first. It never
+// Tags up to AI_JOBS_PER_RUN open jobs that haven't been tagged yet, newest first, and gives
+// back how many it tagged (0 if there were none left, or the AI service said no). It never
 // throws: tags are extra, so a problem here is printed and the import still counts as done
-export async function tagNewJobs(): Promise<void> {
+export async function tagNewJobs(): Promise<number> {
   const key = process.env.AI_API_KEY;
   if (!key) {
     console.log('ai tags: skipped (no AI_API_KEY in secrets.env)');
-    return;
+    return 0;
   }
   const base = (process.env.AI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');   // without a / on the end
   const model = process.env.AI_MODEL || DEFAULT_MODEL;
@@ -82,7 +86,7 @@ export async function tagNewJobs(): Promise<void> {
       .limit(perRun);
     if (error) {
       console.error('ai tags: reading jobs failed (did you run jobs.sql step 8?)', error.message);
-      return;
+      return 0;
     }
 
     const jobs = data as JobToTag[];
@@ -140,8 +144,10 @@ export async function tagNewJobs(): Promise<void> {
       console.error('ai tags: couldn\'t read the AI\'s answer at all, so nothing was saved (is AI_MODEL right?). They\'ll be tried again next run');
     }
     console.log(`ai tags: tagged ${tagged} jobs with ${model} (${requests} requests)`);
+    return tagged;
   } catch (err) {
     console.error('ai tags failed:', err instanceof Error ? err.message : err);
+    return 0;
   }
 }
 

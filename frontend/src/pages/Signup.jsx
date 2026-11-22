@@ -227,7 +227,9 @@ function Signup() {
         //   name Google uses, so the top bar shows your name either way
         //   (see use-current-user.js)
         // - emailRedirectTo is where the "confirm your email" link sends you:
-        //   the Log in page, which finishes logging you in
+        //   the Log in page, which finishes logging you in. "?next=welcome"
+        //   tells it you're new, so it opens the welcome guide right away
+        //   instead of Opportunities (see pageAfterLogin in Login.jsx)
         let data, error;
         try {
             ({ data, error } = await supabase.auth.signUp({
@@ -235,7 +237,7 @@ function Signup() {
                 password: form.password.value,
                 options: {
                     data: { full_name: name.trim() },
-                    emailRedirectTo: window.location.origin + '/login',
+                    emailRedirectTo: window.location.origin + '/login?next=welcome',
                 },
             }));
         } catch (thrown) {

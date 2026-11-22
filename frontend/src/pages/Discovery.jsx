@@ -4,7 +4,8 @@
 // company job boards (Greenhouse, Lever, Ashby, SmartRecruiters, Workable), lists
 // like SimplifyJobs, USAJOBS, JSearch, and Adzuna. See backend/src/jobs.ts.
 // The backend does the filtering, sorting, and "best fit" scoring (backend/src/fit.ts)
-// across every job, and sends 50 at a time ("Show more" gets the next 50).
+// across every job, and sends 50 at a time, one page each (Previous and Next
+// under the table go to the page before or after it).
 // Anyone can open it without an account: guests see the public list (GET /api/jobs)
 // with fewer filters, and no parts that need an account (see "Guests" below).
 // A link can set "Who it's for": /discovery?level=high-school (or college).
@@ -16,7 +17,7 @@
 //   3. TypeTabs + Sort   tabs (All, Internship, Co-op, Research, Program), Sort, and Refresh
 //   4. FilterBar         "For your major", who it's for, where, posted, deadline, paid,
 //                        and "More filters" (must mention, leave out, city, hidden companies)
-//   5. ResultsSection    the table: one row per opportunity (OpportunityRow), and "Show more"
+//   5. ResultsSection    the table: one row per opportunity (OpportunityRow), and Previous / Next
 //   6. ProfileTip        a one-line tip under the table
 //
 // The Discovery function at the bottom remembers the search, the tab, the sort, and
@@ -553,33 +554,67 @@ function LevelPrompt(props) {
   );
 }
 
+// A gray bar where a summary box's number will go, while it's on its way. It
+// fades in and out like the list's loading rows (LoadingRows, below). The bar
+// is only a picture, so screen readers hear the word "Loading" instead (WCAG)
+function NumberLoading() {
+  return (
+    <>
+      <span className="discovery-loading-bar discovery-summary-loading" aria-hidden="true" />
+      <span className="sr-only">Loading</span>
+    </>
+  );
+}
+
+// A dash where a summary box's number would go, when it couldn't be loaded, so
+// it doesn't look like it's still loading, or like a real 0. Screen readers
+// hear "Couldn't load" instead of "dash" (WCAG)
+function NumberMissing() {
+  return (
+    <>
+      <span aria-hidden="true">–</span>
+      <span className="sr-only">Couldn't load</span>
+    </>
+  );
+}
+
 // The three summary boxes under the title: how many opportunities match your
 // filters, how many are due soon, and how many are on your tracker. Like the
 // number boxes at the top of a dashboard, so you see the big picture first.
-// props.total is how many match, props.dueSoon is { count, first } for the jobs
-// matching your filters that are due in the next 14 days (null until it arrives), props.trackerCount is how many
-// are on your tracker, and props.loading is true while the jobs are still on their
-// way (the numbers show "…" until then, not a wrong 0).
+// props.total is how many match (null if they couldn't be loaded), props.dueSoon
+// is { count, first } for the jobs matching your filters that are due in the
+// next 14 days (null until it arrives, and count is null if it couldn't be
+// loaded), props.trackerCount is how many are on your tracker, and props.loading
+// is true while the jobs are still on their way (the numbers show a gray
+// loading bar until then, not a wrong 0; a dash if they can't be loaded).
 function SummaryBoxes(props) {
   // The first one due, for the note under the number ("First up: ...")
   const first = props.dueSoon?.first;
+  // true if the due-soon jobs couldn't be loaded
+  const dueSoonFailed = props.dueSoon !== null && props.dueSoon.count === null;
 
   return (
     // A list, so screen readers say "list, 3 items" (WCAG)
     <ul className="discovery-summary" aria-label="Summary">
       <li className="discovery-summary-box">
         <span className="discovery-summary-label">Match your filters</span>
-        <span className="discovery-summary-number">{props.loading ? "…" : props.total.toLocaleString()}</span>
+        <span className="discovery-summary-number">
+          {props.loading ? <NumberLoading /> : props.total === null ? <NumberMissing /> : props.total.toLocaleString()}
+        </span>
         <span className="discovery-summary-note">Internships, co-ops, research, and programs</span>
       </li>
       <li className="discovery-summary-box">
         <span className="discovery-summary-label">Due in the next 2 weeks</span>
-        <span className="discovery-summary-number">{props.dueSoon ? props.dueSoon.count : "…"}</span>
+        <span className="discovery-summary-number">
+          {props.dueSoon === null ? <NumberLoading /> : dueSoonFailed ? <NumberMissing /> : props.dueSoon.count}
+        </span>
         <span className="discovery-summary-note">
           {/* "first ? (...) : (...)" means "if there's one due, name it; if not, say so" */}
-          {first
-            ? "First up: " + first.title + ", " + formatDate(first.deadline, { month: "short", day: "numeric" })
-            : "Nothing due soon"}
+          {dueSoonFailed
+            ? "Couldn't load this right now"
+            : first
+              ? "First up: " + first.title + ", " + formatDate(first.deadline, { month: "short", day: "numeric" })
+              : "Nothing due soon"}
         </span>
       </li>
       <li className="discovery-summary-box">
@@ -1229,64 +1264,167 @@ function MoreSuggestions(props) {
   );
 }
 
-// The list of opportunities: the table, with the count and "Show more" under it.
-// props.results is what the backend sent ({ list, total, more }), or null while
-// the first answer is on its way. props.loadError is true if getting them
-// failed (props.retry tries again). props.updating is true while new filters
-// are loading (the old list stays on screen until then). props.isGuest is true
-// when nobody is logged in (each row then works the guest way, see OpportunityRow)
+// How many jobs each page has: the same as PAGE_SIZE in backend/src/jobs.ts
+const pageSize = 50;
+
+// What the list shows while jobs are on their way (the first time, and after
+// Previous or Next): props.words, like "Loading opportunities...", over six
+// gray bars in the shape of the table's rows. The bars fade in and out, one row
+// after another, so it's clear the page is working and not stuck (index.css,
+// "While the jobs are loading"; they stay still if motion is turned off).
+// role="status" reads the words out when they appear, and the bars are only a
+// picture, so screen readers skip them (aria-hidden) (WCAG)
+function LoadingRows(props) {
+  return (
+    <div className="discovery-loading">
+      {/* props.quiet: another status line reads these words out (after
+          Previous or Next, see ResultsSection), so this one isn't a status
+          too, or screen readers could say it twice */}
+      <p className="discovery-loading-words" role={props.quiet ? undefined : "status"}>
+        {props.words}
+      </p>
+      <div aria-hidden="true">
+        {/* Six pretend rows. They never change, so their number works as the key */}
+        {[1, 2, 3, 4, 5, 6].map((row) => (
+          <div key={row} className="discovery-loading-row">
+            <div className="discovery-loading-role">
+              <span className="discovery-loading-bar discovery-loading-title" />
+              <span className="discovery-loading-bar discovery-loading-company" />
+            </div>
+            <span className="discovery-loading-bar discovery-loading-fact" />
+            <span className="discovery-loading-bar discovery-loading-fact" />
+            <span className="discovery-loading-bar discovery-loading-fact" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// The list of opportunities: the table, with the count and the page buttons
+// (Previous, "Page 2 of 14", Next) under it. What's inside depends on what's
+// happening (see ResultsBody below). The heading always comes first, so React
+// keeps the same heading on the page whatever is under it: Previous and Next
+// move the keyboard focus onto it (they find it by its id), and the focus stays
+// there while the next page loads
 function ResultsSection(props) {
-  // While waiting the first time, or if it failed, show a message in place of
-  // the table. role="status" reads it out when it appears (WCAG).
+  return (
+    // aria-labelledby names this section with the heading's words (WCAG)
+    <section className="discovery-results" aria-labelledby="discovery-results-title">
+      {/* A heading for screen readers only (sr-only), so the list has a
+          name in the page's outline. The tabs already show it on screen.
+          tabIndex -1 lets Previous and Next move the focus here, so the
+          keyboard starts from the top of the new page, without making it a
+          stop when you press Tab (WCAG) */}
+      <h2 id="discovery-results-title" className="sr-only" tabIndex={-1}>
+        Opportunities
+      </h2>
+      {/* What screen readers hear after Previous or Next: "Loading page 2...",
+          then "Page 2 of 14" (or why it couldn't load). Screen readers only
+          read a role="status" out when its words CHANGE, and the boxes under
+          it are swapped for new ones on every page, so this one stays on the
+          page the whole time, and only its words change (WCAG) */}
+      <p className="sr-only" role="status">
+        {props.pageNote}
+      </p>
+      <ResultsBody {...props} />
+    </section>
+  );
+}
+
+// What's under the list's heading.
+// props.results is what the backend sent ({ list, total, more, page }), or null
+// while the first answer is on its way. props.loadError is true if getting them
+// failed (props.retry tries again). props.updating is true while new filters
+// are loading (the old list stays on screen until then). props.pageLoading is
+// the page on its way after Previous or Next (0 when there isn't one), and
+// props.goToPage(n) asks for page n. props.pageProblem says why a page
+// couldn't be loaded ("" when it could). props.isGuest is true when nobody is
+// logged in (each row then works the guest way, see OpportunityRow)
+function ResultsBody(props) {
+  // If getting them failed, say so in place of the table, with "Try again".
+  // role="status" reads it out when it appears (WCAG).
   // It reuses the "nothing here" box below, so it needs no new styles.
-  if (props.results === null || props.loadError) {
+  if (props.loadError) {
     return (
-      <section className="discovery-results" aria-labelledby="discovery-results-title">
-        <h2 id="discovery-results-title" className="sr-only">
-          Opportunities
-        </h2>
-        <div className="discovery-empty" role="status">
-          {props.loadError ? (
-            <>
-              <p className="discovery-empty-title">Couldn't load opportunities</p>
-              <p className="discovery-empty-text">Check your connection, then try again.</p>
-              <button type="button" className="discovery-outline-button" onClick={props.retry}>
-                Try again
-              </button>
-            </>
-          ) : (
-            <p className="discovery-empty-title">Loading opportunities...</p>
-          )}
-        </div>
-      </section>
+      <div className="discovery-empty" role="status">
+        <p className="discovery-empty-title">Couldn't load opportunities</p>
+        <p className="discovery-empty-text">Check your connection, then try again.</p>
+        <button type="button" className="discovery-outline-button" onClick={props.retry}>
+          Try again
+        </button>
+      </div>
     );
   }
 
+  // The first answer is still on its way
+  if (props.results === null) {
+    return <LoadingRows words="Loading opportunities..." />;
+  }
+
+  // Previous or Next was pressed, and that page is on its way. quiet: the
+  // words are read out by the status line in ResultsSection instead
+  if (props.pageLoading) {
+    return <LoadingRows words={"Loading page " + props.pageLoading + "..."} quiet />;
+  }
+
   const shown = props.results.list;
+  // Which page this is (1, 2, 3...)
+  const page = props.results.page;
+
+  // A page after the first with nothing on it. It can happen when exactly 50
+  // or 100 match (the guests' list can't tell there's no next page until it
+  // asks), or when jobs closed since the last page. Say so, with a way back
+  if (shown.length === 0 && page > 1) {
+    return (
+      <div className="discovery-empty">
+        <p className="discovery-empty-title">No more opportunities</p>
+        <p className="discovery-empty-text">That's the end of the list.</p>
+        <button type="button" className="discovery-outline-button" onClick={() => props.goToPage(page - 1)}>
+          Back to page {page - 1}
+        </button>
+      </div>
+    );
+  }
   // how many match in all, or null for guests (the public list doesn't say)
   const total = props.results.total;
   // the "Want more?" buttons, but not while new filters load (they'd be for the old ones)
   const suggestions = props.updating ? [] : props.results.suggestions;
   // "opportunity" for 1, "opportunities" for anything else.
   const word = (total ?? shown.length) === 1 ? "opportunity" : "opportunities";
-  // "Showing 50 of 1,234 opportunities". Without a total (guests' public list,
-  // which is always newest first): "Showing the 50 newest opportunities"
-  const countWords =
-    total === null
-      ? "Showing the " + shown.length.toLocaleString() + " newest " + word
-      : "Showing " + shown.length.toLocaleString() + " of " + total.toLocaleString() + " " + word;
+  // How many jobs this page really has: a job a "?job=" link opened can be
+  // added at the top of page 1 (extra: 1, see shownResults in Discovery), and
+  // it isn't counted
+  const onThisPage = shown.length - (props.results.extra ?? 0);
+  // Where this page starts and ends in the whole list: page 1 is 1 to 50,
+  // page 2 is 51 to 100, and so on
+  const first = (page - 1) * pageSize + 1;
+  const last = first + onThisPage - 1;
+  // How many pages there are in all, or null for guests (the public list doesn't
+  // say how many match). Math.ceil rounds up: 61 jobs is 2 pages
+  const pageCount = total === null ? null : Math.max(1, Math.ceil(total / pageSize));
+  // The words under the table:
+  // - everything fits on one page: "Showing 6 of 6 opportunities"
+  // - more than one page: "Showing 51 to 100 of 1,234 opportunities"
+  // - guests (no total, and always newest first): "Showing the 50 newest
+  //   opportunities" on page 1, then "Showing opportunities 51 to 100, newest first"
+  let countWords;
+  if (total === null) {
+    countWords =
+      page === 1
+        ? "Showing the " + onThisPage.toLocaleString() + " newest " + word
+        : "Showing " + word + " " + first.toLocaleString() + " to " + last.toLocaleString() + ", newest first";
+  } else if (pageCount === 1) {
+    countWords = "Showing " + onThisPage.toLocaleString() + " of " + total.toLocaleString() + " " + word;
+  } else {
+    countWords = "Showing " + first.toLocaleString() + " to " + last.toLocaleString() + " of " + total.toLocaleString() + " " + word;
+  }
   // What the table is sorted by, for screen readers
   const sortWords = { newest: "newest first", fit: "best fit first", deadline: "soonest deadline first", company: "by company, A to Z" };
 
   return (
-    // aria-labelledby names this section with the heading's words (WCAG)
-    <section className="discovery-results" aria-labelledby="discovery-results-title">
-      {/* A heading for screen readers only (sr-only), so the list has a
-          name in the page's outline. The tabs already show it on screen. */}
-      <h2 id="discovery-results-title" className="sr-only">
-        Opportunities
-      </h2>
-
+    // <> </> groups the pieces without adding another box around them
+    <>
       {/* If nothing passes the filters, show a message and a way back.
           Otherwise, show the table. "? :" picks one of the two. */}
       {shown.length === 0 ? (
@@ -1339,22 +1477,44 @@ function ResultsSection(props) {
             </tbody>
           </table>
 
-          {/* The bottom of the box: the count, and "Show more" if there are
-              more. role="status" reads the new count out when it changes (WCAG) */}
+          {/* The bottom of the box: the count (or why a page couldn't be
+              loaded), and the page buttons if there's more than one page.
+              role="status" reads the new words out when they change (WCAG) */}
           <div className="discovery-more-row">
             <p className="discovery-results-count" role="status">
-              {props.updating ? "Updating..." : countWords}
+              {props.updating ? "Updating..." : props.pageProblem || countWords}
             </p>
-            {props.results.more && (
-              <button type="button" className="discovery-outline-button" onClick={props.showMore} disabled={props.loadingMore}>
-                {props.loadingMore ? "Loading..." : "Show more"}
-              </button>
+            {(page > 1 || props.results.more) && (
+              // <nav> with a name, so screen readers can find the page buttons (WCAG).
+              // Both buttons are turned off while new filters load (they'd be
+              // for the old list), Previous on the first page, and Next on the last
+              <nav className="discovery-pages" aria-label="Pages of opportunities">
+                <button
+                  type="button"
+                  className="discovery-outline-button"
+                  onClick={() => props.goToPage(page - 1)}
+                  disabled={page === 1 || props.updating}
+                >
+                  Previous
+                </button>
+                <span className="discovery-page-number">
+                  {pageCount === null ? "Page " + page : "Page " + page + " of " + pageCount}
+                </span>
+                <button
+                  type="button"
+                  className="discovery-outline-button"
+                  onClick={() => props.goToPage(page + 1)}
+                  disabled={!props.results.more || props.updating}
+                >
+                  Next
+                </button>
+              </nav>
             )}
           </div>
         </div>
         </>
       )}
-    </section>
+    </>
   );
 }
 
@@ -1770,9 +1930,20 @@ function Discovery() {
   // Counts "Try again" and Refresh presses. Changing it makes the useEffect
   // below run again (it's in the [ ] list at the end).
   const [tries, setTries] = useState(0);
-  // true while "Show more" is loading
-  const [loadingMore, setLoadingMore] = useState(false);
-  // Everything due in the next 2 weeks, for the summary box: { count, first }
+  // The page on its way after Previous or Next (2, 3, ...), or 0 when none is
+  const [pageLoading, setPageLoading] = useState(0);
+  // Why the last Previous or Next didn't work ("" when it did)
+  const [pageProblem, setPageProblem] = useState("");
+  // What screen readers hear after Previous or Next: "Loading page 2...", then
+  // "Page 2 of 14" (or the problem). See ResultsSection
+  const [pageNote, setPageNote] = useState("");
+  // Counts the requests for the list (a new filter, or Previous / Next). Only
+  // the newest one's answer is used: one that arrives late (like page 2 of the
+  // old filters, after you changed a filter) is dropped, so it can't replace the
+  // newer list. A ref, because changing it doesn't need to redraw the page
+  const listRequest = useRef(0);
+  // Everything due in the next 2 weeks, for the summary box: { count, first },
+  // or { count: null } if it couldn't be loaded
   const [dueSoon, setDueSoon] = useState(null);
   // Refresh: true while it's checking, and what it says after
   const [refreshing, setRefreshing] = useState(false);
@@ -1788,17 +1959,27 @@ function Discovery() {
     // never replaces a newer one
     let ignore = false;
     const timer = setTimeout(() => {
+      // This request's number (see listRequest above)
+      const thisRequest = ++listRequest.current;
       fetchPage(query, 1)
         .then((page) => {
-          if (!ignore) {
+          if (!ignore && listRequest.current === thisRequest) {
             setResults({ query: query, ...page, page: 1 });
             setLoadError(false);
+            // a new list starts on page 1, so an old page's loading rows,
+            // problem, and note don't apply anymore
+            setPageLoading(0);
+            setPageProblem("");
+            setPageNote("");
           }
         })
         .catch((error) => {
           // The real reason goes to the console (F12); the page shows a simple message
           console.error("Loading jobs failed:", error);
-          if (!ignore) setLoadError(true);
+          if (!ignore && listRequest.current === thisRequest) {
+            setLoadError(true);
+            setPageLoading(0);
+          }
         });
     }, 300);
     return () => {
@@ -1824,7 +2005,8 @@ function Discovery() {
           if (!ignore) setDueSoon({ count: page.total, first: page.list[0] });
         })
         .catch(() => {
-          // The box just keeps showing "…"
+          // The box shows a dash instead of loading forever (see SummaryBoxes)
+          if (!ignore) setDueSoon({ count: null });
         });
     }, 300);
     return () => {
@@ -1843,23 +2025,43 @@ function Discovery() {
     setTries(tries + 1);
   }
 
-  // "Show more": the next 50, added under the ones showing
-  async function showMore() {
-    setLoadingMore(true);
+  // Previous and Next: page n of the same list, 50 fresh jobs in place of the
+  // ones showing (the backend sorts and filters every job, so each page carries
+  // on where the last one stopped).
+  // The button you pressed goes away while the page loads (the loading rows
+  // take the table's place), so the keyboard focus moves to the list's heading
+  // right away instead of getting lost, and the page scrolls back up to the top
+  // of the list, so you start the new page at its first job (WCAG).
+  // preventScroll: the scrollIntoView line does the scrolling (to the list, not
+  // to the hidden heading)
+  async function goToPage(n) {
+    // This request's number (see listRequest above): if the filters change, or
+    // Previous / Next is pressed again, before this answer arrives, it's dropped
+    const thisRequest = ++listRequest.current;
+    const forQuery = results.query;
+    setPageLoading(n);
+    setPageProblem("");
+    setPageNote("Loading page " + n + "...");
+    // The list's heading, in ResultsSection ("?." skips it if it isn't there)
+    const heading = document.getElementById("discovery-results-title");
+    heading?.focus({ preventScroll: true });
+    heading?.closest("section")?.scrollIntoView({ block: "start" });
     try {
-      const page = await fetchPage(results.query, results.page + 1);
-      // (only if the filters haven't changed meanwhile: then the new list stays as it is)
-      setResults((now) => !now || now.query !== results.query ? now : {
-        ...now,
-        // .some() leaves out any job that's already showing, so none shows twice
-        list: [...now.list, ...page.list.filter((job) => !now.list.some((j) => j.id === job.id))],
-        more: page.more,
-        page: now.page + 1,
-      });
+      const page = await fetchPage(forQuery, n);
+      if (listRequest.current !== thisRequest) return;
+      setResults({ query: forQuery, ...page, page: n });
+      // "Page 2 of 14", or just "Page 2" for guests (the public list doesn't say how many)
+      setPageNote(page.total === null ? "Page " + n : "Page " + n + " of " + Math.max(1, Math.ceil(page.total / pageSize)));
     } catch (error) {
-      console.error("Loading more jobs failed:", error);
+      // The real reason goes to the console (F12). The page you were on stays,
+      // and the words under it say what happened
+      console.error("Loading page " + n + " failed:", error);
+      if (listRequest.current !== thisRequest) return;
+      const problem = "Couldn't load page " + n + ". Check your connection, then try again.";
+      setPageProblem(problem);
+      setPageNote(problem);
     }
-    setLoadingMore(false);
+    setPageLoading(0);
   }
 
   // Changes one filter
@@ -1983,9 +2185,12 @@ function Discovery() {
       ignore = true;
     };
   }, [openJobId, results]);
+  // (Only on page 1: on the next pages it would be the same job at the top of every page)
   const shownResults =
-    results && linkedJob && linkedJob.query === results.query && !results.list.some((job) => job.id === linkedJob.job.id)
-      ? { ...results, list: [linkedJob.job, ...results.list] }
+    results && results.page === 1 && linkedJob && linkedJob.query === results.query && !results.list.some((job) => job.id === linkedJob.job.id)
+      ? // extra: 1 says one job was added at the top, so the count under the
+        // table ("Showing 1 to 50 of ...") doesn't count it
+        { ...results, list: [linkedJob.job, ...results.list], extra: 1 }
       : results;
 
   // The tracker count: how many items on the tracker have a job behind them
@@ -2022,7 +2227,9 @@ function Discovery() {
             <LevelPrompt profile={profile} />
             {/* "Search the web" (only once something is typed in the search bar) */}
             <WebSearch search={search} onFound={() => setTries((count) => count + 1)} onHide={hideCompany} hidden={hidden} />
-            <SummaryBoxes total={results?.total ?? 0} dueSoon={dueSoon} trackerCount={trackerCount} loading={results === null} />
+            {/* (loading only while it's still coming: if it couldn't be loaded,
+                the box shows a dash instead, see SummaryBoxes) */}
+            <SummaryBoxes total={results?.total ?? null} dueSoon={dueSoon} trackerCount={trackerCount} loading={results === null && !loadError} />
           </>
         )}
 
@@ -2093,8 +2300,10 @@ function Discovery() {
           sortBy={isGuest ? "newest" : sortBy}
           showAll={clearFilters}
           onSuggestion={pickSuggestion}
-          showMore={showMore}
-          loadingMore={loadingMore}
+          goToPage={goToPage}
+          pageLoading={pageLoading}
+          pageProblem={pageProblem}
+          pageNote={pageNote}
           openJobId={openJobId}
           onOpened={clearOpenJob}
           onHide={hideCompany}

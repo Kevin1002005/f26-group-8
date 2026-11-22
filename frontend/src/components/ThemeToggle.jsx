@@ -1,6 +1,7 @@
 // ThemeToggle.jsx is the round button in the top bar that changes the colors
-// between Light, Dark, and System (follow your computer). Its picture shows
-// what's picked right now: a sun, a moon, or a screen.
+// between Light, Dark, and System (follow your computer). Its picture is a
+// sun when the page is light and a crescent moon when it's dark, so everyone
+// can tell at a glance that it's the light/dark switch.
 // Clicking it opens a small menu with the three choices, with a check mark
 // on the one that's on.
 // It's in the About, Log in, and Sign up top bars (just left of Log in), and
@@ -78,7 +79,9 @@ function announcementFor(choice) {
 }
 
 function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  // theme is what was picked (light, dark, or system). resolvedTheme is what
+  // the page is showing right now (always light or dark)
+  const { theme, resolvedTheme, setTheme } = useTheme();
 
   // "open" is true while the menu is showing
   const [open, setOpen] = useState(false);
@@ -98,6 +101,13 @@ function ThemeToggle() {
   // The choice that's on right now, and its place in the list
   const currentIndex = choices.findIndex((choice) => choice.value === theme);
   const current = choices[currentIndex];
+
+  // The button's picture follows what the page is showing, not what was
+  // picked: System shows a sun or a moon too, never the screen. (The screen
+  // was the picture most people saw, since System is where everyone starts,
+  // and it didn't look like a light/dark switch.) The screen is still in the
+  // menu, next to the word System
+  const ButtonIcon = resolvedTheme === "dark" ? MoonIcon : SunIcon;
 
   // When the menu opens, move the focus to the choice that's on, so the
   // arrow keys start from there. While it's open, a click anywhere outside closes it
@@ -180,7 +190,7 @@ function ThemeToggle() {
         onClick={() => setOpen(!open)}
         onKeyDown={handleButtonKeyDown}
       >
-        <current.Icon />
+        <ButtonIcon />
       </button>
 
       {/* "open && (...)" means "only draw the menu while it's open".

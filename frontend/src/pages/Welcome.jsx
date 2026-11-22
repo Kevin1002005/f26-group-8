@@ -3,8 +3,11 @@
 // you here from any page until you finish or skip it), so your Profile page
 // shows YOUR information instead of starting out empty.
 // It has 4 short steps, one at a time: Basics, About you, What you're looking
-// for, and Skills. Every question is optional, and "Skip the guide" ends it
-// at any point. Your answers are saved to your account when you finish (or skip).
+// for, and Skills. Every question is optional except one: "Where are you in
+// school?" (high school or college) has to be answered before Next on Basics,
+// because Opportunities and Best fit use it. "Skip the guide" still ends it at
+// any point (then Opportunities asks it instead, see LevelPrompt there).
+// Your answers are saved to your account when you finish (or skip).
 // The last screen points you to the Resume builder, because the Profile page
 // takes your education, experience, and projects from your resume.
 // The styles for this page are in index.css, under "Welcome guide".
@@ -104,13 +107,18 @@ function Welcome() {
   const [saving, setSaving] = useState(false);
   // What went wrong, if saving didn't work
   const [message, setMessage] = useState("");
+  // The message under "Where are you in school?" when Next was pressed
+  // without picking ("" when it's fine). See BasicsFields in ProfileFields.jsx
+  const [levelError, setLevelError] = useState("");
 
   // What the boxes show: your answers, or what's saved so far.
   // "||" means "use the first one that isn't empty"
   const shown = draft ?? { ...profile.data, name: profile.data.name || me.name };
-  // The boxes call this with the part that changed, like { city: "Boston" }
+  // The boxes call this with the part that changed, like { city: "Boston" }.
+  // Picking high school or college takes its error message away
   function change(fields) {
     setDraft({ ...shown, ...fields });
+    if (fields.level) setLevelError("");
   }
 
   // After the step changes, put the keyboard focus on the new step's
@@ -133,6 +141,15 @@ function Welcome() {
   // "Next", or "Finish" on the last step. Finish saves everything and marks
   // the guide as done (true), then shows "You're all set"
   async function handleNext() {
+    // The Basics step can't be left without "Where are you in school?": it's
+    // the one question Opportunities needs to start with what you can apply to.
+    // The message shows under it, and the focus goes to the first choice, so
+    // screen readers read the question and the message together (WCAG)
+    if (step.Fields === BasicsFields && !shown.level) {
+      setLevelError("Choose high school or college, so Opportunities can show what you can apply to.");
+      document.getElementById("profile-level-high-school")?.focus();
+      return;
+    }
     if (!isLastStep) {
       setCurrent(current + 1);
       return;
@@ -199,8 +216,8 @@ function Welcome() {
             {firstName ? "Welcome to ScoutSearch, " + firstName : "Welcome to ScoutSearch"}
           </h1>
           <p className="welcome-subtitle">
-            Set up your profile in about two minutes. Every question is optional,
-            and you can change your answers any time on Edit profile.
+            Set up your profile in about two minutes. Only "Where are you in school?"
+            is required, and you can change your answers any time on Edit profile.
           </p>
 
           {isDone ? (
@@ -254,7 +271,7 @@ function Welcome() {
               {/* This step's boxes. step.Fields is one of the groups from
                   ProfileFields.jsx, so <step.Fields /> draws that group */}
               <div className="welcome-fields">
-                <step.Fields profile={shown} onChange={change} />
+                <step.Fields profile={shown} onChange={change} levelError={levelError} />
               </div>
 
               {/* role="alert" reads the problem out as soon as it shows up (WCAG) */}

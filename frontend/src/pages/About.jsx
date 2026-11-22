@@ -140,12 +140,14 @@ const features = [
     },
     {
         title: "Filters",
-        description: "Filter by major, GPA, location, and remote or on-site, so you only see what fits you.",
+        // Only filters Opportunities really has. (It used to promise GPA, which there's no filter for)
+        description: "Filter by major, who it's for (high school or college), location, and remote or on-site, so you only see what fits you.",
         icon: "sliders",
     },
     {
-        title: "Real Events",
-        description: "Find real events near you or online that match your interests and qualifications.",
+        // (This used to promise events, which the site doesn't have yet)
+        title: "Application Tracker",
+        description: "Save jobs, see what's due soon, and keep notes.",
         icon: "calendar",
     },
     {
@@ -166,6 +168,13 @@ const questions = [
     {
         question: "Can I sign up if I'm under 18?",
         answer: "Yes. High school students can sign up, including students under 18.",
+    },
+    {
+        // For the adults helping high schoolers. "Employers can't see student profiles" is true
+        // today: there are no employer accounts, and each student only sees their own Profile.
+        // Check this answer again before job listers (employer accounts) are added
+        question: "I'm a parent or counselor. What should I know?",
+        answer: "It's free, with no ads, and employers can't see student profiles. Some summer programs charge tuition, so check before applying.",
     },
     {
         question: "Is my information safe?",
@@ -194,12 +203,16 @@ const steps = [
     {
         number: 1,
         title: "Sign up",
-        description: "Create your account as a high school or college student.",
+        // The high school or college question is in the welcome guide, right after
+        // signing up (not on the Sign up form itself), so this says it that way
+        description: "Create your free account, then tell us if you're in high school or college.",
     },
     {
         number: 2,
         title: "Search and filter",
-        description: "Search by major, GPA, location, remote or on-site, and more.",
+        // "Who it's for" is the Opportunities filter for high school or college students.
+        // (It used to promise GPA, which there's no filter for)
+        description: "Search by major, location, remote or on-site, and who it's for: high school or college students.",
     },
     {
         number: 3,
@@ -523,8 +536,11 @@ function About() {
                             {/* <h1> is the main heading. Each page should have only one */}
                             <h1 className="about-title">Find internships, co-ops, and research positions</h1>
                             {/* A band of light sweeps across these words twice, then stops */}
+                            {/* Says what each kind of student gets here: high schoolers
+                                getting experience before college is what makes ScoutSearch
+                                different */}
                             <p className="about-subtitle">
-                                <ShinyText>For high school and college students</ShinyText>
+                                <ShinyText>Experience before college for high schoolers, and co-ops and internships for college students</ShinyText>
                             </p>
                             <div className="about-hero-actions">
                                 {/* The big Sign up button, with small lights that travel
@@ -574,15 +590,23 @@ function About() {
                             <SpotlightCard className="about-audience">
                                 <h3>High School Students</h3>
                                 <p>Find internships and research positions while you're still in high school. The experience gives you something to show on college applications and a head start on finding a co-op once you're in college.</p>
-                                {/* A shortcut for people who already know this is them */}
-                                <Link to="/signup" className="about-audience-link">Sign up as a high school student</Link>
+                                {/* A shortcut for people who already know this is them. It
+                                    doesn't say "as a high school student": both boxes lead to
+                                    the same Sign up form, and you pick high school or college in
+                                    the welcome guide right after (the note under the boxes says so) */}
+                                <Link to="/signup" className="about-audience-link">Sign up free</Link>
                             </SpotlightCard>
                             <SpotlightCard className="about-audience">
                                 <h3>College Students</h3>
                                 <p>Find co-ops, internships, and research positions that fit your major. Each one builds experience toward the career you want after graduation.</p>
-                                <Link to="/signup" className="about-audience-link">Sign up as a college student</Link>
+                                <Link to="/signup" className="about-audience-link">Sign up free</Link>
                             </SpotlightCard>
                         </div>
+                        {/* Says where the high school or college choice really happens,
+                            since the two links above go to the same form */}
+                        <p className="about-audience-note">
+                            Either way, you'll pick high school or college in the welcome guide, right after you sign up.
+                        </p>
                     </FadeContent>
                 </section>
 

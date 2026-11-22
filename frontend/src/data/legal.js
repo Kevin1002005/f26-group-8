@@ -75,7 +75,9 @@ export const services = [
 //   login            Supabase's session and its one-time login code; scoutsearch-logged-in
 //   profile, tracker, resume  scoutsearch-profile:<id>, scoutsearch-applications(-outbox, -server-ids):<id>,
 //                    scoutsearch-resume(-unsent, -base):<id>
-//   settings         scoutsearch-settings, scoutsearch-theme, scoutsearch-hidden-companies:<id>
+//   settings         scoutsearch-settings, scoutsearch-theme
+//   hidden companies scoutsearch-hidden-companies:<id> (cleared at Log out, like the copies above:
+//                    forgetAccountCopies in login-status.js removes every scoutsearch-...:<id>)
 //   logo             logo-intro-played (sessionStorage)
 // If the site starts saving something new, add it to a row here (or a new row).
 //   category   "Strictly necessary" (logging in) or "Functional" (a feature you use)
@@ -101,8 +103,14 @@ export const browserStorage = [
   {
     name: "Your settings",
     category: "Functional",
-    purpose: "Your choices on the Settings page (colors, light or dark, text size, accessibility, profile privacy), and the companies you hide on Opportunities.",
+    purpose: "Your choices on the Settings page (colors, light or dark, text size, accessibility).",
     lasts: "Until you change them or clear this site's data.",
+  },
+  {
+    name: "Companies you hide",
+    category: "Functional",
+    purpose: "The companies you hide on Opportunities, so their jobs stay out of your list. Kept separately for each account, and only in this browser: your account doesn't keep them.",
+    lasts: "Until you log out, delete your account, or clear this site's data. After that, their jobs show again until you hide them again.",
   },
   {
     name: "The logo animation",

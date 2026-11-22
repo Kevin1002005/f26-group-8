@@ -133,14 +133,19 @@ function EditProfile() {
   // saved (with your account's name in the Name box if you haven't saved one)
   const [draft, setDraft] = useState(null);
   const shown = draft ?? { ...profile.data, name: profile.data.name || me.name };
-  // The boxes call this with the part that changed, like { city: "Boston" }
+  // The boxes call this with the part that changed, like { city: "Boston" }.
+  // Picking high school or college takes its error message away
   function change(fields) {
     setDraft({ ...shown, ...fields });
+    if (fields.level) setLevelError("");
   }
 
   // true while saving (so Save can't be pressed twice), and what went wrong
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  // The message under "Where are you in school?" when Save was pressed
+  // without picking ("" when it's fine). See BasicsFields in ProfileFields.jsx
+  const [levelError, setLevelError] = useState("");
 
   // Changing pages keeps you scrolled down as far as you were, so before
   // going to your profile we jump to the top. "instant" skips the smooth
@@ -153,6 +158,14 @@ function EditProfile() {
   // account (and the parts your resume shares), then takes you to your
   // profile. If it can't, it stays here and says why, so nothing you typed is lost
   async function handleSaveAll() {
+    // "Where are you in school?" has to be answered (Opportunities and Best fit
+    // use it). The message shows under it, and the focus jumps up to the first
+    // choice, so screen readers read the question and the message (WCAG)
+    if (!shown.level) {
+      setLevelError("Choose high school or college, so Opportunities can show what you can apply to.");
+      document.getElementById("profile-level-high-school")?.focus();
+      return;
+    }
     setSaving(true);
     setMessage("");
     try {
@@ -206,7 +219,7 @@ function EditProfile() {
         {profile.known ? (
           <div className="edit-section">
             <EditCard id="basics" title="Basic Information" subtitle="Let the world know who you are!">
-              <BasicsFields profile={shown} onChange={change} />
+              <BasicsFields profile={shown} onChange={change} levelError={levelError} />
             </EditCard>
             <EditCard id="about" title="About" subtitle="Share your interests, goals, and what motivates you.">
               <AboutFields profile={shown} onChange={change} />

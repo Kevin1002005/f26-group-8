@@ -34,8 +34,9 @@ import NavBar from "../components/NavBar.jsx";
 
 // api() is how pages talk to our backend (src/api.js).
 import { api } from "../api.js";
-// Your profile, for "For your major" (data/profile.js), and the "undecided" choice (data/majors.js)
-import { useMyProfile } from "../data/profile.js";
+// Your profile, for "For your major" and high school or college (data/profile.js),
+// and saving that choice (LevelPrompt). And the "undecided" choice (data/majors.js)
+import { latestProfile, saveProfile, useMyProfile } from "../data/profile.js";
 import { undecided } from "../data/majors.js";
 // accountKey keeps each account's hidden companies apart on a shared computer (login-status.js)
 import { accountKey } from "../login-status.js";
@@ -107,6 +108,9 @@ function toOpportunity(job) {
     pay: job.pay_text, // can be null
     requirements: job.requirements,
     applyUrl: job.apply_url, // the original posting; Apply opens it
+    // "open", or "closed" once the company took the posting down. The list only has open
+    // jobs, but a job opened from a link ("?job=...") can be closed (see isClosed below)
+    status: job.status ?? "open",
     source: sourceNames[job.source] ?? job.source,
     // When the company posted it (an ISO time), or null if its job site didn't say.
     // addedAt is when ScoutSearch first saved it, shown only when postedAt is missing
@@ -123,9 +127,11 @@ function toOpportunity(job) {
 // a web address carries them ("type=co-op&sort=fit", see queryFor below).
 // It's "async", so it hands back a promise: the page arrives a moment later.
 // Gives back { list, total (how many match in all), more (true if there's
-// another page), major (your major, from your profile), near (where the
-// "City or state" box was found on the map, or null), suggestions (ways to see
-// more when only a few match, see MoreSuggestions) }
+// another page), major (your major, from your profile), majorIgnored (true if
+// "For your major" was skipped, because the backend has no words to look for
+// in the major you typed, see FilterBar), near (where the "City or state" box
+// was found on the map, or null), suggestions (ways to see more when only a few
+// match, see MoreSuggestions) }
 async function fetchPage(query, page) {
   const body = await api("/jobs/for-me?" + query + (page > 1 ? "&page=" + page : ""));
   // Our backend always sends a list. Anything else didn't come from it
@@ -137,6 +143,7 @@ async function fetchPage(query, page) {
     total: body.total ?? body.jobs.length,
     more: body.more === true,
     major: body.major ?? "",
+    majorIgnored: body.major_ignored === true,
     near: body.near ?? null,
     suggestions: Array.isArray(body.suggestions) ? body.suggestions : [],
   };
@@ -169,6 +176,9 @@ function queryFor({ search, picked, sortBy, filters, forMajor, withRelated, hidd
 // ---------- Hidden companies ----------
 // "Hide jobs from Acme" in a job's pop-up. The list is kept in this browser,
 // under your account (so on a shared computer, the next person has their own).
+// It isn't saved to your account, and Log out clears it with this browser's
+// other copies (forgetAccountCopies in login-status.js). The Cookie Policy says
+// so (data/legal.js): change that too if this ever moves to your account.
 // try/catch: the browser's storage can be turned off; then it only lasts until
 // you leave the page
 const hiddenKey = "scoutsearch-hidden-companies";
@@ -220,6 +230,15 @@ function postedOf(opportunity) {
   if (opportunity.postedAt) return { label: "Posted", time: opportunity.postedAt };
   if (opportunity.addedAt) return { label: "Added to ScoutSearch", time: opportunity.addedAt };
   return null;
+}
+
+// True when you can't apply anymore: the deadline has gone by, or the company
+// took the posting down (status "closed"). A job saved on the tracker, or shared
+// in a link, can close after you first saw it. The backend still sends it then
+// (so the link doesn't turn into "not found"), and this makes the row and the
+// pop-up say "Closed" instead of offering an Apply that leads nowhere
+function isClosed(opportunity) {
+  return opportunity.status === "closed" || isPastDeadline(opportunity.deadline);
 }
 
 // ---------- Icons ----------
@@ -293,7 +312,9 @@ function ArrowIcon() {
 // old dark navy box).
 // props.search is what's typed in the search bar right now, and
 // props.setSearch changes it. Discovery (at the bottom) remembers it, so the
-// list can use it to filter.
+// list can use it to filter. props.forHighSchool is true when you're in high
+// school (see profileLevel in Discovery): then one more line under the title
+// says what's here for you.
 function DiscoveryHeader(props) {
   // Pressing Enter in a form normally reloads the whole page. This stops
   // that. The list already updates as you type, so Enter doesn't need to do
@@ -310,6 +331,14 @@ function DiscoveryHeader(props) {
         <p className="discovery-head-text">
           Real internships, co-ops, research positions, and programs, from company job boards.
         </p>
+        {/* Only for high schoolers: ScoutSearch's main idea is helping them get
+            experience before college, so the page says so */}
+        {props.forHighSchool && (
+          <p className="discovery-head-note">
+            Summer programs, research, and internships open to high schoolers: experience you can write about on college
+            applications.
+          </p>
+        )}
       </div>
 
       {/* role="search" tells screen readers this is the page's search (WCAG) */}
@@ -333,6 +362,83 @@ function DiscoveryHeader(props) {
         />
       </form>
     </header>
+  );
+}
+
+// "Where are you in school?" under the title, for students who haven't picked
+// high school or college yet (accounts made before the welcome guide asked,
+// or that skipped the guide). Each button saves the answer to your profile,
+// and the box goes away: Opportunities then starts on what you can apply to,
+// and Best fit uses it too.
+// It only shows once the server has sent your profile (state "ready"): before
+// that we don't know yet, and with no server the answer couldn't be saved.
+// props.profile is useMyProfile() from Discovery
+function LevelPrompt(props) {
+  const profile = props.profile;
+  // true while saving, so the buttons can't be pressed twice
+  const [saving, setSaving] = useState(false);
+  // What happened, read out by screen readers (role="status" below)
+  const [message, setMessage] = useState("");
+  // The message, so the keyboard focus can go there once the buttons are gone
+  const messageRef = useRef(null);
+  const needsLevel = profile.state === "ready" && !profile.data.level;
+
+  async function pick(level) {
+    // Already saving: ignore a second click (see aria-disabled on the buttons)
+    if (saving) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      // Saving replaces the whole profile, so it starts from the newest copy
+      // (latestProfile), with only the level changed
+      const latest = await latestProfile();
+      if (!latest) throw new Error("Couldn't reach the server. Try again in a minute.");
+      await saveProfile({ ...latest, level: level });
+      setMessage(
+        (level === "high-school" ? "Saved: you're in high school." : "Saved: you're in college.") +
+          " You can change it any time on Edit profile.",
+      );
+      // The button you pressed is gone now, so the focus goes to the message
+      // instead of dropping to the top of the page (WCAG)
+      messageRef.current?.focus();
+    } catch (error) {
+      // The buttons stay, so you can try again
+      setMessage("Couldn't save it: " + error.message);
+    }
+    setSaving(false);
+  }
+
+  return (
+    <>
+      {needsLevel && (
+        <section className="discovery-level" aria-labelledby="discovery-level-title">
+          <div className="discovery-level-words">
+            <h2 id="discovery-level-title" className="discovery-level-title">
+              Where are you in school?
+            </h2>
+            <p className="discovery-level-text">
+              So Opportunities starts with what you can apply to.
+            </p>
+          </div>
+          {/* aria-disabled (not "disabled") while saving: "disabled" would drop
+              the keyboard focus from the button you just pressed. pick() ignores
+              clicks meanwhile, like Sign up's button (Signup.jsx) */}
+          <div className="discovery-level-buttons">
+            <button type="button" className="discovery-outline-button" onClick={() => pick("high-school")} aria-disabled={saving}>
+              I'm in high school
+            </button>
+            <button type="button" className="discovery-outline-button" onClick={() => pick("college")} aria-disabled={saving}>
+              I'm in college
+            </button>
+          </div>
+        </section>
+      )}
+      {/* Always on the page, so screen readers hear it when it changes (WCAG).
+          tabIndex -1 lets the code above focus it, without making it a Tab stop */}
+      <p className="discovery-level-message" role="status" tabIndex={-1} ref={messageRef}>
+        {message}
+      </p>
+    </>
   );
 }
 
@@ -441,20 +547,38 @@ function CloseIcon() {
 //                      (In React 19, "ref" can be passed in like any other prop.)
 //   saved, toggleSave  the same Save on/off as the row's button, and the
 //                      function that flips it (and updates the tracker)
-//   applied, onApply   true once Apply was pressed, and what Apply runs (it
-//                      moves the job to Submitted on the tracker)
+//   applyStep          "none", "asked" once Apply was pressed (the pop-up asks
+//                      if you sent your application), "applied" once you said
+//                      Yes, or "later" once you said Not yet
+//   onApply            what Apply runs (it only asks, see OpportunityRow)
+//   onConfirmApplied   what "Yes, I sent it" runs (it moves the job to
+//                      Submitted on the tracker)
+//   onNotYet           what "Not yet" runs (it keeps the job in Saved on the
+//                      tracker, so it isn't lost)
 //
 // { opportunity, ref, saved, ... } below "unpacks" the props: it's a
 // shorter way of writing props.opportunity, props.ref, and so on. It's
 // needed here because React's rules check that a ref is never read while
 // the page is being drawn, and keeping it separate from the other props
 // makes that clear.
-function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApply, onHide, idPrefix }) {
+function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onApply, onConfirmApplied, onNotYet, onHide, idPrefix }) {
   // A unique id for the title, so the dialog can be named by it (WCAG). idPrefix keeps it unique
   // when the same job is in two tables (the main list and "Found on the web")
   const titleId = (idPrefix ?? "discovery-dialog-title-") + opportunity.id;
-  // true once the deadline has gone by: Apply then turns off (see the bottom)
-  const closed = isPastDeadline(opportunity.deadline);
+  // true once the deadline has gone by or the posting was taken down: Apply
+  // then turns off (see the bottom, and isClosed near the top of this file)
+  const closed = isClosed(opportunity);
+  // The Apply link, so the answer buttons can put the keyboard focus back on it
+  const applyLinkRef = useRef(null);
+
+  // "Yes, I sent it" or "Not yet": the focus goes to Apply first, because both
+  // buttons disappear once one is pressed, and the focus would otherwise drop
+  // to the top of the pop-up (WCAG). Then the answer runs (onConfirmApplied
+  // or onNotYet)
+  function answer(runAnswer) {
+    applyLinkRef.current?.focus();
+    runAnswer();
+  }
   // When it was posted (see postedOf above)
   const posted = postedOf(opportunity);
 
@@ -599,15 +723,38 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApp
       {/* The bottom: a note on the left, Save and Apply on the right.
           It stays put while the middle scrolls. */}
       <div className="discovery-dialog-bottom">
-        {/* After Apply, it says where the job went on your tracker. role="status"
-            makes screen readers read that out (WCAG). It's inside the pop-up
-            because while it's open, the page behind it is shut off, and screen
-            readers don't hear messages from there */}
-        <p className="discovery-dialog-message" role="status">
-          {applied
-            ? "Moved to Submitted on My applications. (Didn't send it? Move it back there.)"
-            : "You'll apply on " + opportunity.organization + "'s own site."}
-        </p>
+        {/* The note, and after Apply, the question "Did you send your
+            application?" with Yes and Not yet. Opening the posting isn't the
+            same as applying, so the job only moves to Submitted if you say so.
+            Not yet keeps it in Saved, so it isn't lost. Saying nothing changes
+            nothing (it stays where it was on your tracker, or off it) */}
+        <div className="discovery-dialog-note">
+          {/* role="status" makes screen readers read the question, and then
+              where the job went, when they appear (WCAG). It's inside the
+              pop-up because while it's open, the page behind it is shut off,
+              and screen readers don't hear messages from there */}
+          <p className="discovery-dialog-message" role="status">
+            {applyStep === "applied"
+              ? "Moved to Submitted on My applications."
+              : applyStep === "later"
+                ? "Kept on My applications, so you won't lose it."
+                : applyStep === "asked"
+                  ? "Did you send your application on " + opportunity.organization + "'s site?"
+                  : "You'll apply on " + opportunity.organization + "'s own site."}
+          </p>
+          {/* Only while it's asking. The words say what each answer means, so
+              they make sense on their own to screen readers and voice control (WCAG) */}
+          {applyStep === "asked" && (
+            <>
+              <button type="button" className="discovery-outline-button discovery-small-button" onClick={() => answer(onConfirmApplied)}>
+                Yes, I sent it
+              </button>
+              <button type="button" className="discovery-outline-button discovery-small-button" onClick={() => answer(onNotYet)}>
+                Not yet
+              </button>
+            </>
+          )}
+        </div>
         <div className="discovery-actions">
           {/* aria-label starts with the word you see ("Save" or "Saved"),
               so voice control users can say what's on the button (WCAG) */}
@@ -621,8 +768,9 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApp
             <BookmarkIcon />
             {saved ? "Saved" : "Save"}
           </button>
-          {/* After the deadline, Apply turns off and says why ("disabled"
-              also stops it from being clicked or reached with Tab).
+          {/* After the deadline, or once the posting is taken down, Apply turns
+              off and says why ("disabled" also stops it from being clicked or
+              reached with Tab).
               Before it, Apply opens the original posting in a new tab, so students
               apply on the real site. It's a link (<a>), not a button, because it
               goes somewhere. target="_blank" opens a new tab; rel="noopener
@@ -636,12 +784,13 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applied, onApp
           ) : (
             opportunity.applyUrl && (
               <a
+                ref={applyLinkRef}
                 href={opportunity.applyUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="discovery-solid-button"
                 aria-label={"Apply to " + opportunity.title + " (opens in a new tab)"}
-                // the posting opens, and the job goes in Submitted on your tracker
+                // the posting opens, and the pop-up asks if you applied (see above)
                 onClick={onApply}
               >
                 Apply
@@ -671,6 +820,8 @@ function OpportunityRow(props) {
   const opportunity = props.opportunity;
   // When it was posted (see postedOf near the top of this file)
   const posted = postedOf(opportunity);
+  // true when you can't apply anymore (see isClosed near the top of this file)
+  const closed = isClosed(opportunity);
 
   // The Save button (on/off) is "on" while this job is on the Application
   // tracker. It reads the tracker's list instead of remembering its own, so it
@@ -681,20 +832,44 @@ function OpportunityRow(props) {
   const saved = trackerItems.some((item) => item.id === opportunity.id);
   // What screen readers hear after Save is pressed (see the end of the row)
   const [announcement, setAnnouncement] = useState("");
-  // true once Apply was pressed in the pop-up (it then says where the job went)
-  const [applied, setApplied] = useState(false);
+  // Where Apply is at in the pop-up: "none", "asked" (Apply was pressed, and
+  // the pop-up asks if you sent your application), "applied" (you said Yes),
+  // or "later" (you said Not yet)
+  const [applyStep, setApplyStep] = useState("none");
 
-  // Apply was pressed: the posting opens in a new tab (the link does that),
-  // and the job goes in the tracker's "Submitted" column, saved or not
-  function apply() {
-    markApplied(opportunity.id, {
-      title: opportunity.title,
-      organization: opportunity.organization,
-      deadline: opportunity.deadline,
-      initials: opportunity.initials,
-      link: opportunity.applyUrl ?? null,
-    });
-    setApplied(true);
+  // What the tracker keeps with this job (Save, "Yes, I sent it", and "Not
+  // yet" all use it), so it can show the job right away, even offline
+  const trackerDetails = {
+    title: opportunity.title,
+    organization: opportunity.organization,
+    deadline: opportunity.deadline,
+    initials: opportunity.initials,
+    link: opportunity.applyUrl ?? null,
+  };
+
+  // Apply was pressed: the posting opens in a new tab (the link does that).
+  // Opening a posting isn't applying (many students look first, and apply
+  // later or never), so nothing moves on the tracker yet: the pop-up asks
+  // instead. (Before, Apply moved the job to Submitted right away, so the
+  // tracker filled up with jobs nobody had applied to, and their deadlines
+  // dropped out of "Due soon".) After Not yet, pressing Apply again asks again;
+  // after Yes, it changes nothing
+  function askIfApplied() {
+    if (applyStep !== "applied") setApplyStep("asked");
+  }
+
+  // "Yes, I sent it": the job goes in the tracker's "Submitted" column, dated
+  // today, saved or not
+  function confirmApplied() {
+    markApplied(opportunity.id, trackerDetails);
+    setApplyStep("applied");
+  }
+
+  // "Not yet": the job goes in the tracker's "Saved" column, so it isn't lost.
+  // If it's on the tracker already (in any column), it stays where it is
+  function notYet() {
+    if (!saved) addToTracker(opportunity.id, trackerDetails);
+    setApplyStep("later");
   }
 
   // Runs when Save is pressed, in the row or in the pop-up.
@@ -708,13 +883,7 @@ function OpportunityRow(props) {
       setAnnouncement("");
     } else {
       setAnnouncement("Saved to My applications.");
-      addToTracker(opportunity.id, {
-        title: opportunity.title,
-        organization: opportunity.organization,
-        deadline: opportunity.deadline,
-        initials: opportunity.initials,
-        link: opportunity.applyUrl ?? null,
-      });
+      addToTracker(opportunity.id, trackerDetails);
     }
     // (No more to do: the list changed, so this button and "On your tracker"
     // at the top redraw by themselves)
@@ -794,23 +963,24 @@ function OpportunityRow(props) {
       </td>
 
       <td data-label="Apply by">
-        {/* Many real jobs don't list a deadline, so this says so instead of a
-            broken date. "? :" picks one of the two */}
-        {opportunity.deadline ? (
-          <span className="discovery-apply-by">
-            {/* <time> marks this as a date for computers, using the
-                year-month-day version in dateTime */}
+        <span className="discovery-apply-by">
+          {/* Many real jobs don't list a deadline, so this says so instead of a
+              broken date. "? :" picks one of the two */}
+          {opportunity.deadline ? (
+            // <time> marks this as a date for computers, using the
+            // year-month-day version in dateTime
             <time dateTime={opportunity.deadline}>
               {formatDate(opportunity.deadline, { month: "short", day: "numeric", year: "numeric" })}
             </time>
-            {/* "Due soon" when it's within a week, and "Closed" once the deadline
-                has gone by. Written out, not only a color (WCAG) */}
-            {isDueWithin(opportunity.deadline, 7) && <span className="discovery-due-tag">Due soon</span>}
-            {isPastDeadline(opportunity.deadline) && <span className="discovery-due-tag discovery-closed-tag">Closed</span>}
-          </span>
-        ) : (
-          "No deadline listed"
-        )}
+          ) : (
+            "No deadline listed"
+          )}
+          {/* "Due soon" when it's within a week, and "Closed" once the deadline
+              has gone by or the posting was taken down (see isClosed), even
+              with no deadline. Written out, not only a color (WCAG) */}
+          {!closed && isDueWithin(opportunity.deadline, 7) && <span className="discovery-due-tag">Due soon</span>}
+          {closed && <span className="discovery-due-tag discovery-closed-tag">Closed</span>}
+        </span>
       </td>
 
       <td className="discovery-cell-actions">
@@ -859,8 +1029,10 @@ function OpportunityRow(props) {
           ref={dialogRef}
           saved={saved}
           toggleSave={toggleSave}
-          applied={applied}
-          onApply={apply}
+          applyStep={applyStep}
+          onApply={askIfApplied}
+          onConfirmApplied={confirmApplied}
+          onNotYet={notYet}
           onHide={props.onHide}
           idPrefix={props.idPrefix}
         />
@@ -1032,7 +1204,8 @@ function ResultsSection(props) {
 // The filters, under the tabs. props.filters is what's picked ({ level, setting,
 // ... }, see noFilters near the top), and props.change(name, value) changes one.
 // "For your major" is a separate on/off (props.forMajor, props.setForMajor),
-// because it starts on when your profile has a major.
+// because it starts on when your profile has a major. props.majorIgnored is
+// true when the backend couldn't use that major (see fetchPage).
 // props.hidden is the companies you've hidden, and props.unhide shows one again
 function FilterBar(props) {
   const filters = props.filters;
@@ -1047,8 +1220,11 @@ function FilterBar(props) {
       </h2>
       <div className="discovery-filter-row">
         {/* "For your major": on/off. Without a major on your profile, it's a
-            link to add one instead */}
-        {props.major ? (
+            link to add one instead. The same link shows when the backend skipped
+            the major filter (props.majorIgnored): a typed-in major like "General
+            Studies" has no words to look for, so the list shows every field, and
+            picking a major from the list fixes that */}
+        {props.major && !props.majorIgnored ? (
           <button
             type="button"
             className="discovery-chip"
@@ -1062,7 +1238,7 @@ function FilterBar(props) {
           </button>
         ) : (
           <Link to="/editprofile#basics" className="discovery-text-link">
-            Add your major to see jobs for it
+            {props.majorIgnored ? "Pick your major from the list for better matches" : "Add your major to see jobs for it"}
             <ArrowIcon />
           </Link>
         )}
@@ -1378,20 +1554,25 @@ function Discovery() {
   // major" off turns this off too
   const [withRelated, setWithRelated] = useState(false);
 
-  // "Who it's for" starts at your level, from the school on your profile: a high
-  // school senior starts on what high schoolers can apply to, a college student on
-  // college jobs, so nobody starts on a list of jobs they can't get. (The same
-  // check the backend's Best fit uses, backend/src/fit.ts.) levelChoice is null
-  // until you pick one yourself; picking "Anyone" shows everything
+  // "Who it's for" starts at your level: a high school senior starts on what
+  // high schoolers can apply to, a college student on college jobs, so nobody
+  // starts on a list of jobs they can't get. Your level is what you picked on
+  // your profile ("Where are you in school?": the welcome guide, Edit profile,
+  // or LevelPrompt above). Before you pick, it's a guess from your school's
+  // name. levelChoice is null until you pick a filter yourself; picking
+  // "Anyone" shows everything
   const [levelChoice, setLevelChoice] = useState(null);
   const school = profile.data.school.trim();
-  // only when the name says which it is: "Worcester Academy" or "Boston Latin
-  // School" could be either, so those start on "Anyone"
-  const profileLevel = /high school|\bhs\b/i.test(school)
+  // The guess: only when the name says which it is. "Worcester Academy" or
+  // "Boston Latin School" could be either, so those start on "Anyone".
+  // (Best fit in backend/src/fit.ts guesses "college" for those instead, since
+  // it has to pick one; both use your own pick once you've made it)
+  const guessedLevel = /high school|\bhs\b/i.test(school)
     ? "high-school"
     : /universit|college|institute|polytechnic/i.test(school)
       ? "college"
       : "";
+  const profileLevel = profile.data.level || guessedLevel;
   // the filters as they show on screen, with that level in them
   const shownFilters = { ...filters, level: levelChoice ?? profileLevel };
 
@@ -1527,7 +1708,9 @@ function Discovery() {
     setMajorChoice(false);
     setWithRelated(false);
   }
-  const filtersInUse = JSON.stringify(shownFilters) !== JSON.stringify(noFilters) || search.trim() !== "" || picked !== "All" || forMajor;
+  // (A major the backend skipped doesn't count: it isn't filtering anything, see FilterBar)
+  const filtersInUse = JSON.stringify(shownFilters) !== JSON.stringify(noFilters) || search.trim() !== "" || picked !== "All"
+    || (forMajor && results?.majorIgnored !== true);
 
   // "Hide jobs from Acme" (in a job's pop-up), and "Show again" (under More filters)
   function hideCompany(company) {
@@ -1543,23 +1726,36 @@ function Discovery() {
 
   // Refresh: asks the server to check the job sites for new listings (at most
   // once every 30 minutes for the whole site), waits for it (checking every 5
-  // seconds, for up to 3 minutes), then loads the list again
+  // seconds, for up to 3 minutes), then loads the list again.
+  // info.worked is false when the check ran into a problem (a job site or the
+  // database didn't answer). Then it says so, instead of "Up to date", which
+  // would make students think they're seeing the newest jobs when they aren't
   async function refresh() {
     setRefreshing(true);
     setRefreshMessage("Checking the job sites for new listings. This can take a minute...");
     try {
       const answer = await api("/jobs/refresh", { method: "POST" });
       let info = answer.refresh;
+      // When the next check can start, like "3:45 PM"
+      const nextTime = () => new Date(info.next_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
       if (answer.started || info.running) {
         for (let i = 0; i < 36 && info.running; i++) {
           await wait(5000);
           info = (await api("/jobs/refresh")).refresh;
         }
-        setRefreshMessage(info.running ? "Still checking. New jobs will show up in a few minutes." : "Up to date: the job sites were just checked.");
+        if (info.running) {
+          setRefreshMessage("Still checking. New jobs will show up in a few minutes.");
+        } else if (info.worked === false) {
+          setRefreshMessage("The check for new listings had a problem, so some new jobs may be missing. Try again after " + nextTime() + ".");
+        } else {
+          setRefreshMessage("Up to date: the job sites were just checked.");
+        }
+      } else if (info.worked === false) {
+        // Someone checked less than 30 minutes ago, and that check had a problem
+        setRefreshMessage("The last check for new listings had a problem, so some new jobs may be missing. Try again after " + nextTime() + ".");
       } else {
         // Someone checked less than 30 minutes ago: the list already has what they found
-        const next = new Date(info.next_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-        setRefreshMessage("Up to date: the job sites were checked recently. You can check again after " + next + ".");
+        setRefreshMessage("Up to date: the job sites were checked recently. You can check again after " + nextTime() + ".");
       }
     } catch (error) {
       setRefreshMessage("Couldn't check the job sites: " + error.message);
@@ -1625,7 +1821,9 @@ function Discovery() {
       {/* One column, like a dashboard: the title and search, the summary
           boxes, the tabs and Sort, the filters, then the table */}
       <main className="discovery-page">
-        <DiscoveryHeader search={search} setSearch={setSearch} />
+        <DiscoveryHeader search={search} setSearch={setSearch} forHighSchool={profileLevel === "high-school"} />
+        {/* "Where are you in school?", until you've picked (see LevelPrompt) */}
+        <LevelPrompt profile={profile} />
         {/* "Search the web" (only once something is typed in the search bar) */}
         <WebSearch search={search} onFound={() => setTries((count) => count + 1)} onHide={hideCompany} hidden={hidden} />
         <SummaryBoxes total={results?.total ?? 0} dueSoon={dueSoon} trackerCount={trackerCount} loading={results === null} />
@@ -1666,6 +1864,9 @@ function Discovery() {
           filters={shownFilters}
           change={changeFilter}
           major={major}
+          // true when the backend couldn't use your major (see fetchPage). Read from
+          // the last answer, so it's false until the first one arrives
+          majorIgnored={results?.majorIgnored === true}
           forMajor={forMajor}
           setForMajor={chooseMajor}
           withRelated={withRelated}

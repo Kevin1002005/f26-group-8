@@ -554,13 +554,27 @@ function LevelPrompt(props) {
   );
 }
 
-// A gray bar where a summary box's number will go, while it's on its way. It
-// fades in and out like the list's loading rows (LoadingRows, below). The bar
-// is only a picture, so screen readers hear the word "Loading" instead (WCAG)
+// The green loading bar: a gray pill that fills up with green, while jobs are
+// on their way (index.css, "The green loading bars"). It can't know how far
+// along the server really is, so it shows no number: it fills fast at first,
+// then slower, and stops at about 90% until the jobs arrive.
+// props.className says where it is (in a summary box, or under "Loading
+// opportunities..."). It's only a picture, so screen readers skip it
+// (aria-hidden): the words next to it say it's loading (WCAG)
+function LoadingBar(props) {
+  return (
+    <span className={"discovery-progress " + props.className} aria-hidden="true">
+      <span className="discovery-progress-fill" />
+    </span>
+  );
+}
+
+// What a summary box shows where its number will go, while it's on its way:
+// the green loading bar, and the word "Loading" for screen readers (WCAG)
 function NumberLoading() {
   return (
     <>
-      <span className="discovery-loading-bar discovery-summary-loading" aria-hidden="true" />
+      <LoadingBar className="discovery-summary-progress" />
       <span className="sr-only">Loading</span>
     </>
   );
@@ -1268,21 +1282,26 @@ function MoreSuggestions(props) {
 const pageSize = 50;
 
 // What the list shows while jobs are on their way (the first time, and after
-// Previous or Next): props.words, like "Loading opportunities...", over six
-// gray bars in the shape of the table's rows. The bars fade in and out, one row
-// after another, so it's clear the page is working and not stuck (index.css,
-// "While the jobs are loading"; they stay still if motion is turned off).
+// Previous or Next): props.words, like "Loading opportunities...", with the
+// green loading bar under them (LoadingBar above), over six gray bars in the
+// shape of the table's rows. The gray bars fade in and out, one row after
+// another, so it's clear the page is working and not stuck (index.css, "While
+// the jobs are loading"; nothing moves if motion is turned off).
 // role="status" reads the words out when they appear, and the bars are only a
 // picture, so screen readers skip them (aria-hidden) (WCAG)
 function LoadingRows(props) {
   return (
     <div className="discovery-loading">
-      {/* props.quiet: another status line reads these words out (after
-          Previous or Next, see ResultsSection), so this one isn't a status
-          too, or screen readers could say it twice */}
-      <p className="discovery-loading-words" role={props.quiet ? undefined : "status"}>
-        {props.words}
-      </p>
+      {/* The top of the box: the words, and the green bar under them */}
+      <div className="discovery-loading-top">
+        {/* props.quiet: another status line reads these words out (after
+            Previous or Next, see ResultsSection), so this one isn't a status
+            too, or screen readers could say it twice */}
+        <p className="discovery-loading-words" role={props.quiet ? undefined : "status"}>
+          {props.words}
+        </p>
+        <LoadingBar className="discovery-list-progress" />
+      </div>
       <div aria-hidden="true">
         {/* Six pretend rows. They never change, so their number works as the key */}
         {[1, 2, 3, 4, 5, 6].map((row) => (

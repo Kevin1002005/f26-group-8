@@ -165,7 +165,9 @@
   --paper-soft-ink: #555555; /* the hint when the resume is still empty (7.5:1) */
   --paper-rule: #000000;     /* the line under each section heading */
   --tracker-sent: #1f8a4c;        /* Application tracker: the green "Submitted" dot (4.3:1 on boxes;
-                                     dots need 3:1, WCAG). The site has no other green */
+                                     dots need 3:1, WCAG). The site's one green */
+  --progress: #1f8a4c;            /* the same green, filling the loading bars on Opportunities
+                                     (3.5:1 on the bar's gray track, --line; bars need 3:1, WCAG) */
   --signup-error: #9b1c1c;        /* red error messages under the boxes (8.6:1 on boxes) */
   --shadow-color: #32325d;        /* the blue-gray tint of the soft shadows under boxes */
 
@@ -217,6 +219,7 @@
   --tag-green-bg: #123527;  --tag-green-text: #8fe0b4;   /* 8.6:1 */
   --tag-amber-bg: #3a2a0c;  --tag-amber-text: #f3c776;   /* 8.7:1 */
   --tracker-sent: #5cc28a; /* Application tracker: the green "Submitted" dot (8:1 on boxes) */
+  --progress: #5cc28a;     /* the loading bars' green fill (5.6:1 on the bar's track, --line) */
   --signup-error: #f2a7a7; /* light red, so it's readable on dark boxes (8.9:1) */
   --shadow-color: #000000; /* shadows are black in the dark */
 
@@ -5059,14 +5062,64 @@ html:has(.feed-nav) :focus {
   overflow: hidden;                 /* keeps the rows inside the rounded corners */
 }
 
-/* "Loading opportunities...", across the top, where the column names go */
+/* The top of the box, where the column names go: "Loading opportunities...",
+   with the green loading bar under it */
+.discovery-loading-top {
+  display: flex;
+  flex-direction: column;           /* the words, then the bar under them */
+  gap: 10px;                        /* space between them */
+  padding: 12px 16px 14px;          /* space inside: top, sides, bottom */
+  border-bottom: 1px solid var(--line);
+}
+
+/* "Loading opportunities..." */
 .discovery-loading-words {
   margin: 0;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--line);
   font-size: 14px;
   font-weight: 600;                 /* semi-bold */
   color: var(--muted);              /* 7.8:1 / 9.1:1 */
+}
+
+/* ----- The green loading bars ----- */
+/* A pill-shaped gray track with a green fill that slides in from the left:
+   one under "Loading opportunities...", and one in each summary box that's
+   still waiting for its number. The site can't tell how far along the server
+   is, so the fill doesn't show a real percentage: it fills quickly at first,
+   then slower and slower, so it never looks stuck, and stops at about 90%.
+   When the jobs arrive, the list takes its place. It has no number on it, so
+   it never claims to know more than it does. With motion turned off, the
+   track just stays empty (the words still say it's loading). */
+.discovery-progress {
+  display: block;
+  height: 10px;
+  border-radius: 999px;             /* round ends, like a pill */
+  background-color: var(--line);    /* the gray track */
+  overflow: hidden;                 /* the fill stays inside the rounded track */
+}
+
+/* The green fill. It's as wide as the track, and starts pushed all the way
+   out to the left (hidden). The animation slides it in, which is smoother
+   than changing its width (the browser only moves it, without redrawing) */
+.discovery-progress-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;             /* its right end is round too */
+  background-color: var(--progress); /* green (3.5:1 / 5.6:1 on the track, WCAG) */
+  transform: translateX(-100%);     /* all the way to the left, out of sight */
+}
+
+/* The one under "Loading opportunities...": the box's whole width */
+.discovery-list-progress {
+  width: 100%;
+}
+
+/* In a summary box: where the big number goes, about as tall as the number,
+   so the box doesn't change height when the number arrives */
+.discovery-summary-progress {
+  width: 140px;
+  max-width: 100%;                  /* never wider than the box on a small phone */
+  margin: 11.5px 0;                 /* 10px bar + 23px of space = the number's 33px */
 }
 
 /* One pretend row: the role and company on the left, then three short facts */
@@ -5117,13 +5170,6 @@ html:has(.feed-nav) :focus {
   flex: 1;                          /* each takes an equal share of what's left */
 }
 
-/* In a summary box, the bar stands where the big number goes, at about its size */
-.discovery-summary-loading {
-  width: 64px;
-  height: 26px;
-  margin: 3px 0;                    /* keeps the box the same height as with a number */
-  border-radius: 8px;
-}
 
 /* The tip under the table */
 .discovery-tip {
@@ -5607,6 +5653,24 @@ html:has(.feed-nav) :focus {
   :root:not([data-reduce-motion="on"]) .discovery-loading-row:nth-child(6) .discovery-loading-bar {
     animation-delay: 0.6s;
   }
+
+  /* The green fills slide in over 45 seconds (about as long as the server
+     can take to wake up), and "forwards" keeps them at the end, about 90%
+     full, until the jobs arrive */
+  :root:not([data-reduce-motion="on"]) .discovery-progress-fill {
+    animation: discovery-progress-fill 45s ease-out forwards;
+  }
+}
+
+/* How the green fill moves: about a third full in the first 2 seconds, then
+   slower and slower, so a quick answer and a slow wake-up both look right.
+   translateX(-65%) means 65% of it is still hidden, so 35% shows */
+@keyframes discovery-progress-fill {
+  0% { transform: translateX(-100%); }  /* empty */
+  4% { transform: translateX(-65%); }   /* about 2 seconds: 35% */
+  15% { transform: translateX(-45%); }  /* about 7 seconds: 55% */
+  40% { transform: translateX(-25%); }  /* about 18 seconds: 75% */
+  100% { transform: translateX(-10%); } /* 45 seconds: 90%, and it stays there */
 }
 
 /* The fade for the loading bars: full color, fainter halfway, then back */

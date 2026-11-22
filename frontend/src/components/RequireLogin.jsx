@@ -1,5 +1,5 @@
 // RequireLogin.jsx stands in front of every page you have to be logged in to see
-// (Feed, Profile, Messages, Settings, ...). App.jsx puts those pages inside it.
+// (My applications, Resume, My info, Settings, ...). App.jsx puts those pages inside it.
 // - Logged in: it shows the page you asked for.
 // - Not logged in: it sends you to the Log in page instead.
 // - Logged in, but you haven't finished (or skipped) the welcome guide yet:
@@ -24,10 +24,20 @@ import { useLoggedInId } from '../login-status.js';
 // useMyProfile says if you still need the welcome guide (data/profile.js)
 import { useMyProfile } from '../data/profile.js';
 
-function RequireLogin() {
+// props.allowGuests: true for a page anyone may see without an account (only
+// Opportunities, so counselors can share a link to it). Logged out, that page
+// shows as a guest; logged in, it still sends you to the welcome guide first,
+// like every other page
+function RequireLogin(props) {
     const loggedInId = useLoggedInId();
     const profile = useMyProfile();
     const location = useLocation();
+
+    // A guest on a page that allows guests: show it (it knows you're a guest
+    // from login-status.js too, and leaves out what needs an account)
+    if (!loggedInId && props.allowGuests) {
+        return <Outlet />;
+    }
 
     if (!loggedInId) {
         // "replace" swaps the locked page out of the browser's history, so
@@ -41,7 +51,7 @@ function RequireLogin() {
         return <Navigate to="/welcome" replace />;
     }
 
-    // Logged in: show the page that matched (Feed, Messages, ...)
+    // Logged in: show the page that matched (My info, Settings, ...)
     return <Outlet />;
 }
 

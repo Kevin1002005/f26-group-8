@@ -12,9 +12,11 @@
 export const legal = {
   // Bump this (to today's date) whenever a policy really changes
   // (2026-11-17: "Search the web" on Opportunities sends the search words to Google's Gemini)
-  policyVersion: "2026-11-17",
+  // (2026-11-22: the Feed, Network, Messages, and public profiles were taken out, and the
+  // Feed's posts, comments, likes, and follows deleted)
+  policyVersion: "2026-11-22",
   // The day the policies take effect, like "November 20, 2026"
-  effectiveDate: "November 17, 2026",
+  effectiveDate: "November 22, 2026",
   // Who runs ScoutSearch and is responsible for the data: a person, a student team, or an
   // organization (for example, whether it's Oasis @ Northeastern or the team members)
   operator: "the ScoutSearch team, a student team formed in Oasis at Northeastern University",
@@ -33,7 +35,7 @@ export const legal = {
 export const services = [
   {
     name: "Supabase",
-    what: "Accounts and logins (email, a scrambled \"hash\" of your password, and your name and picture if you use Google), and the database with your Application tracker, resume, profile, and Feed posts.",
+    what: "Accounts and logins (email, a scrambled \"hash\" of your password, and your name and picture if you use Google), and the database with your Application tracker, resume, and profile.",
     region: "the United States (US East, North Virginia)", // Supabase -> Project Settings -> General -> Region
     link: "https://supabase.com/privacy",
   },

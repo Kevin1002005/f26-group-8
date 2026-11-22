@@ -1,17 +1,20 @@
 // Settings.jsx is the Settings page (yoursite.com/settings).
 // You get here from the dropdown under your circle in the top bar.
 // It has a column of tabs on the left. Clicking one shows its box on the right:
-//   Account          a link to Edit profile, and Change password
+//   Account          a link to My info, and Change password
 //                    (logged-out people use "Forgot your password?" on Log in instead)
 // (There used to be a "Preferences" tab too. It only said "Coming soon", and
-// the Profile page's "What I'm looking for" card already does that job.)
+// My info's "What I'm looking for" card already does that job.)
 //   Appearance       light or dark, the site's colors, and heading style
-//   Privacy & data   who can see your profile and what's on it, and "Your data":
-//                    Download my data, Delete my account (backend/src/account.ts)
+//   Privacy & data   "Your data": Download my data, Delete my account
+//                    (backend/src/account.ts)
 //   Accessibility    font, text size, contrast, spacing, motion, ...
 // Appearance and Accessibility work right away, on every page. The choices
-// are saved in this browser (see settings.js). Privacy is saved too, but it
-// won't change what others see until the site is connected to the backend.
+// are saved in this browser (see settings.js).
+// (The Privacy tab used to have "Who can see your profile" and on/off choices
+// for what your profile showed, and messages from job listers. They never did
+// anything, and once the public Profile page, Network, and Messages were taken
+// out in 2026-11, there was nothing left for them to change, so they went too)
 // The styles for this page are in index.css, under "Settings page".
 
 // useState lets the page remember a value and redraw itself when it changes.
@@ -20,7 +23,7 @@
 import { useRef, useState } from 'react';
 // useLocation tells the page what the web address is, including the "#..." at the end.
 // useNavigate lets the page change the web address.
-// Link makes a clickable link to another page of our site (the Account tab's "Edit profile").
+// Link makes a clickable link to another page of our site (the Account tab's "My info").
 import { Link, useLocation, useNavigate } from 'react-router';
 // NavBar is the bar across the top of the page (components/NavBar.jsx).
 import NavBar from '../components/NavBar.jsx';
@@ -51,8 +54,8 @@ const tabs = [
 ];
 
 // Which settings each tab's "Reset" button puts back to normal
+// (The Privacy tab has nothing to reset anymore, see the top of this file)
 const appearanceSettings = ['palette', 'headings'];
-const privacySettings = ['profileVisibility', 'shareEmail', 'shareSchool', 'shareConnections', 'shareProfileViews', 'shareResume', 'allowMessages'];
 const accessibilitySettings = ['font', 'textSize', 'highContrast', 'textSpacing', 'underlineLinks', 'reduceMotion', 'strongFocus'];
 
 // ---------- Pieces of the page ----------
@@ -342,7 +345,7 @@ function Settings() {
     // "Delete my account": after checking (it can't be undone), deletes the account and
     // everything saved with it, removes this browser's copies too, then logs out
     async function deleteAccount() {
-        if (!window.confirm('Delete your account and everything saved with it (your profile, tracker, resume, and Feed posts)? This can\'t be undone.')) return;
+        if (!window.confirm('Delete your account and everything saved with it (your details, tracker, and resume)? This can\'t be undone.')) return;
         const id = loggedInId();
         setMessage('Deleting your account...');
         try {
@@ -422,11 +425,11 @@ function Settings() {
                             {/* This tab used to only say "Coming soon", so the dropdown's
                                 link here was a dead end. Now it sends you to the page
                                 where you really can change those things */}
-                            <p className="settings-text">Your name, school, bio, and resume are part of your profile.</p>
+                            <p className="settings-text">Your name, school, major, and what you're looking for are on My info. Only you see them.</p>
                             {/* A Link, not a button, because it goes to another page.
                                 It borrows the pill look of the Reset buttons */}
-                            <Link to="/editprofile" className="settings-button settings-edit-profile-link">
-                                Edit profile
+                            <Link to="/my-info" className="settings-button settings-edit-profile-link">
+                                Go to My info
                             </Link>
 
                             <div className="settings-group">
@@ -523,43 +526,12 @@ function Settings() {
                             className="settings-panel"
                         >
                             <h2 className="settings-panel-title">Privacy &amp; data</h2>
+                            {/* Says plainly who sees what, now that nothing on ScoutSearch is
+                                shown to anyone else (see the top of this file) */}
                             <p className="settings-text">
-                                Choose who can see your profile and what's on it. These are saved in
-                                this browser for now, and will take effect once the site is connected
-                                to the backend.
+                                Your details, tracker, and resume are private: only you can see them. ScoutSearch has no
+                                public profiles, posts, or messages.
                             </p>
-
-                            <ChoiceGroup
-                                legend="Who can see your profile"
-                                name="profileVisibility"
-                                value={settings.profileVisibility}
-                                onChange={(value) => changeSetting('profileVisibility', value)}
-                                options={[
-                                    { value: 'everyone', label: 'Everyone', description: 'Anyone on ScoutSearch, including job listers' },
-                                    { value: 'members', label: 'Students only', description: 'Other students, but not job listers' },
-                                    { value: 'connections', label: 'Only connections', description: 'People you have connected with' },
-                                ]}
-                            />
-
-                            {/* A group of on/off choices. It's a <fieldset> too, so screen
-                                readers read "What to share on your profile" with each one */}
-                            <fieldset className="settings-group">
-                                <legend className="settings-legend">What to share on your profile</legend>
-                                <div className="settings-choices">
-                                    <Toggle label="School" description="Where you go to school" checked={settings.shareSchool} onChange={(value) => changeSetting('shareSchool', value)} />
-                                    <Toggle label="Email" description="Your email address" checked={settings.shareEmail} onChange={(value) => changeSetting('shareEmail', value)} />
-                                    <Toggle label="Connections" description="How many connections you have" checked={settings.shareConnections} onChange={(value) => changeSetting('shareConnections', value)} />
-                                    <Toggle label="Profile views" description="How many people viewed your profile" checked={settings.shareProfileViews} onChange={(value) => changeSetting('shareProfileViews', value)} />
-                                    <Toggle label="Resume" description="Job listers can open your resume" checked={settings.shareResume} onChange={(value) => changeSetting('shareResume', value)} />
-                                </div>
-                            </fieldset>
-
-                            <fieldset className="settings-group">
-                                <legend className="settings-legend">Messages</legend>
-                                <div className="settings-choices">
-                                    <Toggle label="Messages from job listers" description="Companies can message you about jobs" checked={settings.allowMessages} onChange={(value) => changeSetting('allowMessages', value)} />
-                                </div>
-                            </fieldset>
 
                             {/* Your data: a copy of everything saved with your account, or
                                 delete it all (the Privacy Policy's "Your rights" points here) */}
@@ -579,10 +551,10 @@ function Settings() {
                                 </div>
                             </div>
 
+                            {/* What Download and Delete say ("Deleting your account...").
+                                role="status" reads it out (WCAG). (A "Reset privacy" button
+                                sat here too, until the privacy choices were taken out) */}
                             <div className="settings-footer">
-                                <button type="button" className="settings-button" onClick={() => resetSettings(privacySettings)}>
-                                    Reset privacy
-                                </button>
                                 <p role="status" className="settings-message">{activeTab === 'privacy' ? message : ''}</p>
                             </div>
                         </section>

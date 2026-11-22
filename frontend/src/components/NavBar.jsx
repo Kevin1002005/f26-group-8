@@ -1,11 +1,10 @@
-// Separate file for NavBar as they are used in both Feed and Profile
-// NavBar.jsx is the bar across the top of the page. It stays at the top while you scroll.
-// It used to be a function inside Feed.jsx, but the Profile page needs the
-// same bar. So it moved into its own file, and both pages import it with:
+// NavBar.jsx is the bar across the top of every page you see logged in. It
+// stays at the top while you scroll. It has the four parts of ScoutSearch:
+// Opportunities, My applications, Resume, and My info.
+// It started out as part of the Feed page, which is why its class names still
+// start with "feed-" (the Feed was taken out in 2026-11). The styles are in
+// index.css, under "Top bar (NavBar)". Every page that needs it imports it with:
 //   import NavBar from "../components/NavBar.jsx";
-// Now a change here shows up on both pages.
-// The styles are in index.css, under "Feed page". The class names still
-// start with "feed-" because the bar was first made for the Feed page.
 
 // Link makes a clickable link to another page of our site.
 // NavLink is a Link that knows when its page is the one you're on: it adds
@@ -23,7 +22,7 @@ function NavBar() {
   return (
     // <nav> tells screen readers this is the site's navigation (WCAG).
     // aria-label="Main" names it, so it can be told apart from other
-    // sets of links on a page (like "Profile sections" on the Profile page)
+    // sets of links on a page (like "My info parts" on the My info page)
     <nav className="feed-nav" aria-label="Main">
       {/* Left side: the site name. There used to be a search box here too,
           but it didn't search anything, and on Discovery it sat right above
@@ -37,12 +36,10 @@ function NavBar() {
           <SiteLogo />
         </Link>
       </div>
-      {/* Right side: links to other pages, the sun/moon button, then your circle */}
+      {/* Right side: links to other pages, the sun/moon button, then your circle.
+          (Feed, Network, and Messages used to be here too. They were taken out
+          in 2026-11, when ScoutSearch became about opportunities and resumes) */}
       <div className="feed-nav-right">
-        {/* The Feed: posts from students, and job listings posted there.
-            (It was hidden for a while, but the team needs it: listings will
-            be shared as posts on the Feed.) */}
-        <NavLink to="/feed">Feed</NavLink>
         {/* The Discovery page: internships, co-ops, and jobs.
             "Opportunities" is too long for the phone top bar, so phones show
             "Jobs" instead (index.css swaps them, hiding the other word with
@@ -52,25 +49,23 @@ function NavBar() {
           <span className="feed-nav-long-word">Opportunities</span>
           <span className="feed-nav-short-word">Jobs</span>
         </NavLink>
-        {/* The Application tracker: the jobs you saved or applied to.
-            Before, the only way there was a box on the Discovery page */}
+        {/* The Application tracker: the jobs you saved or applied to */}
         <NavLink to="/applications">My applications</NavLink>
-        {/* Network and Messages used to be here. They're hidden for now:
-            Network only has made-up people, and Messages can't load until the
-            backend has its routes (see frontend/plans.md, B13). The pages still
-            exist at /network and /messages. When they work, put these back:
-              <Link to="/network">Network</Link>
-              <Link to="/messages">Messages</Link> */}
+        {/* The Resume builder: fill in a form, download a PDF. It used to be
+            only in the circle's dropdown */}
+        <NavLink to="/resume">Resume</NavLink>
+        {/* Your details (what used to be "Edit profile"): only you see them,
+            and Opportunities uses them to find jobs that fit you */}
+        <NavLink to="/my-info">My info</NavLink>
         {/* Switches Light / Dark / System. On phones this row moves under the
             logo, so it's still in the top bar, never hidden */}
         <ThemeToggle />
-{/* Your circle. Clicking it opens a dropdown with View profile,
-            Edit profile, Settings, and Log out */}
+        {/* Your circle. Clicking it opens a dropdown with Settings and Log out */}
         <AccountMenu />
       </div>
     </nav>
   );
 }
 
-// "export default" lets other files import NavBar (Feed.jsx and Profile.jsx do this).
+// "export default" lets other files import NavBar (every logged-in page does this).
 export default NavBar;

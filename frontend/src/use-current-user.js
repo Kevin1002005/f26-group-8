@@ -6,8 +6,8 @@
 // as their own.
 //
 // The name comes from your profile (what you typed in the welcome guide or on
-// Edit profile, data/profile.js), so changing it there changes it everywhere:
-// the top bar, your Feed posts, and so on. Until your profile has a name, it's
+// My info, data/profile.js), so changing it there changes it everywhere, like
+// in the top bar's dropdown. Until your profile has a name, it's
 // the one on your login: Google gives Supabase your name and email when you log
 // in with it, and Sign up saves the name you typed.
 // LATER (task F8 in frontend/plans.md): ask the backend instead, with

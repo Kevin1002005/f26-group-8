@@ -1,6 +1,7 @@
 // tracker.js remembers which jobs are on the Application tracker, and in
-// which column. Discovery and the Feed add jobs to it (Save, Apply), and the
-// Application tracker page shows them, moves them, and keeps their notes.
+// which column. Discovery adds jobs to it (Save, and "Yes, I sent it" after
+// Apply), and the Application tracker page shows them, moves them, keeps their
+// notes, and adds jobs typed in from other sites.
 //
 // The list is saved with your ACCOUNT (the backend's /api/applications,
 // plans.md Task F12), so it follows you to any device. This browser keeps a
@@ -17,7 +18,9 @@
 // link is the posting's web address, statusDetail a short line like "Interview Dec 3",
 // and appliedOn the day you applied (set when the card moves to Submitted).
 // "id" is one of:
-//   a number   a made-up example job in opportunities.js (the Feed's posts)
+//   a number   a made-up example job, saved from the old Feed's example posts
+//              (the Feed is gone, so nothing adds new ones; the saved title,
+//              company, and deadline still show it)
 //   a uuid     a real job from Opportunities (its id in the jobs table), or,
 //              with custom: true, a job typed in from another site (the
 //              server's id for that row)
@@ -31,8 +34,8 @@ import { api, canRetry } from "../api.js";
 // accountKey and readAccountItem keep each account's list apart on a shared
 // computer (login-status.js). loggedInId says whose list it is right now
 import { accountKey, loggedInId, readAccountItem, useLoggedInId } from "../login-status.js";
-// The made-up example jobs, and the "GL" initials for a company's square logo
-import { initialsOf, opportunities } from "./opportunities.js";
+// The "GL" initials for a company's square logo
+import { initialsOf } from "./opportunities.js";
 
 // The names things are saved under in the browser (plus the account's id)
 const listName = "scoutsearch-applications"; // the list itself
@@ -180,11 +183,10 @@ window.addEventListener("storage", (event) => {
 // then goes in the outbox, and the outbox is sent to the account.
 
 // The job behind one item, with what the tracker shows (title, organization,
-// deadline, initials), or null if there's none: an example job comes from
-// opportunities.js, any other from the details saved with it
+// deadline, initials), from the details saved with it, or null if there's
+// none. (An old example job used to come from opportunities.js; your account
+// saved its title, company, and deadline too, so those are used now)
 export function trackerJob(item) {
-  const example = opportunities.find((job) => job.id === item.id);
-  if (example) return example;
   if (typeof item.title !== "string") return null;
   return {
     id: item.id,
@@ -231,7 +233,7 @@ function changeItem(id, fields, change) {
   if (account) queueChange(account, { ...change, id: id });
 }
 
-// Save (Discovery, Feed): the job goes in "Saved". details is what the tracker
+// Save (Discovery): the job goes in "Saved". details is what the tracker
 // shows for a real job: { title, organization, deadline, initials, link }
 export function addToTracker(id, details = {}) {
   addItem({ ...details, id: id, stage: "saved" });
@@ -312,13 +314,14 @@ async function sendChange(account, change) {
 
   if (change.type === "add") {
     // A real job: the backend copies its title from the jobs table itself (it
-    // never takes the browser's word for it). An example or a typed-in job: its
-    // words are sent (an example's from opportunities.js)
+    // never takes the browser's word for it). An old example or a typed-in job:
+    // its saved words are sent (an example only comes back this way, with Undo
+    // after Remove, and it carries its title and company along)
     const details = change.details ?? {};
     const words = (job) => ({ title: job.title, organization: job.organization ?? "", deadline: job.deadline ?? null });
     let body;
     if (typeof change.id === "number") {
-      body = { example_id: change.id, ...words(opportunities.find((job) => job.id === change.id) ?? details) };
+      body = { example_id: change.id, ...words(details) };
     } else if (details.custom) {
       body = { id: change.id, ...words(details) };
     } else {

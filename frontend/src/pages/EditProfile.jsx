@@ -1,8 +1,15 @@
-// EditProfile.jsx is the Edit Profile page (yoursite.com/editprofile).
-// It has 2 columns: a list of the profile's parts on the left (you can click
-// one to jump to it), and a card with a form for each part on the right.
-// "Save all changes" saves your profile to your account (data/profile.js)
-// and takes you back to your profile.
+// EditProfile.jsx is the My info page (yoursite.com/my-info). It used to be
+// "Edit profile", next to a public Profile page. That page was taken out in
+// 2026-11 (ScoutSearch is about opportunities and resumes now), so this is the
+// one place for your details. They're private: only you see them. Opportunities
+// uses them for "Who it's for", "For your major", and Best fit, and your resume
+// shares your name, city, school, and skills. The old addresses /editprofile
+// and /profile send you here (App.jsx). The file keeps its old name, so the
+// rest of the code (and the styles, which start with "edit-") didn't change.
+// It has 2 columns: a list of the parts on the left (you can click one to jump
+// to it), and a card with a form for each part on the right.
+// "Save all changes" saves your details to your account (data/profile.js), and
+// you stay on the page, with "Saved." under the button.
 // The boxes are the same ones the welcome guide uses (components/ProfileFields.jsx).
 // Your education, experience, and projects aren't typed here: they come from
 // your resume, so the last card links to the Resume builder.
@@ -13,12 +20,10 @@ import NavBar from "../components/NavBar";
 // useState remembers what you type. useEffect runs code after the page shows up
 import { useEffect, useState } from "react";
 // Link goes to another page of our site. useLocation tells us the page's
-// address, including the "#skills" part at the end. useNavigate lets our
-// code send you to another page (like after you click Save)
-import { Link, useLocation, useNavigate } from "react-router";
+// address, including the "#skills" part at the end
+import { Link, useLocation } from "react-router";
 // The boxes for each part of your profile
 import {
-  AboutFields,
   BasicsFields,
   LookingForFields,
   SkillsField,
@@ -36,7 +41,6 @@ import { useCurrentUser } from "../use-current-user.js";
 // so the list on the left can jump to it (href="#skills" finds id="skills")
 const sections = [
   { id: "basics", label: "Basics" },
-  { id: "about", label: "About" },
   { id: "looking-for", label: "Looking for" },
   { id: "skills", label: "Skills" },
   { id: "resume", label: "Education & more" },
@@ -49,14 +53,14 @@ const sections = [
 function EditTracker() {
   return (
     // The box on the left. The title sits in the box but outside the <nav>,
-    // so screen readers hear "Edit profile" as the page's title, not as
+    // so screen readers hear "My info" as the page's title, not as
     // part of the list of links (WCAG)
     <div className="edit-tracker-card">
       {/* The page's one <h1> (WCAG) */}
-      <h1 className="edit-tracker-header">Edit profile</h1>
-      <p className="edit-tracker-subtitle">Keep your profile up to date</p>
+      <h1 className="edit-tracker-header">My info</h1>
+      <p className="edit-tracker-subtitle">Only you see this. Opportunities uses it to find jobs that fit you.</p>
       {/* <nav> is just the list of links. aria-label names it */}
-      <nav aria-label="Profile parts">
+      <nav aria-label="My info parts">
         <ol className="edit-tracker-list">
           {/* .map() makes one step for each part. "index" counts from 0,
             so index + 1 gives the step numbers 1 to 5 */}
@@ -101,8 +105,8 @@ function ResumeInfo() {
       subtitle="These come from your resume, so you only type them once."
     >
       <p className="edit-resume-text">
-        Add or change them in the Resume builder, and your profile shows them
-        right away.
+        They're kept on your resume, so add or change them in the Resume
+        builder. Best fit reads them from there too.
       </p>
       <Link to="/resume" className="edit-resume-link">
         Open the Resume builder
@@ -113,13 +117,9 @@ function ResumeInfo() {
 
 // EditProfile is the whole page. It puts the pieces above together.
 function EditProfile() {
-  // The page's web address. If you came from an "Add" button on your
-  // profile, it ends with something like "#skills"
+  // The page's web address. If you came from a link like "Add your major" on
+  // Opportunities, it ends with something like "#basics"
   const address = useLocation();
-
-  // navigate("/profile") sends you to your profile, the same as clicking a
-  // link to it, but from inside our code (see handleSaveAll below)
-  const navigate = useNavigate();
 
   // Your saved profile, and your account's name
   const profile = useMyProfile();
@@ -134,30 +134,31 @@ function EditProfile() {
   const [draft, setDraft] = useState(null);
   const shown = draft ?? { ...profile.data, name: profile.data.name || me.name };
   // The boxes call this with the part that changed, like { city: "Boston" }.
-  // Picking high school or college takes its error message away
+  // Picking high school or college takes its error message away, and any
+  // change takes away the old "Saved." (the new change isn't saved yet)
   function change(fields) {
     setDraft({ ...shown, ...fields });
     if (fields.level) setLevelError("");
+    setSavedMessage("");
   }
 
   // true while saving (so Save can't be pressed twice), and what went wrong
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  // "Saved." once Save worked ("" until then). You stay on this page after
+  // saving, so this is how you know it worked
+  const [savedMessage, setSavedMessage] = useState("");
   // The message under "Where are you in school?" when Save was pressed
   // without picking ("" when it's fine). See BasicsFields in ProfileFields.jsx
   const [levelError, setLevelError] = useState("");
 
-  // Changing pages keeps you scrolled down as far as you were, so before
-  // going to your profile we jump to the top. "instant" skips the smooth
-  // glide this page uses. Both Save and "Back to profile" use this
-  function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: "instant" });
-  }
-
-  // The one Save button for the whole page. It saves your profile to your
-  // account (and the parts your resume shares), then takes you to your
-  // profile. If it can't, it stays here and says why, so nothing you typed is lost
+  // The one Save button for the whole page. It saves your details to your
+  // account (and the parts your resume shares), and says "Saved." under the
+  // button. If it can't, it says why, so nothing you typed is lost.
+  // (It used to take you to the Profile page, which is gone now)
   async function handleSaveAll() {
+    // Already saving: ignore a second click (see aria-disabled on the button)
+    if (saving) return;
     // "Where are you in school?" has to be answered (Opportunities and Best fit
     // use it). The message shows under it, and the focus jumps up to the first
     // choice, so screen readers read the question and the message (WCAG)
@@ -168,17 +169,17 @@ function EditProfile() {
     }
     setSaving(true);
     setMessage("");
+    setSavedMessage("");
     try {
       await saveProfile(shown);
       // Then the same changes on your resume (if that doesn't work, your
-      // profile is still saved)
+      // details are still saved)
       await copyProfileToResume(profile.data, shown, me.email).catch(() => {});
-      scrollToTop();
-      navigate("/profile");
+      setSavedMessage("Saved.");
     } catch (error) {
       setMessage("Couldn't save your changes: " + error.message);
-      setSaving(false);
     }
+    setSaving(false);
   }
 
   // After the page shows up, jump to the card named after the "#", and put
@@ -201,33 +202,27 @@ function EditProfile() {
   return (
     <>
       {/* The name on the browser tab (WCAG) */}
-      <title>Edit profile | ScoutSearch</title>
+      <title>My info | ScoutSearch</title>
       <NavBar />
       <main className="edit-page">
         {/* The left column. It stays on screen while you scroll the cards,
-            so "Back to profile" and the parts list are always reachable */}
+            so the parts list is always reachable. (A "Back to profile" link
+            sat above it, until the Profile page was taken out) */}
         <aside className="edit-profile-tracker">
-          {/* A link back to your profile. The arrow points left, like "go back".
-              It's a Link (not a button) because it goes to another page.
-              onClick runs scrollToTop first, so your profile opens at the top */}
-          <Link to="/profile" className="edit-back-link" onClick={scrollToTop}>
-            <span aria-hidden="true">←</span> Back to profile
-          </Link>
           <EditTracker />
         </aside>
 
         {profile.known ? (
           <div className="edit-section">
-            <EditCard id="basics" title="Basic Information" subtitle="Let the world know who you are!">
+            {/* The cards' lines don't say "the world" or "employers" anymore:
+                nobody else sees these details now */}
+            <EditCard id="basics" title="Basic Information" subtitle="Sets which jobs you see first (high school or college, major, city), and fills in your resume.">
               <BasicsFields profile={shown} onChange={change} levelError={levelError} />
             </EditCard>
-            <EditCard id="about" title="About" subtitle="Share your interests, goals, and what motivates you.">
-              <AboutFields profile={shown} onChange={change} />
-            </EditCard>
-            <EditCard id="looking-for" title="What I'm looking for" subtitle="The first thing employers check when you apply.">
+            <EditCard id="looking-for" title="What I'm looking for" subtitle="Best fit on Opportunities puts jobs like these first.">
               <LookingForFields profile={shown} onChange={change} />
             </EditCard>
-            <EditCard id="skills" title="Skills" subtitle="What are your strengths?">
+            <EditCard id="skills" title="Skills" subtitle="Best fit matches these to job requirements, and they go on your resume.">
               <SkillsField profile={shown} onChange={change} />
             </EditCard>
             <ResumeInfo />
@@ -238,15 +233,22 @@ function EditProfile() {
                 {message}
               </p>
             )}
-            {/* The one Save button for the whole page */}
+            {/* The one Save button for the whole page. aria-disabled (not
+                "disabled") while saving keeps the keyboard focus on it, since
+                you stay on this page now; handleSaveAll ignores clicks meanwhile */}
             <button
               type="button"
               className="profile-btn-primary edit-save-all"
               onClick={handleSaveAll}
-              disabled={saving}
+              aria-disabled={saving}
             >
               {saving ? "Saving..." : "Save all changes"}
             </button>
+            {/* "Saved." once it worked. Always on the page, so role="status"
+                makes screen readers read it when the word appears (WCAG) */}
+            <p className="edit-save-message" role="status">
+              {savedMessage}
+            </p>
           </div>
         ) : (
           // The first time on this browser, until the server answers.

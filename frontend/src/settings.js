@@ -1,5 +1,5 @@
 // settings.js remembers the choices made on the Settings page (colors,
-// fonts, privacy, accessibility) and puts them into effect on every page.
+// fonts, accessibility) and puts them into effect on every page.
 //
 // How it works:
 // - The choices are saved in the browser's "localStorage", a small storage
@@ -24,14 +24,8 @@ export const defaultSettings = {
                                 // (this used to be called "theme"; light and dark are in theme.js)
     headings: 'classic',        // heading style: 'classic' or 'sign' (the road-sign font)
 
-    // Privacy & data
-    profileVisibility: 'everyone', // who can see your profile: 'everyone', 'members', or 'connections'
-    shareEmail: false,          // show your email on your profile
-    shareSchool: true,          // show your school
-    shareConnections: true,     // show how many connections you have
-    shareProfileViews: false,   // show how many people viewed your profile
-    shareResume: true,          // let job listers see your resume
-    allowMessages: true,        // let job listers message you
+    // (There used to be privacy choices here too, for a public profile and
+    // messages. Those features were taken out in 2026-11; see oldChoices below)
 
     // Accessibility
     font: 'default',            // 'default', 'readable' (Atkinson Hyperlegible), or 'wide' (Verdana)
@@ -43,6 +37,10 @@ export const defaultSettings = {
     strongFocus: false,         // a thicker keyboard outline
 };
 
+// The privacy choices browsers saved before they were taken out. loadSettings
+// drops them, so the next save doesn't keep storing choices that do nothing
+const oldChoices = ['profileVisibility', 'shareEmail', 'shareSchool', 'shareConnections', 'shareProfileViews', 'shareResume', 'allowMessages'];
+
 // Reads the saved choices. Anything that was never saved uses the default.
 // "try/catch" means: if reading fails (some private windows block
 // localStorage, or the saved text got broken), just use the defaults
@@ -51,6 +49,7 @@ export function loadSettings() {
         const saved = JSON.parse(localStorage.getItem(storageKey));
         // "...": copy everything from defaultSettings, then everything saved on top
         const settings = { ...defaultSettings, ...saved };
+        for (const old of oldChoices) delete settings[old];
         // The colors used to be saved as "theme". Anyone who picked Mint or
         // Lavender before keeps it under the new name
         if (saved && saved.theme && !saved.palette) {

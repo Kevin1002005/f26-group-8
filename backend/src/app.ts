@@ -5,7 +5,6 @@ import applicationsRouter from './applications.js';
 import resumesRouter from './resumes.js';
 import accountRouter from './account.js';
 import studentProfileRouter from './student-profile.js';
-import feedRouter from './feed.js';
 import webSearchRouter from './web-search.js';
 
 const app: Express = express();
@@ -62,10 +61,11 @@ app.use('/api/jobs', jobsRouter);
 // their account. Both need you to be logged in (they use authenticateToken themselves)
 app.use('/api/applications', applicationsRouter);
 app.use('/api/resumes', resumesRouter);
-// each student's own profile (the welcome guide, Edit profile, and the Profile page)
+// each student's own profile (the welcome guide and the My info page)
 app.use('/api/student-profile', studentProfileRouter);
-// the Feed: posts, comments, likes, and following (backend/sql/feed.sql)
-app.use('/api/feed', feedRouter);
+// (There used to be /api/feed here, for the Feed's posts, comments, likes, and follows. The Feed
+// was taken out in 2026-11, along with its routes, so nobody can post with no page to moderate
+// it, and its tables were deleted from the database)
 
 // Download my data, and Delete my account (the Settings page, and the Privacy Policy)
 app.use('/api/account', accountRouter);

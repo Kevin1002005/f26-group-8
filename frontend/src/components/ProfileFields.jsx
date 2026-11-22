@@ -1,7 +1,7 @@
 // ProfileFields.jsx has the boxes for filling in your profile, in 4 groups:
 // Basics, About you, What I'm looking for, and Skills.
 // Two pages use them: the welcome guide (pages/Welcome.jsx) shows one group
-// per step, and Edit profile (pages/EditProfile.jsx) shows each group in a
+// per step, and My info (pages/EditProfile.jsx) shows each group in a
 // card. Keeping them in one file means the two pages always ask the same
 // questions, with the same limits.
 //
@@ -10,7 +10,7 @@
 //   onChange   called with just the part that changed, like { city: "Boston" }.
 //              The page merges it into its copy of the profile
 // (Basics also takes levelError: see BasicsFields)
-// The styles are the Edit Profile page's form styles in index.css
+// The styles are the My info page's form styles in index.css
 // ("EditProfile Page"), so both pages look the same.
 
 // useState remembers the skill you're typing, before you press Add
@@ -33,7 +33,8 @@ const levelChoices = [
 ];
 
 // Basics: where you are in school (first, since it's the one required question),
-// then name, pronouns, school, graduation year, major, and city.
+// then name, school, graduation year, major, and city. (Pronouns, the
+// headline, and About were taken out on 2026-11-22: nothing used them.)
 // One more prop: props.levelError is the message to show when "Where are you
 // in school?" was left empty ("" or missing when it's fine). The page sets it
 // when you press Next or Save, and moves the focus to the first choice
@@ -113,28 +114,6 @@ export function BasicsFields(props) {
             value={profile.name}
             onChange={(e) => props.onChange({ name: e.target.value })}
           />
-        </div>
-        <div className="edit-field">
-          <label className="edit-label" htmlFor="profile-pronouns">
-            Pronouns
-          </label>
-          {/* list="..." offers the common answers as you type, but you can
-              write anything (the <datalist> below holds the suggestions) */}
-          <input
-            id="profile-pronouns"
-            className="edit-input"
-            type="text"
-            list="profile-pronoun-ideas"
-            maxLength={most.pronouns}
-            placeholder="e.g. she / her"
-            value={profile.pronouns}
-            onChange={(e) => props.onChange({ pronouns: e.target.value })}
-          />
-          <datalist id="profile-pronoun-ideas">
-            <option value="she / her" />
-            <option value="he / him" />
-            <option value="they / them" />
-          </datalist>
         </div>
       </div>
 
@@ -238,44 +217,6 @@ export function BasicsFields(props) {
           />
         </>
       )}
-    </>
-  );
-}
-
-// About you: a one-line headline, and a few sentences
-export function AboutFields(props) {
-  const profile = props.profile;
-  return (
-    <>
-      <label className="edit-label" htmlFor="profile-headline">
-        Headline
-      </label>
-      {/* aria-describedby reads the hint under the box along with its label (WCAG) */}
-      <input
-        id="profile-headline"
-        className="edit-input"
-        type="text"
-        maxLength={most.headline}
-        aria-describedby="profile-headline-hint"
-        placeholder="e.g. Computer science student who loves building accessible apps"
-        value={profile.headline}
-        onChange={(e) => props.onChange({ headline: e.target.value })}
-      />
-      <p className="edit-hint" id="profile-headline-hint">
-        One line, shown under your name.
-      </p>
-
-      <label className="edit-label" htmlFor="profile-about">
-        About you
-      </label>
-      <textarea
-        id="profile-about"
-        className="edit-input edit-textarea"
-        maxLength={most.about}
-        placeholder="e.g. What you're studying, what you like to work on, and what you want to learn next."
-        value={profile.about}
-        onChange={(e) => props.onChange({ about: e.target.value })}
-      />
     </>
   );
 }

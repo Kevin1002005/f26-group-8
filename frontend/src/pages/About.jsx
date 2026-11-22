@@ -171,10 +171,11 @@ const questions = [
     },
     {
         // For the adults helping high schoolers. "Employers can't see student profiles" is true
-        // today: there are no employer accounts, and each student only sees their own Profile.
-        // Check this answer again before job listers (employer accounts) are added
+        // today: there are no employer accounts, and since 2026-11 there are no public profiles
+        // or posts at all (each student's My info is private). Check this answer again before
+        // job listers (employer accounts) are added
         question: "I'm a parent or counselor. What should I know?",
-        answer: "It's free, with no ads, and employers can't see student profiles. Some summer programs charge tuition, so check before applying.",
+        answer: "It's free, with no ads, and employers can't see student profiles. Some summer programs charge tuition, so check before applying. Students can look without an account: share the \"Browse high school opportunities\" link above.",
     },
     {
         question: "Is my information safe?",
@@ -547,6 +548,9 @@ function About() {
                                     around its edge when the page opens and while you
                                     point at it */}
                                 <StarBorder to="/signup" className="about-button about-button-big">Sign up</StarBorder>
+                                {/* For people who want to look before making an account:
+                                    Opportunities works without one (see Discovery.jsx) */}
+                                <Link to="/discovery" className="about-hero-browse">Browse real opportunities</Link>
                                 {/* Right under the button, because "is it free?" is often
                                     the first thing people want to know before signing up */}
                                 <p className="about-credit">Free to join. A Northeastern Oasis Project</p>
@@ -593,13 +597,22 @@ function About() {
                                 {/* A shortcut for people who already know this is them. It
                                     doesn't say "as a high school student": both boxes lead to
                                     the same Sign up form, and you pick high school or college in
-                                    the welcome guide right after (the note under the boxes says so) */}
-                                <Link to="/signup" className="about-audience-link">Sign up free</Link>
+                                    the welcome guide right after (the note under the boxes says so).
+                                    "Browse" opens Opportunities without an account, already set to
+                                    jobs for high schoolers ("?level=high-school", see Discovery.jsx) */}
+                                <div className="about-audience-links">
+                                    <Link to="/discovery?level=high-school" className="about-audience-link">Browse high school opportunities</Link>
+                                    <Link to="/signup" className="about-audience-link">Sign up free</Link>
+                                </div>
                             </SpotlightCard>
                             <SpotlightCard className="about-audience">
                                 <h3>College Students</h3>
                                 <p>Find co-ops, internships, and research positions that fit your major. Each one builds experience toward the career you want after graduation.</p>
-                                <Link to="/signup" className="about-audience-link">Sign up free</Link>
+                                {/* The same two links, set to college jobs */}
+                                <div className="about-audience-links">
+                                    <Link to="/discovery?level=college" className="about-audience-link">Browse college opportunities</Link>
+                                    <Link to="/signup" className="about-audience-link">Sign up free</Link>
+                                </div>
                             </SpotlightCard>
                         </div>
                         {/* Says where the high school or college choice really happens,

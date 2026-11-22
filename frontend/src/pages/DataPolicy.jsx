@@ -1,7 +1,8 @@
 // DataPolicy.jsx is the Privacy Policy (yoursite.com/privacy-policy).
 // (The file is named so that ad and cookie-banner blockers leave it alone: their lists block
 // files named like "PrivacyPolicy.js" or "CookiePolicy.js", which would stop the page loading.)
-// Everything it says was checked against what the site really does (2026-11-16, and the AI section again 2026-11-17):
+// Everything it says was checked against what the site really does (2026-11-16, the AI section again 2026-11-17,
+// and the Feed, Network, Messages, and public profiles taken out 2026-11-22):
 // no analytics, no ads, no trackers, no cookies. The facts it's built from (who runs
 // the site, the contact email, the services we use) are in data/legal.js; anything
 // not decided yet shows as a highlighted [To fill in: ...].
@@ -47,8 +48,7 @@ const sections = [
         <h3>What you give us</h3>
         <ul>
           <li><strong>Your account:</strong> your email address and password. Supabase, our login service, stores your password only as a scrambled "hash" that can't be turned back into the password. If you use "Continue with Google", Google also gives us your name and profile picture.</li>
-          <li><strong>Your profile:</strong> what you fill in on the welcome guide or on Edit profile: your name, pronouns, whether you're in high school or college, school, graduation year, major, city, headline, About, what kind of position you're looking for, and your skills.</li>
-          <li><strong>Your Feed posts:</strong> the posts and comments you share, the posts you like, and who you follow.</li>
+          <li><strong>Your profile:</strong> what you fill in on the welcome guide or on My info: your name, whether you're in high school or college, school, graduation year, major, city, what kind of position you're looking for, and your skills.</li>
           <li><strong>Your Application tracker:</strong> the jobs you save, which column each one is in, your notes and details on them (a link, a short status, the date you applied), and any jobs you add from other websites.</li>
           <li><strong>Your resume:</strong> whatever you type into the Resume builder, like your name, contact details, education, experience, projects, and skills. Please don't put very sensitive information (like a Social Security number) in it: a resume never needs it.</li>
         </ul>
@@ -77,7 +77,7 @@ const sections = [
     body: (
       <>
         <ul>
-          <li>To run your account and the features you use: logging in, saving your profile, tracker, resume, and Feed posts, and showing them on any device you log in on.</li>
+          <li>To run your account and the features you use: logging in, saving your profile, tracker, and resume, and showing them on any device you log in on.</li>
           <li>To send emails you ask for, like a password reset link (Supabase sends these).</li>
           <li>To keep the site secure and working, for example by finding and stopping misuse.</li>
         </ul>
@@ -94,7 +94,7 @@ const sections = [
     body: (
       <>
         <p>
-          ScoutSearch doesn't use AI on your profile, resume, tracker, or Feed posts, and none of them is sent to
+          ScoutSearch doesn't use AI on your profile, resume, or tracker, and none of them is sent to
           an AI service or used to train AI.
         </p>
         <p>
@@ -141,13 +141,14 @@ const sections = [
           you go to the employer's own site, and their privacy policy applies there.
         </p>
         <p>
-          <strong>The Feed is shared.</strong> Everyone logged in to ScoutSearch can see the posts and comments you
-          share there, with your name and headline from your profile. They see how many likes a post has, but not
-          who liked it, and only you can see who you follow. You can delete your posts and comments any time.
+          <strong>Nothing you save is shown to other people.</strong> Other people on ScoutSearch (employers
+          included) can't see your profile, your tracker, or your resume. We'd only share information if the law
+          requires it, for example a valid court order.
         </p>
         <p>
-          Apart from that, other people on ScoutSearch (employers included) can't see your profile, your tracker,
-          or your resume. We'd only share information if the law requires it, for example a valid court order.
+          ScoutSearch used to have a Feed, where students could post, comment, like posts, and follow each other.
+          It was taken out in November 2026, and everything posted there (posts, comments, likes, and follows)
+          was deleted from our database.
         </p>
       </>
     ),
@@ -171,7 +172,7 @@ const sections = [
     title: "How long we keep it",
     body: (
       <ul>
-        <li>Your account, profile, tracker, resume, and Feed posts: until you delete them or your account. Deleting your account removes all of them from our database right away, including your posts, comments, and likes.</li>
+        <li>Your account, profile, tracker, and resume: until you delete them or your account. Deleting your account removes all of them from our database right away.</li>
         <li>Hosting logs: for as long as each hosting company keeps them (see their privacy policies above).</li>
         <li>What's saved in your browser: until you log out, delete your account, or clear this site's data (the <Link to="/cookie-policy">Cookie Policy</Link> says which is which).</li>
       </ul>
@@ -217,10 +218,6 @@ const sections = [
           {legal.minimumAge}, and we don't knowingly collect their information. If you think a child under{" "}
           {legal.minimumAge} has made an account, contact us (<ContactEmail />) and we'll delete it.
         </p>
-        <p>
-          Many students here are in high school, so please keep Feed posts about your work and plans: don't share
-          your phone number, address, or other private details there, since everyone logged in can see them.
-        </p>
         <Review>COPPA (children under 13), and state laws with extra rules for teenagers' information, since many users are in high school.</Review>
       </>
     ),
@@ -233,8 +230,8 @@ const sections = [
         <p>You can do most of this yourself, right away, on the <Link to="/settings#privacy">Settings page (Privacy &amp; data)</Link>:</p>
         <ul>
           <li><strong>See and take your information:</strong> "Download my data" gives you a file with everything saved with your account.</li>
-          <li><strong>Delete it:</strong> "Delete my account" deletes your account, profile, tracker, resume, and everything you shared on the Feed.</li>
-          <li><strong>Correct it:</strong> change your profile, resume, and tracker any time, and delete your Feed posts and comments. To change your account's email, contact us.</li>
+          <li><strong>Delete it:</strong> "Delete my account" deletes your account, profile, tracker, and resume.</li>
+          <li><strong>Correct it:</strong> change your profile (on My info), resume, and tracker any time. To change your account's email, contact us.</li>
         </ul>
         <p>
           For anything else (for example, if you can't log in, you object to how we use your information, or

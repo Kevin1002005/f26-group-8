@@ -5038,6 +5038,93 @@ html:has(.feed-nav) :focus {
   color: var(--muted);
 }
 
+/* The list of opportunities. When Previous or Next goes to another page, the
+   page scrolls back up to the top of the list; this stops it a little below
+   the top of the screen, so the top bar (it stays stuck there) doesn't cover
+   the first rows */
+.discovery-results {
+  scroll-margin-top: 96px;
+}
+
+/* ----- While the jobs are loading ----- */
+/* The box that stands in for the table until the jobs arrive (and while
+   another page of them loads): the words "Loading opportunities...", then a
+   few gray bars in the shape of the table's rows. The bars gently fade in and
+   out (see "Motion" below), so it's clear the page is working, not stuck */
+.discovery-loading {
+  background-color: var(--card);    /* the same box as the table */
+  border: 1px solid var(--line);
+  border-radius: var(--radius-box);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;                 /* keeps the rows inside the rounded corners */
+}
+
+/* "Loading opportunities...", across the top, where the column names go */
+.discovery-loading-words {
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 600;                 /* semi-bold */
+  color: var(--muted);              /* 7.8:1 / 9.1:1 */
+}
+
+/* One pretend row: the role and company on the left, then three short facts */
+.discovery-loading-row {
+  display: flex;                    /* puts the pieces side by side... */
+  align-items: center;              /* ...lined up in the middle */
+  gap: 24px;                        /* space between them */
+  padding: 16px;
+  border-bottom: 1px solid var(--line); /* a thin line between rows, like the table */
+}
+
+/* No line under the last one (the box's edge is right there) */
+.discovery-loading-row:last-child {
+  border-bottom: 0;
+}
+
+/* The left part: the role's bar, with the company's shorter bar under it.
+   flex: 2.5 makes it two and a half times as wide as each fact */
+.discovery-loading-role {
+  flex: 2.5;
+  display: flex;
+  flex-direction: column;           /* one bar on top of the other */
+  gap: 8px;                         /* space between them */
+}
+
+/* Each gray bar. They're only a picture (aria-hidden in Discovery.jsx), so
+   they don't need text contrast */
+.discovery-loading-bar {
+  display: block;
+  height: 12px;
+  border-radius: 999px;             /* round ends */
+  background-color: var(--line);    /* light gray-blue (a lighter navy in dark mode) */
+}
+
+/* The role: a longer, thicker bar */
+.discovery-loading-title {
+  width: 70%;
+  height: 14px;
+}
+
+/* The company: a shorter one */
+.discovery-loading-company {
+  width: 40%;
+}
+
+/* Type, location, and pay: one short bar each */
+.discovery-loading-fact {
+  flex: 1;                          /* each takes an equal share of what's left */
+}
+
+/* In a summary box, the bar stands where the big number goes, at about its size */
+.discovery-summary-loading {
+  width: 64px;
+  height: 26px;
+  margin: 3px 0;                    /* keeps the box the same height as with a number */
+  border-radius: 8px;
+}
+
 /* The tip under the table */
 .discovery-tip {
   margin: 0;
@@ -5375,6 +5462,36 @@ html:has(.feed-nav) :focus {
   border-top: none;
 }
 
+/* Previous, "Page 2 of 14", and Next, at the right end of the row under the table */
+.discovery-pages {
+  display: flex;
+  flex-wrap: wrap;                  /* on a very narrow phone, they go onto two lines instead of
+                                       making the page scroll sideways (WCAG) */
+  align-items: center;
+  gap: 12px;                        /* space between the buttons and the words */
+}
+
+/* "Page 2 of 14" */
+.discovery-page-number {
+  font-size: 13.5px;
+  font-weight: 600;                 /* semi-bold */
+  color: var(--muted);              /* 7.8:1 / 9.1:1 */
+  white-space: nowrap;              /* never splits onto two lines */
+}
+
+/* Previous on the first page, and Next on the last: faded, and the mouse shows
+   they can't be clicked. Turned-off buttons don't need the 4.5:1 contrast
+   (WCAG), but the words stay readable */
+.discovery-pages .discovery-outline-button:disabled {
+  opacity: 0.6;                     /* faded, so it looks turned off */
+  cursor: not-allowed;              /* the "no" mouse pointer */
+}
+
+/* ...and hovering doesn't color it like a button you can press */
+.discovery-pages .discovery-outline-button:disabled:hover {
+  background-color: var(--card);
+}
+
 /* Keyboard users see the same ring as the rest of the page (WCAG) */
 .discovery-chip:focus-visible,
 .discovery-filter-input:focus-visible,
@@ -5468,6 +5585,34 @@ html:has(.feed-nav) :focus {
       color var(--time-hover) ease,
       box-shadow var(--time-hover) ease;
   }
+
+  /* The loading bars gently fade in and out, each row a moment after the one
+     above it, like a slow wave down the list. With motion turned off they
+     just stay still, and the words still say it's loading */
+  :root:not([data-reduce-motion="on"]) .discovery-loading-bar {
+    animation: discovery-loading-pulse 1.4s ease-in-out infinite; /* 1.4 seconds a wave, forever */
+  }
+  :root:not([data-reduce-motion="on"]) .discovery-loading-row:nth-child(2) .discovery-loading-bar {
+    animation-delay: 0.12s;         /* starts a little after the first row */
+  }
+  :root:not([data-reduce-motion="on"]) .discovery-loading-row:nth-child(3) .discovery-loading-bar {
+    animation-delay: 0.24s;
+  }
+  :root:not([data-reduce-motion="on"]) .discovery-loading-row:nth-child(4) .discovery-loading-bar {
+    animation-delay: 0.36s;
+  }
+  :root:not([data-reduce-motion="on"]) .discovery-loading-row:nth-child(5) .discovery-loading-bar {
+    animation-delay: 0.48s;
+  }
+  :root:not([data-reduce-motion="on"]) .discovery-loading-row:nth-child(6) .discovery-loading-bar {
+    animation-delay: 0.6s;
+  }
+}
+
+/* The fade for the loading bars: full color, fainter halfway, then back */
+@keyframes discovery-loading-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 /* ----- Phones ----- */
@@ -5488,6 +5633,12 @@ html:has(.feed-nav) :focus {
   .discovery-table,
   .discovery-table tbody {
     display: block;
+  }
+
+  /* The loading rows show the role and one fact, like the phone boxes'
+     narrower look (the other two facts would be squeezed to nothing) */
+  .discovery-loading-fact + .discovery-loading-fact {
+    display: none;
   }
 
   /* One box per opportunity: two columns of facts */

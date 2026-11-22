@@ -222,9 +222,12 @@ Set these environment variables on the host:
 
 The host sets `PORT` itself, and the backend uses it.
 
-To check it, open the backend's address: the home page says `ABOUT`, and `/api/jobs` shows the
-jobs as JSON. Render's free plan stops the server when nobody uses it for a while, so the
-first visit afterward takes up to a minute.
+To check it, open the backend's address: the home page says `ABOUT`, `/api/health` says
+`{"ok":true}`, and `/api/jobs` shows the jobs as JSON. Render's free plan stops the server when
+nobody uses it for a while, so the first visit afterward takes up to a minute. To shorten that
+wait, every page of the site calls `/api/health` as soon as it opens
+(`frontend/src/wake-server.js`), which wakes the server and starts loading the job list while
+the student is still reading or typing.
 
 ### 2. Connect the site to the backend
 

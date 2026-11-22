@@ -68,6 +68,53 @@ function linkProblem() {
     return "That link didn't work. It may be too old or already used. Log in below, or use Forgot your password to get a new one.";
 }
 
+// True when Supabase says this is the account's very first login: it logged in
+// within a minute of being made (signing up with Google), or of confirming its
+// email (the "confirm your email" link). user is the account Supabase sends
+// back, and those times come from Supabase's own clock, so a wrong clock on
+// this computer can't change the answer. If a time is missing, it's false.
+// fromSavedLogin: true when user comes from a login this browser already had
+// (getSession below), not one that just happened. That copy keeps the login
+// time it had when it was saved, so a student who finished the guide and then
+// opens Log in again in that same login would still look brand new. So then it
+// also has to have happened in the last 2 minutes, by this computer's clock
+// (if that clock is wrong, it just goes to Opportunities, and RequireLogin
+// still sends a brand-new account to the guide once the server answers)
+function isFirstLogin(user, fromSavedLogin) {
+    // Date.parse turns a time like "2026-11-22T15:04:05Z" into milliseconds
+    // (NaN if it isn't a time). "??" uses the right side when the left is missing
+    const start = Date.parse(user?.email_confirmed_at ?? user?.created_at ?? '');
+    const login = Date.parse(user?.last_sign_in_at ?? '');
+    if (Number.isNaN(start) || Number.isNaN(login)) return false;
+    // 120,000 milliseconds = 2 minutes
+    if (fromSavedLogin && Math.abs(Date.now() - login) > 120000) return false;
+    // Math.abs: how far apart they are, either way. 60,000 milliseconds = 1 minute
+    return Math.abs(login - start) < 60000;
+}
+
+// Where to go after logging in: a brand-new account goes straight to the
+// welcome guide (pages/Welcome.jsx), to fill in its profile before anything
+// else, and everyone else goes to Opportunities, the home page.
+// It's brand new when:
+// - the address ends in ?next=welcome: the "confirm your email" link from Sign
+//   up does (Signup.jsx). That one counts even after the link itself didn't work,
+//   like when it's opened on a phone and you log in there with your password.
+//   Only the word "welcome" is used, so nobody can make a link that sends
+//   people somewhere else
+// - or it's the account's first login (isFirstLogin above), which covers
+//   signing up with Google: it has no confirm email
+// (Before, new accounts landed on Opportunities and only got sent to the guide
+// once our server answered, which can take a minute when it's waking up.
+// RequireLogin.jsx still does that for anyone these two miss. And if someone
+// who already did the guide gets sent there, the guide sends them on to
+// Opportunities once the server answers, see Welcome.jsx)
+// fromSavedLogin: see isFirstLogin above
+function pageAfterLogin(user, fromSavedLogin) {
+    const next = new URLSearchParams(window.location.search).get('next');
+    if (next === 'welcome' || isFirstLogin(user, fromSavedLogin)) return '/welcome';
+    return '/discovery';
+}
+
 function Login() {
     // "message" is the text shown above the Log in button. It starts empty (''),
     // unless the address says an email link didn't work (see linkProblem above).
@@ -133,8 +180,8 @@ function Login() {
     // The "confirm your email" link from Sign up lands here the same way.
     // Importing supabase.js above is enough for Supabase to see that code and
     // swap it for a real login. getSession() waits for that swap to finish,
-    // then tells us if someone is logged in. If they are, go to Opportunities
-    // (/discovery), the home page.
+    // then tells us if someone is logged in. If they are, go to the welcome
+    // guide (a brand-new account) or Opportunities (see pageAfterLogin above).
     // (This also sends people who are already logged in straight there.)
     useEffect(() => {
         // supabase is null when .env.local is missing (see supabase.js), so skip this
@@ -151,7 +198,8 @@ function Login() {
                 // replace: swaps Log in out of the browser's history. Otherwise
                 // Back from Opportunities would open Log in, which would see the
                 // login and push you forward again, so Back could never get past it
-                navigate('/discovery', { replace: true });
+                // (true: this login may be one the browser already had, see isFirstLogin)
+                navigate(pageAfterLogin(data.session.user, true), { replace: true });
             }
         });
         // The clean-up: runs when you leave the page
@@ -262,9 +310,11 @@ function Login() {
         // It worked. Remember who's logged in, so the About page shows your
         // circle and a Home button instead of "Log in" and "Sign up"
         markLoggedIn(data.user.id);
-        // Go to Opportunities, the home page, after logging in.
+        // Go to the welcome guide (a brand-new account) or Opportunities, the
+        // home page (see pageAfterLogin above).
         // replace: same reason as in the useEffect above (Back isn't trapped)
-        navigate('/discovery', { replace: true });
+        // (false: this login just happened, so its times are fresh from Supabase)
+        navigate(pageAfterLogin(data.user, false), { replace: true });
     }
 
     // Runs when the reset form is submitted (the "Send reset link" button is

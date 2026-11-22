@@ -2,8 +2,8 @@
 // New accounts land here first (Sign up sends you here, and RequireLogin sends
 // you here from any page until you finish or skip it), so Opportunities can
 // start with jobs that fit you, and your resume starts with your details.
-// It has 4 short steps, one at a time: Basics, About you, What you're looking
-// for, and Skills. Every question is optional except one: "Where are you in
+// It has 3 short steps, one at a time: Basics, What you're looking for, and
+// Skills. Every question is optional except one: "Where are you in
 // school?" (high school or college) has to be answered before Next on Basics,
 // because Opportunities and Best fit use it. "Skip the guide" still ends it at
 // any point (then Opportunities asks it instead, see LevelPrompt there).
@@ -15,8 +15,9 @@
 // useState remembers the step and your answers. useRef and useEffect move the
 // keyboard focus to each new step's heading (see below)
 import { useEffect, useRef, useState } from "react";
-// Link goes to another page of our site. useNavigate sends you there from code
-import { Link, useNavigate } from "react-router";
+// Link goes to another page of our site. useNavigate sends you there from code,
+// and Navigate does it as soon as it's drawn
+import { Link, Navigate, useNavigate } from "react-router";
 // The ScoutSearch logo (components/SiteLogo.jsx)
 import SiteLogo from "../components/SiteLogo.jsx";
 // The boxes for each step. My info uses the same ones (components/ProfileFields.jsx)
@@ -130,6 +131,15 @@ function Welcome() {
     headingRef.current?.focus();
   }, [current]);
 
+  // Someone who finished (or skipped) the guide before can still end up here:
+  // an old "confirm your email" link opens Log in with ?next=welcome, which
+  // sends you here (see pageAfterLogin in Login.jsx). Once the server says
+  // you've done the guide, and you haven't started typing, go on to
+  // Opportunities instead. (Not after Finish: "You're all set" is the last step)
+  if (profile.state === "ready" && !profile.needsGuide && draft === null && current === 0) {
+    return <Navigate to="/discovery" replace />;
+  }
+
   const isDone = current === steps.length;
   const isLastStep = current === steps.length - 1;
   const step = steps[current];
@@ -170,6 +180,15 @@ function Welcome() {
   // done, and opens Opportunities. If it can't be saved (no internet), the
   // guide still goes away for this visit, so you're never stuck on it
   async function handleSkip() {
+    // Nothing typed yet, and the server hasn't sent your profile (it may still
+    // be waking up): the boxes are empty only because nothing has arrived yet.
+    // Saving them would write empty boxes over a profile you already have, so
+    // just leave the guide for this visit, without saving anything
+    if (draft === null && profile.state !== "ready") {
+      skipGuideForNow();
+      navigate("/discovery", { replace: true });
+      return;
+    }
     setSaving(true);
     try {
       await saveProfile(shown, true);
@@ -245,7 +264,7 @@ function Welcome() {
             // ----- One step -----
             <section className="welcome-step-box" aria-labelledby="welcome-step-title">
               <StepBars current={current} />
-              {/* "Step 2 of 4" in words, so the bars aren't the only way to tell */}
+              {/* "Step 2 of 3" in words, so the bars aren't the only way to tell */}
               <p className="welcome-step-count">
                 Step {current + 1} of {steps.length}
               </p>

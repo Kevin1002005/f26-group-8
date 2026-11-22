@@ -18,10 +18,16 @@ import { loadSettings, applySettings } from './settings.js'
 // ThemeProvider keeps track of Light / Dark / System for every page
 // (components/ThemeProvider.jsx)
 import ThemeProvider from './components/ThemeProvider.jsx'
+// wakeServer starts waking our backend up (see wake-server.js)
+import { wakeServer } from './wake-server.js'
 
 // Put the saved Settings choices into effect before anything is drawn,
 // so the page doesn't flash in the default colors first
 applySettings(loadSettings())
+
+// Wake our backend up right away, whichever page this is, so it's usually
+// awake by the time a page needs it (it can sleep on Render's free plan)
+wakeServer()
 
 // index.html has an empty <div id="root"></div>. This line finds that div
 // and tells React to draw the app inside it.

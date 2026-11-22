@@ -1,6 +1,6 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import authRouter from './auth.js';
-import jobsRouter from './jobs.js';
+import jobsRouter, { openJobs } from './jobs.js';
 import applicationsRouter from './applications.js';
 import resumesRouter from './resumes.js';
 import accountRouter from './account.js';
@@ -49,6 +49,30 @@ function legacyAuthGuard(req: Request, res: Response, next: NextFunction) {
 
 app.get('/', (req: Request, res: Response) => {
   res.send('ABOUT');
+});
+
+// GET /api/health: a tiny "are you awake?" address. It answers { ok: true } right away, with no
+// login. The website calls it the moment any page opens (frontend/src/wake-server.js): on Render's
+// free plan the server sleeps when nobody has used it for a while, and waking it takes up to a
+// minute, so this starts the wake-up while the student is still reading or typing.
+// It's under /api because the website only passes /api/... on to this server (frontend/vercel.json)
+// When /api/health last started loading the jobs (see below), in milliseconds
+let lastWarmUp = 0;
+app.get('/api/health', (req: Request, res: Response) => {
+  // It also starts loading every open job (openJobs in jobs.ts), without waiting for it. Loading them
+  // is the slow part of Opportunities' first answer (thousands of jobs, 1000 at a time), so after a
+  // wake-up, the first student used to wait for it on top of the wake-up itself. This request is
+  // usually the one that wakes the server, so the jobs are ready by the time Opportunities asks.
+  // openJobs keeps them for 5 minutes, and a student who asks while they're loading waits for that
+  // same load instead of starting another.
+  // At most once a minute, though: anyone can call this address without logging in, and if a load
+  // fails (the database is slow), nothing is kept, so without the limit every call would start a
+  // whole new load. Opportunities itself still loads the jobs whenever it needs them
+  if (Date.now() - lastWarmUp > 60_000) {
+    lastWarmUp = Date.now();
+    openJobs().catch((error) => console.error('loading the open jobs failed:', error));
+  }
+  res.json({ ok: true });
 });
 
 app.use('/auth', legacyAuthGuard, authRouter);

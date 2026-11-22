@@ -131,6 +131,16 @@ function App() {
           <Route path="/cookie-policy" element={<StoragePolicy />} />
           <Route path="/terms-of-service" element={<TermsOfService />} />
 
+          {/* yoursite.com/discovery shows the Discovery page (Opportunities).
+              Anyone can see it, even without an account, so a counselor can
+              share a link like /discovery?level=high-school. Guests get the
+              public job list without the parts that need an account (see
+              Discovery.jsx). allowGuests lets them in; logged-in students
+              still go through the welcome guide first, like everywhere else */}
+          <Route element={<RequireLogin allowGuests />}>
+            <Route path="/discovery" element={<Discovery />} />
+          </Route>
+
           {/* Every page inside here needs you to be logged in. A Route with no
               "path" doesn't change the web address; it just puts RequireLogin in
               front of all the pages inside it. Logged out? It sends you to /login */}
@@ -148,8 +158,6 @@ function App() {
             <Route path="/network" element={<Network />} />
             {/* yoursite.com/messages shows the Messages page */}
             <Route path="/messages" element={<Messages />} />
-            {/* yoursite.com/discovery shows the Discovery page */}
-            <Route path="/discovery" element={<Discovery />} />
             {/* yoursite.com/applications shows the Application tracker page */}
             <Route path="/applications" element={<ApplicationTracker />} />
             {/* yoursite.com/settings shows the Settings page */}

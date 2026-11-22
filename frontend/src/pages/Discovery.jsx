@@ -5,6 +5,9 @@
 // like SimplifyJobs, USAJOBS, JSearch, and Adzuna. See backend/src/jobs.ts.
 // The backend does the filtering, sorting, and "best fit" scoring (backend/src/fit.ts)
 // across every job, and sends 50 at a time ("Show more" gets the next 50).
+// Anyone can open it without an account: guests see the public list (GET /api/jobs)
+// with fewer filters, and no parts that need an account (see "Guests" below).
+// A link can set "Who it's for": /discovery?level=high-school (or college).
 // The styles for this page are in index.css, under "Discovery page".
 //
 // Since the 2026-11 revamp it's laid out like a dashboard, one column:
@@ -31,6 +34,9 @@ import { Link, useSearchParams } from "react-router";
 // NavBar is the bar across the top of the page. It lives in its own file
 // (components/NavBar.jsx) because every page uses it.
 import NavBar from "../components/NavBar.jsx";
+// For guests' simpler top bar (GuestBar below): the logo, and the sun/moon button
+import SiteLogo from "../components/SiteLogo.jsx";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 // api() is how pages talk to our backend (src/api.js).
 import { api } from "../api.js";
@@ -38,8 +44,9 @@ import { api } from "../api.js";
 // and saving that choice (LevelPrompt). And the "undecided" choice (data/majors.js)
 import { latestProfile, saveProfile, useMyProfile } from "../data/profile.js";
 import { undecided } from "../data/majors.js";
-// accountKey keeps each account's hidden companies apart on a shared computer (login-status.js)
-import { accountKey } from "../login-status.js";
+// accountKey keeps each account's hidden companies apart on a shared computer, and
+// useLoggedInId says who's logged in (null for a guest, see "Guests" below) (login-status.js)
+import { accountKey, useLoggedInId } from "../login-status.js";
 // isPastDeadline says if a job's deadline has gone by (it then says "Closed").
 // (The made-up example jobs in that file are still used by the Feed page.)
 // isDueWithin says if it's due in the next few days, and initialsOf makes the "GL" for a logo.
@@ -123,25 +130,29 @@ function toOpportunity(job) {
 }
 
 // Asks the backend for one page (50) of the jobs that pass the filters, and
-// turns each one into the page's shape. query is the filters, written the way
-// a web address carries them ("type=co-op&sort=fit", see queryFor below).
+// turns each one into the page's shape. path is which list and the filters,
+// written the way a web address carries them: "/jobs/for-me?type=co-op&sort=fit"
+// for a logged-in student (see queryFor below), or "/jobs?type=co-op" for a
+// guest (the public list, see guestQueryFor below).
 // It's "async", so it hands back a promise: the page arrives a moment later.
-// Gives back { list, total (how many match in all), more (true if there's
-// another page), major (your major, from your profile), majorIgnored (true if
-// "For your major" was skipped, because the backend has no words to look for
-// in the major you typed, see FilterBar), near (where the "City or state" box
-// was found on the map, or null), suggestions (ways to see more when only a few
-// match, see MoreSuggestions) }
-async function fetchPage(query, page) {
-  const body = await api("/jobs/for-me?" + query + (page > 1 ? "&page=" + page : ""));
+// Gives back { list, total (how many match in all, or null when the backend
+// doesn't say), more (true if there's another page), major (your major, from
+// your profile), majorIgnored (true if "For your major" was skipped, because
+// the backend has no words to look for in the major you typed, see FilterBar),
+// near (where the "City or state" box was found on the map, or null),
+// suggestions (ways to see more when only a few match, see MoreSuggestions) }
+async function fetchPage(path, page) {
+  const body = await api(path + (page > 1 ? "&page=" + page : ""));
   // Our backend always sends a list. Anything else didn't come from it
   if (!Array.isArray(body.jobs)) {
     throw new Error("Couldn't reach the server. Try again in a minute.");
   }
   return {
     list: body.jobs.map(toOpportunity),
-    total: body.total ?? body.jobs.length,
-    more: body.more === true,
+    // The public list (guests) sends only the jobs: no total, and a full page
+    // of 50 means there may be more after it (backend/src/jobs.ts)
+    total: typeof body.total === "number" ? body.total : null,
+    more: typeof body.more === "boolean" ? body.more : body.jobs.length >= 50,
     major: body.major ?? "",
     majorIgnored: body.major_ignored === true,
     near: body.near ?? null,
@@ -170,6 +181,21 @@ function queryFor({ search, picked, sortBy, filters, forMajor, withRelated, hidd
   if (filters.location.trim() && filters.within !== "25") query.set("within", filters.within);
   if (filters.paidOnly) query.set("paid", "true");
   for (const company of hidden) query.append("hide", company);
+  return query.toString();
+}
+
+// The same, for a guest (not logged in): the public list, GET /api/jobs in
+// backend/src/jobs.ts, which anyone can read. It only knows the search, the
+// tab, "Who it's for", "Where", and "Paid only" (the page hides the other
+// filters for guests), and always lists the newest first. Nothing about the
+// guest is sent: there's no login, and these are only the filters on screen
+function guestQueryFor({ search, picked, filters }) {
+  const query = new URLSearchParams();
+  if (search.trim()) query.set("q", search.trim());
+  if (picked !== "All") query.set("type", typeValues[picked]);
+  if (filters.level) query.set("level", filters.level);
+  if (filters.setting) query.set("setting", filters.setting);
+  if (filters.paidOnly) query.set("paid", "true");
   return query.toString();
 }
 
@@ -307,6 +333,80 @@ function ArrowIcon() {
 
 // ---------- Pieces of the page ----------
 
+// ---------- Guests ----------
+// Anyone can open Opportunities without an account (App.jsx), so a counselor
+// can share a link like /discovery?level=high-school. A guest sees the public
+// job list (guestQueryFor above), and the page leaves out what needs an
+// account or uses up a daily limit: Best fit and the other sorts, "For your
+// major", Search the web, Refresh, "Where are you in school?", the number
+// boxes (they count your tracker), the filters the public list doesn't know,
+// and hiding a company. Save asks them to sign up instead (SignUpNote), and
+// Apply just opens the company's site. Nothing new is saved in a guest's
+// browser, and nothing about them is sent anywhere.
+
+// The top bar for guests: the logo (back to the About page), the sun/moon
+// button, Log in, and Sign up. It uses the About page's top bar styles
+// ("about-bar" in index.css), so it looks like the bar guests already saw there.
+// Logged-in students get NavBar instead
+function GuestBar() {
+  return (
+    <header className="about-bar discovery-guest-bar">
+      <div className="about-inner about-bar-row">
+        <Link className="about-logo" to="/about">
+          <SiteLogo />
+        </Link>
+        {/* <nav> + aria-label: screen readers can find these links by name (WCAG) */}
+        <nav className="about-bar-actions" aria-label="Account">
+          <ThemeToggle />
+          <Link to="/login" className="about-login-link">
+            Log in
+          </Link>
+          {/* Sign up is the accent blue, so it's the one that stands out */}
+          <Link to="/signup" className="about-button">
+            Sign up
+          </Link>
+        </nav>
+      </div>
+    </header>
+  );
+}
+
+// What Save says to a guest: saving needs an account, so it says what an
+// account gives you, with the two ways to get one as links inside the
+// sentence. The row and the pop-up both show it inside their one
+// role="status" message, so screen readers read it when it appears (WCAG).
+// {" "} keeps the space before a link (JSX drops it at a line break).
+// The links are underlined (discovery-inline-link), so inside a sentence they
+// don't rely on color alone (WCAG)
+function SignUpNote() {
+  return (
+    <>
+      <Link to="/signup" className="discovery-inline-link">
+        Sign up free
+      </Link>{" "}
+      to save jobs, track deadlines, and see which jobs fit you best, or{" "}
+      <Link to="/login" className="discovery-inline-link">
+        log in
+      </Link>
+      .
+    </>
+  );
+}
+
+// "via Adzuna": Adzuna's terms ask every site that shows its jobs to link back
+// to it, so its name is a link to adzuna.com (in a new tab: the hidden words say
+// so, WCAG). Every other source is plain words. props.source is the source's
+// name as shown ("Adzuna", see sourceNames near the top of this file)
+function SourceName(props) {
+  if (props.source !== sourceNames.adzuna) return props.source;
+  return (
+    <a href="https://www.adzuna.com" target="_blank" rel="noopener noreferrer" className="discovery-inline-link">
+      {props.source}
+      <span className="sr-only"> (opens in a new tab)</span>
+    </a>
+  );
+}
+
 // The top of the page: the title, one sentence, and the search bar (the
 // 2026-11 revamp: a calm title on the page, like a dashboard, instead of the
 // old dark navy box).
@@ -314,7 +414,8 @@ function ArrowIcon() {
 // props.setSearch changes it. Discovery (at the bottom) remembers it, so the
 // list can use it to filter. props.forHighSchool is true when you're in high
 // school (see profileLevel in Discovery): then one more line under the title
-// says what's here for you.
+// says what's here for you. props.isGuest is true when nobody is logged in:
+// then a line says so, with a link to sign up.
 function DiscoveryHeader(props) {
   // Pressing Enter in a form normally reloads the whole page. This stops
   // that. The list already updates as you type, so Enter doesn't need to do
@@ -337,6 +438,17 @@ function DiscoveryHeader(props) {
           <p className="discovery-head-note">
             Summer programs, research, and internships open to high schoolers: experience you can write about on college
             applications.
+          </p>
+        )}
+        {/* Only for guests: what an account adds. It's always there for them
+            (it doesn't change), so it isn't a role="status" message */}
+        {props.isGuest && (
+          <p className="discovery-head-text">
+            You're browsing as a guest.{" "}
+            <Link to="/signup" className="discovery-inline-link">
+              Sign up free
+            </Link>{" "}
+            to save jobs, track deadlines, and see which jobs fit you best.
           </p>
         )}
       </div>
@@ -555,13 +667,16 @@ function CloseIcon() {
 //                      Submitted on the tracker)
 //   onNotYet           what "Not yet" runs (it keeps the job in Saved on the
 //                      tracker, so it isn't lost)
+//   isGuest            true when nobody is logged in (see "Guests" above): no
+//                      "Hide jobs from ...", and Save isn't an on/off
+//   askedToSignUp      true once a guest pressed Save: the note says to sign up
 //
 // { opportunity, ref, saved, ... } below "unpacks" the props: it's a
 // shorter way of writing props.opportunity, props.ref, and so on. It's
 // needed here because React's rules check that a ref is never read while
 // the page is being drawn, and keeping it separate from the other props
 // makes that clear.
-function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onApply, onConfirmApplied, onNotYet, onHide, idPrefix }) {
+function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onApply, onConfirmApplied, onNotYet, onHide, idPrefix, isGuest, askedToSignUp }) {
   // A unique id for the title, so the dialog can be named by it (WCAG). idPrefix keeps it unique
   // when the same job is in two tables (the main list and "Found on the web")
   const titleId = (idPrefix ?? "discovery-dialog-title-") + opportunity.id;
@@ -611,7 +726,7 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onA
             {opportunity.title}
           </h2>
           <p className="discovery-dialog-facts">
-            {opportunity.organization} · {opportunity.place} · via {opportunity.source}
+            {opportunity.organization} · {opportunity.place} · via <SourceName source={opportunity.source} />
           </p>
           <p className="discovery-dialog-tags">
             {/* The same colored tag as the table (typeTagClass, further down) */}
@@ -707,17 +822,20 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onA
         )}
 
         {/* Not interested in this company? Its jobs stop showing (you can show
-            them again under "More filters"). It closes the pop-up first */}
-        <button
-          type="button"
-          className="discovery-hide-company"
-          onClick={() => {
-            ref.current?.close();
-            onHide(opportunity.organization);
-          }}
-        >
-          Hide jobs from {opportunity.organization}
-        </button>
+            them again under "More filters"). It closes the pop-up first.
+            Not for guests: the public list can't leave companies out */}
+        {!isGuest && (
+          <button
+            type="button"
+            className="discovery-hide-company"
+            onClick={() => {
+              ref.current?.close();
+              onHide(opportunity.organization);
+            }}
+          >
+            Hide jobs from {opportunity.organization}
+          </button>
+        )}
       </div>
 
       {/* The bottom: a note on the left, Save and Apply on the right.
@@ -734,13 +852,19 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onA
               pop-up because while it's open, the page behind it is shut off,
               and screen readers don't hear messages from there */}
           <p className="discovery-dialog-message" role="status">
-            {applyStep === "applied"
-              ? "Moved to Submitted on My applications."
-              : applyStep === "later"
-                ? "Kept on My applications, so you won't lose it."
-                : applyStep === "asked"
-                  ? "Did you send your application on " + opportunity.organization + "'s site?"
-                  : "You'll apply on " + opportunity.organization + "'s own site."}
+            {/* A guest who pressed Save: how to save (SignUpNote). Guests are
+                never asked "Did you send it?", so the rest is for students */}
+            {isGuest && askedToSignUp ? (
+              <SignUpNote />
+            ) : applyStep === "applied" ? (
+              "Moved to Submitted on My applications."
+            ) : applyStep === "later" ? (
+              "Kept on My applications, so you won't lose it."
+            ) : applyStep === "asked" ? (
+              "Did you send your application on " + opportunity.organization + "'s site?"
+            ) : (
+              "You'll apply on " + opportunity.organization + "'s own site."
+            )}
           </p>
           {/* Only while it's asking. The words say what each answer means, so
               they make sense on their own to screen readers and voice control (WCAG) */}
@@ -757,11 +881,13 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onA
         </div>
         <div className="discovery-actions">
           {/* aria-label starts with the word you see ("Save" or "Saved"),
-              so voice control users can say what's on the button (WCAG) */}
+              so voice control users can say what's on the button (WCAG).
+              For guests it isn't an on/off (no aria-pressed): it only shows
+              the sign-up note */}
           <button
             type="button"
             className="discovery-outline-button"
-            aria-pressed={saved}
+            aria-pressed={isGuest ? undefined : saved}
             aria-label={(saved ? "Saved " : "Save ") + opportunity.title}
             onClick={toggleSave}
           >
@@ -832,6 +958,10 @@ function OpportunityRow(props) {
   const saved = trackerItems.some((item) => item.id === opportunity.id);
   // What screen readers hear after Save is pressed (see the end of the row)
   const [announcement, setAnnouncement] = useState("");
+  // true when nobody is logged in (see "Guests" near the top of this file)
+  const isGuest = props.isGuest === true;
+  // true once a guest pressed Save: the row and the pop-up then say how to sign up
+  const [askedToSignUp, setAskedToSignUp] = useState(false);
   // Where Apply is at in the pop-up: "none", "asked" (Apply was pressed, and
   // the pop-up asks if you sent your application), "applied" (you said Yes),
   // or "later" (you said Not yet)
@@ -853,8 +983,10 @@ function OpportunityRow(props) {
   // instead. (Before, Apply moved the job to Submitted right away, so the
   // tracker filled up with jobs nobody had applied to, and their deadlines
   // dropped out of "Due soon".) After Not yet, pressing Apply again asks again;
-  // after Yes, it changes nothing
+  // after Yes, it changes nothing. Guests aren't asked: they have no tracker
+  // to put the answer on, so Apply only opens the company's site
   function askIfApplied() {
+    if (isGuest) return;
     if (applyStep !== "applied") setApplyStep("asked");
   }
 
@@ -876,8 +1008,14 @@ function OpportunityRow(props) {
   // Saving puts the job in the tracker's "Saved" column; pressing again
   // ("Saved") takes it off the tracker. Either way, it's saved to your account.
   // The title, company, deadline, and initials are kept with it, so the
-  // tracker can show the job right away (and when the server can't be reached)
+  // tracker can show the job right away (and when the server can't be reached).
+  // A guest has no tracker (it's saved with an account), so Save shows how to
+  // sign up instead, and nothing is saved
   function toggleSave() {
+    if (isGuest) {
+      setAskedToSignUp(true);
+      return;
+    }
     if (saved) {
       removeFromTracker(opportunity.id);
       setAnnouncement("");
@@ -936,7 +1074,7 @@ function OpportunityRow(props) {
               {opportunity.title}
             </button>
             <span className="discovery-role-org">
-              {opportunity.organization} · via {opportunity.source}
+              {opportunity.organization} · via <SourceName source={opportunity.source} />
             </span>
             {/* "Posted 3 days ago". <time> holds the exact time for computers */}
             {posted && (
@@ -989,11 +1127,12 @@ function OpportunityRow(props) {
               to true. aria-pressed tells screen readers if it's on (WCAG).
               aria-label says which opportunity, because every row has a
               Save button. It starts with the visible word ("Save" or
-              "Saved") so voice control still works (WCAG). */}
+              "Saved") so voice control still works (WCAG). For guests it
+              isn't an on/off (no aria-pressed): it shows the sign-up note */}
           <button
             type="button"
             className="discovery-outline-button discovery-small-button"
-            aria-pressed={saved}
+            aria-pressed={isGuest ? undefined : saved}
             aria-label={(saved ? "Saved " : "Save ") + opportunity.title}
             onClick={toggleSave}
           >
@@ -1018,10 +1157,18 @@ function OpportunityRow(props) {
 
         {/* Hidden on screen. Screen readers hear it when Save is pressed (WCAG).
             Only then: not when "saved" changes by itself (your account's list
-            arriving would otherwise make every saved row speak at once) */}
-        <span className="sr-only" role="status">
-          {announcement}
-        </span>
+            arriving would otherwise make every saved row speak at once).
+            For guests it's on screen instead, under the buttons, since it has
+            the Sign up and Log in links: empty until Save is pressed */}
+        {isGuest ? (
+          <span className="discovery-guest-note" role="status">
+            {askedToSignUp && <SignUpNote />}
+          </span>
+        ) : (
+          <span className="sr-only" role="status">
+            {announcement}
+          </span>
+        )}
 
         {/* The pop-up. It's on the page all the time but hidden until it's opened. */}
         <OpportunityDialog
@@ -1035,6 +1182,8 @@ function OpportunityRow(props) {
           onNotYet={notYet}
           onHide={props.onHide}
           idPrefix={props.idPrefix}
+          isGuest={isGuest}
+          askedToSignUp={askedToSignUp}
         />
       </td>
     </tr>
@@ -1085,7 +1234,8 @@ function MoreSuggestions(props) {
 // props.results is what the backend sent ({ list, total, more }), or null while
 // the first answer is on its way. props.loadError is true if getting them
 // failed (props.retry tries again). props.updating is true while new filters
-// are loading (the old list stays on screen until then)
+// are loading (the old list stays on screen until then). props.isGuest is true
+// when nobody is logged in (each row then works the guest way, see OpportunityRow)
 function ResultsSection(props) {
   // While waiting the first time, or if it failed, show a message in place of
   // the table. role="status" reads it out when it appears (WCAG).
@@ -1114,11 +1264,18 @@ function ResultsSection(props) {
   }
 
   const shown = props.results.list;
+  // how many match in all, or null for guests (the public list doesn't say)
   const total = props.results.total;
   // the "Want more?" buttons, but not while new filters load (they'd be for the old ones)
   const suggestions = props.updating ? [] : props.results.suggestions;
   // "opportunity" for 1, "opportunities" for anything else.
-  const word = total === 1 ? "opportunity" : "opportunities";
+  const word = (total ?? shown.length) === 1 ? "opportunity" : "opportunities";
+  // "Showing 50 of 1,234 opportunities". Without a total (guests' public list,
+  // which is always newest first): "Showing the 50 newest opportunities"
+  const countWords =
+    total === null
+      ? "Showing the " + shown.length.toLocaleString() + " newest " + word
+      : "Showing " + shown.length.toLocaleString() + " of " + total.toLocaleString() + " " + word;
   // What the table is sorted by, for screen readers
   const sortWords = { newest: "newest first", fit: "best fit first", deadline: "soonest deadline first", company: "by company, A to Z" };
 
@@ -1177,6 +1334,7 @@ function ResultsSection(props) {
                   openOnArrival={opportunity.id === props.openJobId}
                   onOpened={props.onOpened}
                   onHide={props.onHide}
+                  isGuest={props.isGuest}
                 />
               ))}
             </tbody>
@@ -1186,7 +1344,7 @@ function ResultsSection(props) {
               more. role="status" reads the new count out when it changes (WCAG) */}
           <div className="discovery-more-row">
             <p className="discovery-results-count" role="status">
-              {props.updating ? "Updating..." : "Showing " + shown.length.toLocaleString() + " of " + total.toLocaleString() + " " + word}
+              {props.updating ? "Updating..." : countWords}
             </p>
             {props.results.more && (
               <button type="button" className="discovery-outline-button" onClick={props.showMore} disabled={props.loadingMore}>
@@ -1206,7 +1364,9 @@ function ResultsSection(props) {
 // "For your major" is a separate on/off (props.forMajor, props.setForMajor),
 // because it starts on when your profile has a major. props.majorIgnored is
 // true when the backend couldn't use that major (see fetchPage).
-// props.hidden is the companies you've hidden, and props.unhide shows one again
+// props.hidden is the companies you've hidden, and props.unhide shows one again.
+// props.isGuest is true when nobody is logged in: then only the filters the
+// public list knows show (Who it's for, Where, Paid only), see guestQueryFor
 function FilterBar(props) {
   const filters = props.filters;
   // true while a box in "More filters" has something in it, so it starts open
@@ -1223,8 +1383,8 @@ function FilterBar(props) {
             link to add one instead. The same link shows when the backend skipped
             the major filter (props.majorIgnored): a typed-in major like "General
             Studies" has no words to look for, so the list shows every field, and
-            picking a major from the list fixes that */}
-        {props.major && !props.majorIgnored ? (
+            picking a major from the list fixes that. Not for guests: it needs a profile */}
+        {!props.isGuest && (props.major && !props.majorIgnored ? (
           <button
             type="button"
             className="discovery-chip"
@@ -1241,7 +1401,7 @@ function FilterBar(props) {
             {props.majorIgnored ? "Pick your major from the list for better matches" : "Add your major to see jobs for it"}
             <ArrowIcon />
           </Link>
-        )}
+        ))}
 
         {/* Each menu has a real label above it (WCAG) */}
         <label className="discovery-filter">
@@ -1261,119 +1421,127 @@ function FilterBar(props) {
             <option value="on-site">On-site</option>
           </select>
         </label>
-        <label className="discovery-filter">
-          Posted
-          <select className="discovery-sort-select" value={filters.posted} onChange={(e) => props.change("posted", e.target.value)}>
-            <option value="">Any time</option>
-            <option value="day">In the last day</option>
-            <option value="week">In the last week</option>
-            <option value="month">In the last month</option>
-          </select>
-        </label>
-        <label className="discovery-filter">
-          Deadline
-          <select className="discovery-sort-select" value={filters.deadline} onChange={(e) => props.change("deadline", e.target.value)}>
-            <option value="">Any</option>
-            <option value="has">Has a deadline</option>
-            <option value="soon">Due in the next 2 weeks</option>
-          </select>
-        </label>
+        {/* Posted and Deadline: not for guests, the public list doesn't know them */}
+        {!props.isGuest && (
+          <>
+            <label className="discovery-filter">
+              Posted
+              <select className="discovery-sort-select" value={filters.posted} onChange={(e) => props.change("posted", e.target.value)}>
+                <option value="">Any time</option>
+                <option value="day">In the last day</option>
+                <option value="week">In the last week</option>
+                <option value="month">In the last month</option>
+              </select>
+            </label>
+            <label className="discovery-filter">
+              Deadline
+              <select className="discovery-sort-select" value={filters.deadline} onChange={(e) => props.change("deadline", e.target.value)}>
+                <option value="">Any</option>
+                <option value="has">Has a deadline</option>
+                <option value="soon">Due in the next 2 weeks</option>
+              </select>
+            </label>
+          </>
+        )}
         <label className="discovery-check">
           <input type="checkbox" checked={filters.paidOnly} onChange={(e) => props.change("paidOnly", e.target.checked)} />
           Paid only
         </label>
       </div>
 
-      {/* <details> opens and closes by itself, and tells screen readers if it's open */}
-      <details className="discovery-more-filters" open={moreInUse ? true : undefined}>
-        <summary>More filters</summary>
-        <div className="discovery-filter-row">
-          {/* aria-describedby reads the tip with the label (WCAG) */}
-          <label className="discovery-filter">
-            Must mention
-            <input
-              className="discovery-filter-input"
-              type="text"
-              placeholder="e.g. Python, Spanish"
-              aria-describedby="discovery-words-hint"
-              value={filters.include}
-              onChange={(e) => props.change("include", e.target.value)}
-            />
-          </label>
-          <label className="discovery-filter">
-            Leave out
-            <input
-              className="discovery-filter-input"
-              type="text"
-              placeholder="e.g. PhD, US citizen"
-              aria-describedby="discovery-words-hint"
-              value={filters.exclude}
-              onChange={(e) => props.change("exclude", e.target.value)}
-            />
-          </label>
-          <label className="discovery-filter">
-            City or state
-            <input
-              className="discovery-filter-input"
-              type="text"
-              autoComplete="address-level2"
-              placeholder="e.g. Worcester or MA"
-              value={filters.location}
-              onChange={(e) => props.change("location", e.target.value)}
-            />
-          </label>
-          {/* How far around the city to look. Only shown once the box was
-              found as a city (not a state, or a place we couldn't find),
-              since it does nothing otherwise. props.nearCity is the last city
-              found, so it doesn't flicker while new results load */}
-          {filters.location.trim() && props.nearCity && (
+      {/* <details> opens and closes by itself, and tells screen readers if it's open.
+          Not for guests: the public list can't match words, places, or hidden companies */}
+      {!props.isGuest && (
+        <details className="discovery-more-filters" open={moreInUse ? true : undefined}>
+          <summary>More filters</summary>
+          <div className="discovery-filter-row">
+            {/* aria-describedby reads the tip with the label (WCAG) */}
             <label className="discovery-filter">
-              Distance
-              <select className="discovery-sort-select" value={filters.within} onChange={(e) => props.change("within", e.target.value)}>
-                <option value="10">Within 10 miles</option>
-                <option value="25">Within 25 miles</option>
-                <option value="50">Within 50 miles</option>
-                <option value="100">Within 100 miles</option>
-              </select>
+              Must mention
+              <input
+                className="discovery-filter-input"
+                type="text"
+                placeholder="e.g. Python, Spanish"
+                aria-describedby="discovery-words-hint"
+                value={filters.include}
+                onChange={(e) => props.change("include", e.target.value)}
+              />
             </label>
-          )}
-          {/* Where the backend found the city or state on the map, so you can
-              tell if it picked the right Worcester. role="status" reads it out
-              when it changes (WCAG). props.near is undefined while it loads,
-              and null when the place wasn't found */}
-          {filters.location.trim() && (
-            <p className="discovery-near" role="status">
-              {props.near === undefined
-                ? ""
-                : props.near?.city
-                  ? "Within " + props.near.within + " miles of " + props.near.city + "."
-                  : props.near?.state
-                    ? "Jobs in " + props.near.state + "."
-                    : "Couldn't find \"" + filters.location.trim() + "\" on the map, so this matches the words in each job's location."}
-            </p>
-          )}
-        </div>
-        <p className="discovery-filter-hint" id="discovery-words-hint">
-          Put commas between words. Each one is matched as a whole word in the job's title, description, and requirements.
-        </p>
-
-        {props.hidden.length > 0 && (
-          <div className="discovery-hidden">
-            Hidden companies:
-            <ul className="discovery-hidden-list">
-              {props.hidden.map((company) => (
-                <li key={company} className="discovery-hidden-item">
-                  {company}
-                  {/* aria-label says which company (every one has this button) (WCAG) */}
-                  <button type="button" className="discovery-unhide" aria-label={"Show " + company + " again"} onClick={() => props.unhide(company)}>
-                    Show again
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <label className="discovery-filter">
+              Leave out
+              <input
+                className="discovery-filter-input"
+                type="text"
+                placeholder="e.g. PhD, US citizen"
+                aria-describedby="discovery-words-hint"
+                value={filters.exclude}
+                onChange={(e) => props.change("exclude", e.target.value)}
+              />
+            </label>
+            <label className="discovery-filter">
+              City or state
+              <input
+                className="discovery-filter-input"
+                type="text"
+                autoComplete="address-level2"
+                placeholder="e.g. Worcester or MA"
+                value={filters.location}
+                onChange={(e) => props.change("location", e.target.value)}
+              />
+            </label>
+            {/* How far around the city to look. Only shown once the box was
+                found as a city (not a state, or a place we couldn't find),
+                since it does nothing otherwise. props.nearCity is the last city
+                found, so it doesn't flicker while new results load */}
+            {filters.location.trim() && props.nearCity && (
+              <label className="discovery-filter">
+                Distance
+                <select className="discovery-sort-select" value={filters.within} onChange={(e) => props.change("within", e.target.value)}>
+                  <option value="10">Within 10 miles</option>
+                  <option value="25">Within 25 miles</option>
+                  <option value="50">Within 50 miles</option>
+                  <option value="100">Within 100 miles</option>
+                </select>
+              </label>
+            )}
+            {/* Where the backend found the city or state on the map, so you can
+                tell if it picked the right Worcester. role="status" reads it out
+                when it changes (WCAG). props.near is undefined while it loads,
+                and null when the place wasn't found */}
+            {filters.location.trim() && (
+              <p className="discovery-near" role="status">
+                {props.near === undefined
+                  ? ""
+                  : props.near?.city
+                    ? "Within " + props.near.within + " miles of " + props.near.city + "."
+                    : props.near?.state
+                      ? "Jobs in " + props.near.state + "."
+                      : "Couldn't find \"" + filters.location.trim() + "\" on the map, so this matches the words in each job's location."}
+              </p>
+            )}
           </div>
-        )}
-      </details>
+          <p className="discovery-filter-hint" id="discovery-words-hint">
+            Put commas between words. Each one is matched as a whole word in the job's title, description, and requirements.
+          </p>
+
+          {props.hidden.length > 0 && (
+            <div className="discovery-hidden">
+              Hidden companies:
+              <ul className="discovery-hidden-list">
+                {props.hidden.map((company) => (
+                  <li key={company} className="discovery-hidden-item">
+                    {company}
+                    {/* aria-label says which company (every one has this button) (WCAG) */}
+                    <button type="button" className="discovery-unhide" aria-label={"Show " + company + " again"} onClick={() => props.unhide(company)}>
+                      Show again
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </details>
+      )}
 
       {props.inUse && (
         <div className="discovery-filter-actions">
@@ -1531,6 +1699,12 @@ function wait(ms) {
 // Discovery is the whole page. It puts the pieces above together, and it
 // remembers the search, the tab, the sort, and the filters, so everything stays in sync.
 function Discovery() {
+  // Who's logged in, or null for a guest (see "Guests" near the top of this file)
+  const isGuest = !useLoggedInId();
+  // The extra info at the end of the address. For "/discovery?job=abc",
+  // searchParams.get("job") gives "abc". setSearchParams changes it.
+  // (Up here because "?level=" is read when the page opens, below)
+  const [searchParams, setSearchParams] = useSearchParams();
   // What's typed in the search bar. Starts empty.
   const [search, setSearch] = useState("");
   // Which tab is picked. Starts on "All".
@@ -1560,8 +1734,15 @@ function Discovery() {
   // your profile ("Where are you in school?": the welcome guide, Edit profile,
   // or LevelPrompt above). Before you pick, it's a guess from your school's
   // name. levelChoice is null until you pick a filter yourself; picking
-  // "Anyone" shows everything
-  const [levelChoice, setLevelChoice] = useState(null);
+  // "Anyone" shows everything.
+  // A link can pick it too: "/discovery?level=high-school" (or "college"), like
+  // the About page's "Browse high school opportunities", or one a counselor
+  // shares. It's read once, when the page opens, for guests and students alike.
+  // Anything else after "level=" is ignored
+  const [levelChoice, setLevelChoice] = useState(() => {
+    const fromLink = searchParams.get("level");
+    return fromLink === "high-school" || fromLink === "college" ? fromLink : null;
+  });
   const school = profile.data.school.trim();
   // The guess: only when the name says which it is. "Worcester Academy" or
   // "Boston Latin School" could be either, so those start on "Anyone".
@@ -1576,8 +1757,11 @@ function Discovery() {
   // the filters as they show on screen, with that level in them
   const shownFilters = { ...filters, level: levelChoice ?? profileLevel };
 
-  // Everything above, written for the backend (see queryFor)
-  const query = queryFor({ search, picked, sortBy, filters: shownFilters, forMajor, withRelated, hidden });
+  // Everything above, written for the backend, with the list it's for (see
+  // fetchPage): yours (queryFor), or the public one for guests (guestQueryFor)
+  const query = isGuest
+    ? "/jobs?" + guestQueryFor({ search, picked, filters: shownFilters })
+    : "/jobs/for-me?" + queryFor({ search, picked, sortBy, filters: shownFilters, forMajor, withRelated, hidden });
 
   // What the backend sent: { query (which filters it's for), list, total, more,
   // page }. null until the first answer arrives
@@ -1628,8 +1812,11 @@ function Discovery() {
   // list (your major, search, tab, ...), but only ones due soon, soonest first,
   // so it agrees with "Match your filters" next to it. (It used to count every
   // job on the site, so a CS major's "First up" could be any field's job)
-  const dueSoonQuery = queryFor({ search, picked, sortBy: "deadline", filters: { ...shownFilters, deadline: "soon" }, forMajor, withRelated, hidden });
+  // (Not for guests: the box isn't shown to them, and the public list can't
+  // pick the jobs due soon)
+  const dueSoonQuery = "/jobs/for-me?" + queryFor({ search, picked, sortBy: "deadline", filters: { ...shownFilters, deadline: "soon" }, forMajor, withRelated, hidden });
   useEffect(() => {
+    if (isGuest) return;
     let ignore = false;
     // waits 0.3 seconds like the list, so typing a word is one request, not one per letter
     const timer = setTimeout(() => {
@@ -1645,7 +1832,7 @@ function Discovery() {
       ignore = true;
       clearTimeout(timer);
     };
-  }, [dueSoonQuery, tries]);
+  }, [dueSoonQuery, tries, isGuest]);
 
   // true while the list on screen is for older filters
   const updating = results !== null && results.query !== query;
@@ -1764,9 +1951,6 @@ function Discovery() {
     setRefreshing(false);
   }
 
-  // The extra info at the end of the address. For "/discovery?job=abc",
-  // searchParams.get("job") gives "abc". setSearchParams changes it.
-  const [searchParams, setSearchParams] = useSearchParams();
   // The job to open right away, or null if the address has no "?job=".
   // Real job ids are long codes (uuids) like "3f2a...", so it stays as text.
   const openJobId = searchParams.get("job");
@@ -1817,48 +2001,68 @@ function Discovery() {
   return (
     <>
       <title>Opportunities | ScoutSearch</title>
-      <NavBar />
+      {/* Guests get the simple bar with Log in and Sign up (GuestBar);
+          logged-in students get the site's NavBar */}
+      {isGuest ? <GuestBar /> : <NavBar />}
       {/* One column, like a dashboard: the title and search, the summary
-          boxes, the tabs and Sort, the filters, then the table */}
+          boxes, the tabs and Sort, the filters, then the table.
+          The parts that need an account are left out for guests (see "Guests"
+          near the top of this file) */}
       <main className="discovery-page">
-        <DiscoveryHeader search={search} setSearch={setSearch} forHighSchool={profileLevel === "high-school"} />
-        {/* "Where are you in school?", until you've picked (see LevelPrompt) */}
-        <LevelPrompt profile={profile} />
-        {/* "Search the web" (only once something is typed in the search bar) */}
-        <WebSearch search={search} onFound={() => setTries((count) => count + 1)} onHide={hideCompany} hidden={hidden} />
-        <SummaryBoxes total={results?.total ?? 0} dueSoon={dueSoon} trackerCount={trackerCount} loading={results === null} />
+        {/* The high school line: from your profile, or for a guest, from
+            "Who it's for" (like a counselor's ?level=high-school link) */}
+        <DiscoveryHeader
+          search={search}
+          setSearch={setSearch}
+          forHighSchool={(isGuest ? shownFilters.level : profileLevel) === "high-school"}
+          isGuest={isGuest}
+        />
+        {!isGuest && (
+          <>
+            {/* "Where are you in school?", until you've picked (see LevelPrompt) */}
+            <LevelPrompt profile={profile} />
+            {/* "Search the web" (only once something is typed in the search bar) */}
+            <WebSearch search={search} onFound={() => setTries((count) => count + 1)} onHide={hideCompany} hidden={hidden} />
+            <SummaryBoxes total={results?.total ?? 0} dueSoon={dueSoon} trackerCount={trackerCount} loading={results === null} />
+          </>
+        )}
 
-        {/* The tabs on the left; Sort and Refresh on the right */}
+        {/* The tabs on the left; Sort and Refresh on the right (not for guests:
+            the public list is always newest first, and Refresh has a daily limit) */}
         <div className="discovery-toolbar">
           <TypeTabs picked={picked} setPicked={setPicked} />
 
-          <div className="discovery-refresh">
-            {/* The Sort menu. value is what's chosen right now; onChange
-                runs when you pick another one. The backend sorts every job */}
-            <div className="discovery-sort">
-              <label htmlFor="discovery-sort-select">Sort by</label>
-              <select
-                id="discovery-sort-select"
-                className="discovery-sort-select"
-                value={sortBy}
-                onChange={(event) => setSortBy(event.target.value)}
-              >
-                <option value="newest">Newest</option>
-                <option value="fit">Best fit for you</option>
-                <option value="deadline">Deadline (soonest)</option>
-                <option value="company">Company (A to Z)</option>
-              </select>
+          {!isGuest && (
+            <div className="discovery-refresh">
+              {/* The Sort menu. value is what's chosen right now; onChange
+                  runs when you pick another one. The backend sorts every job */}
+              <div className="discovery-sort">
+                <label htmlFor="discovery-sort-select">Sort by</label>
+                <select
+                  id="discovery-sort-select"
+                  className="discovery-sort-select"
+                  value={sortBy}
+                  onChange={(event) => setSortBy(event.target.value)}
+                >
+                  <option value="newest">Newest</option>
+                  <option value="fit">Best fit for you</option>
+                  <option value="deadline">Deadline (soonest)</option>
+                  <option value="company">Company (A to Z)</option>
+                </select>
+              </div>
+              {/* Refresh: checks the job sites for new listings (see refresh above) */}
+              <button type="button" className="discovery-outline-button" onClick={refresh} disabled={refreshing}>
+                {refreshing ? "Checking..." : "Refresh"}
+              </button>
             </div>
-            {/* Refresh: checks the job sites for new listings (see refresh above) */}
-            <button type="button" className="discovery-outline-button" onClick={refresh} disabled={refreshing}>
-              {refreshing ? "Checking..." : "Refresh"}
-            </button>
-          </div>
+          )}
         </div>
         {/* What Refresh found. role="status" reads it out (WCAG) */}
-        <p className="discovery-refresh-message" role="status">
-          {refreshMessage}
-        </p>
+        {!isGuest && (
+          <p className="discovery-refresh-message" role="status">
+            {refreshMessage}
+          </p>
+        )}
 
         <FilterBar
           filters={shownFilters}
@@ -1878,6 +2082,7 @@ function Discovery() {
           unhide={unhideCompany}
           inUse={filtersInUse}
           clear={clearFilters}
+          isGuest={isGuest}
         />
 
         <ResultsSection
@@ -1885,7 +2090,8 @@ function Discovery() {
           loadError={loadError}
           retry={retry}
           updating={updating}
-          sortBy={sortBy}
+          // guests' list is always newest first (the table's name says how it's sorted)
+          sortBy={isGuest ? "newest" : sortBy}
           showAll={clearFilters}
           onSuggestion={pickSuggestion}
           showMore={showMore}
@@ -1893,9 +2099,11 @@ function Discovery() {
           openJobId={openJobId}
           onOpened={clearOpenJob}
           onHide={hideCompany}
+          isGuest={isGuest}
         />
 
-        <ProfileTip />
+        {/* The tip is about Best fit and your profile, so it's only for students */}
+        {!isGuest && <ProfileTip />}
       </main>
     </>
   );

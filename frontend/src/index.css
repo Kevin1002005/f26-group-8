@@ -1235,8 +1235,16 @@ html:has(.about-site) {
 
 /* ---------- About page: Sign up links in "Who it's for" ---------- */
 
-/* "Sign up as a high school student": a plain link under each box's text,
-   so people who already know which one they are can go straight to signing up */
+/* "Browse high school opportunities" and "Sign up free" under each box's text.
+   They sit side by side, and wrap onto two lines when there's no room */
+.about-audience-links {
+  display: flex;                          /* side by side */
+  flex-wrap: wrap;                        /* one under the other on a narrow screen */
+  column-gap: 24px;                       /* space between them (the links have their own space above) */
+}
+
+/* "Sign up free" and "Browse ...": plain links under each box's text, so
+   people who already know which one they are can go straight there */
 .about-audience-link {
   display: inline-block;                  /* lets it have space above it */
   margin-top: 16px;                       /* space above the link */
@@ -2069,6 +2077,15 @@ html:has(.about-site) {
 /* White keyboard outline on the big Sign up button (it sits on navy) */
 .about-hero-text a:focus-visible {
   outline-color: #ffffff;
+}
+
+/* "Browse real opportunities" under the big Sign up button, for people who
+   want to look before making an account. White and underlined on the navy band */
+.about-hero-browse {
+  color: #ffffff;                          /* white (15.9:1 on the navy) */
+  font-weight: 700;                        /* thick text */
+  text-decoration: underline;              /* underlined, so it looks like a link (WCAG) */
+  text-underline-offset: 4px;              /* a little below the letters */
 }
 
 /* The example job search floats on the band as a white box with the deep shadow */
@@ -7872,6 +7889,43 @@ textarea.feed-composer-input {
   gap: 8px;
 }
 
+/* Guests only: "Sign up free to save jobs, track deadlines, ... or log in",
+   under Save and View once Save was pressed (SignUpNote in Discovery.jsx).
+   Empty (and with no height) until then */
+.discovery-guest-note {
+  display: block;                   /* its own line, under the buttons */
+  max-width: 28ch;                  /* wraps into a few short lines, so the column stays narrow */
+  margin-left: auto;                /* lined up on the right, under the buttons */
+  font-size: 13.5px;                /* smaller text */
+  line-height: 1.5;                 /* space between its lines */
+  white-space: normal;              /* it may wrap (the cell itself never does) */
+  text-align: right;                /* the same side as the buttons */
+  color: var(--muted);              /* gray-blue (7:1 or more on the box) */
+}
+
+/* Space above it, only when it has words, so an empty one leaves no gap */
+.discovery-guest-note:not(:empty) {
+  margin-top: 8px;
+}
+
+/* Phones: each job is its own box, with the buttons on the left, so the note is too */
+@media (max-width: 760px) {
+  .discovery-guest-note {
+    margin-left: 0;                 /* lined up on the left, under the buttons */
+    text-align: left;
+    max-width: none;                /* the box is narrow already */
+  }
+}
+
+/* The guests' top bar uses the About page's bar ("about-bar" above). The
+   About page gives its links a keyboard outline only inside "about-site", so
+   this gives the same outline here (WCAG) */
+.discovery-guest-bar a:focus-visible,
+.discovery-guest-bar button:focus-visible {
+  outline: 3px solid var(--focus-ring);   /* the same darker blue line as on About */
+  outline-offset: 3px;                    /* a small gap between it and the line */
+}
+
 /* ----- Buttons and links ----- */
 
 /* The two button looks used on this page (and in the pop-up) */
@@ -8008,6 +8062,23 @@ textarea.feed-composer-input {
 .discovery-text-link:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* A link inside a sentence: "Sign up free" and "log in" in the guests' notes,
+   and "Adzuna" in "via Adzuna". Always underlined, so inside other words it
+   doesn't rely on color alone (WCAG) */
+.discovery-inline-link {
+  color: var(--link);               /* the blue link color */
+  font-weight: 600;                 /* a little bolder than the words around it */
+  text-decoration: underline;       /* underlined, so it reads as a link (WCAG) */
+  text-underline-offset: 3px;       /* a little below the letters */
+  border-radius: 4px;               /* rounded corners for the keyboard outline */
+}
+
+/* Keyboard users see a clear outline around it (WCAG) */
+.discovery-inline-link:focus-visible {
+  outline: 3px solid var(--focus-ring);   /* the darker blue line the other links use */
+  outline-offset: 2px;                    /* a small gap between it and the words */
 }
 
 /* ----- Keyboard outlines ----- */

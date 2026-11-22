@@ -212,7 +212,7 @@ export function studentFrom(profileData: unknown, resumeData: unknown): Student 
   const places = [...new Set([...where.split(/,|\/|\bor\b|\band\b/), ...text(profile.city).toLowerCase().split(',')]
     .map((p) => p.replace(/\bremote\b/g, '').trim()).filter((p) => p.length >= 2))];
 
-  // High school or college: what the student picked (the welcome guide and Edit profile ask,
+  // High school or college: what the student picked (the welcome guide and My info ask,
   // and student-profile.ts only keeps these two). Someone who hasn't picked yet gets the old
   // guess from their school's name, which can be wrong ("Boston Latin School" counts as college)
   const school = text(profile.school).toLowerCase();

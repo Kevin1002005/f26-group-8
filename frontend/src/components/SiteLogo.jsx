@@ -49,8 +49,7 @@ function Binoculars() {
 }
 
 function SiteLogo() {
-  // "playIntro" is true only for the first page you open in this browser tab,
-  // the same way the Feed title's intro works (see FeedHeader in Feed.jsx).
+  // "playIntro" is true only for the first page you open in this browser tab.
   // Every page has its own top bar, so without this the logo would fade in
   // again every time you click to another page, which gets distracting.
   // sessionStorage is a small notebook the browser keeps until you close the tab.

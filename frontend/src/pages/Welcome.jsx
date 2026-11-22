@@ -1,15 +1,15 @@
 // Welcome.jsx is the welcome guide (yoursite.com/welcome).
 // New accounts land here first (Sign up sends you here, and RequireLogin sends
-// you here from any page until you finish or skip it), so your Profile page
-// shows YOUR information instead of starting out empty.
+// you here from any page until you finish or skip it), so Opportunities can
+// start with jobs that fit you, and your resume starts with your details.
 // It has 4 short steps, one at a time: Basics, About you, What you're looking
 // for, and Skills. Every question is optional except one: "Where are you in
 // school?" (high school or college) has to be answered before Next on Basics,
 // because Opportunities and Best fit use it. "Skip the guide" still ends it at
 // any point (then Opportunities asks it instead, see LevelPrompt there).
 // Your answers are saved to your account when you finish (or skip).
-// The last screen points you to the Resume builder, because the Profile page
-// takes your education, experience, and projects from your resume.
+// The last screen points you to the Resume builder (your education,
+// experience, and projects go there) and to Opportunities.
 // The styles for this page are in index.css, under "Welcome guide".
 
 // useState remembers the step and your answers. useRef and useEffect move the
@@ -19,9 +19,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 // The ScoutSearch logo (components/SiteLogo.jsx)
 import SiteLogo from "../components/SiteLogo.jsx";
-// The boxes for each step. Edit profile uses the same ones (components/ProfileFields.jsx)
+// The boxes for each step. My info uses the same ones (components/ProfileFields.jsx)
 import {
-  AboutFields,
   BasicsFields,
   LookingForFields,
   SkillsField,
@@ -40,19 +39,16 @@ const steps = [
   {
     label: "Basics",
     title: "The basics",
-    subtitle: "Who you are and where you study.",
+    subtitle: "Sets which jobs you see first, and fills in your resume.",
     Fields: BasicsFields,
   },
-  {
-    label: "About you",
-    title: "About you",
-    subtitle: "A one-line headline and a few sentences, in your own words.",
-    Fields: AboutFields,
-  },
+  // (2026-11-22) The "About you" step (a headline and a few sentences) was
+  // taken out: nobody sees a profile anymore and matching doesn't use them,
+  // so asking students (many under 18) for them had no reason
   {
     label: "Looking for",
     title: "What you're looking for",
-    subtitle: "So employers can see if you're a fit at a glance.",
+    subtitle: "So Opportunities can put the jobs that fit you first.",
     Fields: LookingForFields,
   },
   {
@@ -65,8 +61,8 @@ const steps = [
 
 // ---------- Pieces of the page ----------
 
-// The row of 4 bars that fill in as you go, each with its step's name.
-// <ol> is a numbered list, so screen readers hear "list, 4 items", and
+// The row of 3 bars that fill in as you go, each with its step's name.
+// <ol> is a numbered list, so screen readers hear "list, 3 items", and
 // aria-current="step" marks the step you're on (WCAG)
 function StepBars(props) {
   return (
@@ -98,7 +94,7 @@ function Welcome() {
   const profile = useMyProfile();
   const me = useCurrentUser();
 
-  // Which step is showing: 0 to 3 are the steps, 4 (steps.length) is "You're all set"
+  // Which step is showing: 0 to 2 are the steps, 3 (steps.length) is "You're all set"
   const [current, setCurrent] = useState(0);
   // Your answers, once you start typing. Until then (null), the boxes show
   // what's already saved, with your account's name in the Name box
@@ -217,7 +213,7 @@ function Welcome() {
           </h1>
           <p className="welcome-subtitle">
             Set up your profile in about two minutes. Only "Where are you in school?"
-            is required, and you can change your answers any time on Edit profile.
+            is required, and you can change your answers any time on My info.
           </p>
 
           {isDone ? (
@@ -232,16 +228,13 @@ function Welcome() {
                 You're all set
               </h2>
               <p className="welcome-done-text">
-                Your profile is saved. Next, build your resume: your education,
-                experience, and projects show up on your profile from there, so
-                you only type them once.
+                Your details are saved. Next, build your resume: your name,
+                school, and skills are already on it, and you add your education,
+                experience, and projects there. Or start looking for opportunities.
               </p>
               <div className="welcome-done-links">
                 <Link to="/resume" className="welcome-main-button">
                   Build your resume
-                </Link>
-                <Link to="/profile" className="welcome-other-button">
-                  See your profile
                 </Link>
                 <Link to="/discovery" className="welcome-other-button">
                   Find opportunities

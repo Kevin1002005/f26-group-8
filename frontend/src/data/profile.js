@@ -1,15 +1,16 @@
 // profile.js keeps your profile: what you fill in on the welcome guide
-// (pages/Welcome.jsx) and on Edit profile, and what the Profile page shows.
+// (pages/Welcome.jsx) and on My info (pages/EditProfile.jsx). Only you see it:
+// Opportunities and Best fit use it, and your resume shares a few parts.
 // It's saved with your ACCOUNT (the backend's /api/student-profile/me), so it
 // follows you to any device. This browser also keeps a copy (localStorage),
 // so your profile shows up right away, even before the server answers.
 //
-// Your education, experience, and projects aren't in here: the Profile page
-// takes them from your resume (resume-storage.js), so you only type them once.
+// Your education, experience, and projects aren't in here: they're on your
+// resume (resume-storage.js), so you only type them once.
 //
 // How to use it in a component:
 //   const profile = useMyProfile();
-//   profile.data        { name, pronouns, level, school, classYear, major, city, headline, about,
+//   profile.data        { name, level, school, classYear, major, city,
 //                         lookingFor: { kinds, when, where, paidOnly }, skills }
 //                       level is "high-school", "college", or "" (not picked yet)
 //   profile.known       true once we know your profile (from the server, or this browser's copy)
@@ -30,7 +31,7 @@ import { accountKey, loggedInId, useLoggedInId } from '../login-status.js';
 // The kinds of positions you can be looking for: the same as the job board's tabs
 export const positionKinds = ['Internship', 'Co-op', 'Research', 'Program'];
 
-// Where you are in school: the welcome guide and Edit profile ask (ProfileFields.jsx),
+// Where you are in school: the welcome guide and My info ask (ProfileFields.jsx),
 // and Opportunities and Best fit use it to start with what you can apply to.
 // The same two words as the job board's "Who it's for" filter and the backend
 // (backend/src/student-profile.ts drops anything else)
@@ -39,14 +40,13 @@ export const schoolLevels = ['high-school', 'college'];
 // The most letters each box can hold. The boxes use these as maxLength, and
 // the backend checks the same numbers (backend/src/student-profile.ts)
 export const most = {
-    name: 100, pronouns: 40, school: 150, classYear: 20, major: 100, city: 100,
-    headline: 150, about: 2000, when: 100, where: 150, skill: 50, skills: 30,
+    name: 100, school: 150, classYear: 20, major: 100, city: 100,
+    when: 100, where: 150, skill: 50, skills: 30,
 };
 
 // A profile with nothing filled in yet
 export const emptyProfile = {
-    name: '', pronouns: '', level: '', school: '', classYear: '', major: '', city: '',
-    headline: '', about: '',
+    name: '', level: '', school: '', classYear: '', major: '', city: '',
     lookingFor: { kinds: [], when: '', where: '', paidOnly: false },
     skills: [],
 };
@@ -59,12 +59,11 @@ function fillProfile(saved) {
     // text, or "" if it isn't text
     const text = (value) => (typeof value === 'string' ? value : '');
     return {
-        name: text(data.name), pronouns: text(data.pronouns),
+        name: text(data.name),
         // only one of the two levels; anything else counts as "not picked yet"
         level: schoolLevels.includes(data.level) ? data.level : '',
         school: text(data.school),
         classYear: text(data.classYear), major: text(data.major), city: text(data.city),
-        headline: text(data.headline), about: text(data.about),
         lookingFor: {
             kinds: Array.isArray(looking.kinds) ? looking.kinds.filter((kind) => positionKinds.includes(kind)) : [],
             when: text(looking.when),

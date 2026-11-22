@@ -51,8 +51,7 @@ const sections = [
       <>
         <p>Please don't:</p>
         <ul>
-          <li>post false or misleading information, or pretend to be someone else;</li>
-          <li>share other people's private information (like a phone number or address) on the Feed;</li>
+          <li>pretend to be someone else;</li>
           <li>harass, threaten, or harm other people;</li>
           <li>try to get into other people's accounts or information, or around the site's security;</li>
           <li>overload, break, or copy the site in bulk (for example with automated scraping);</li>
@@ -80,11 +79,9 @@ const sections = [
     title: "Your content",
     body: (
       <p>
-        Your profile, resume, notes, tracker, and Feed posts are yours. You let us store them and show them to
-        you so the site can work, and you let us show your Feed posts and comments to everyone logged in to
-        ScoutSearch, and nothing more. You're responsible for what you put in them, and we may remove posts that
-        break these terms. You can delete your posts and comments on the Feed, and download or delete everything
-        else any time on the <Link to="/settings#privacy">Settings page</Link>.
+        Your profile, resume, notes, and tracker are yours. You let us store them and show them to you so the
+        site can work, and nothing more: no other ScoutSearch user sees them. You're responsible for what you put in them. You
+        can download or delete all of it any time on the <Link to="/settings#privacy">Settings page</Link>.
       </p>
     ),
   },

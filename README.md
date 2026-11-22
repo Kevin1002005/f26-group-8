@@ -9,10 +9,13 @@ every page.
 - Opportunities (`/discovery`): real internships, co-ops, research positions, and programs from
   the backend (Greenhouse, Lever, and JSearch), with search, filters, and an Application tracker
   (`/applications`) saved with your account;
-- a Resume builder (`/resume`) that prints to PDF and is saved with your account, the Feed, and
-  Settings (appearance and accessibility).
+- a Resume builder (`/resume`) that prints to PDF and is saved with your account, My info
+  (`/my-info`: your private details, which Opportunities uses for Best fit), and Settings
+  (appearance and accessibility).
 
-The people and posts on the Feed, Profile, and Network pages are still made-up examples.
+ScoutSearch is about opportunities and resumes. The Feed (posts, comments, likes, and follows),
+Network, Messages, and the public Profile page were taken out in November 2026, and everything
+posted on the Feed was deleted. The old addresses `/profile` and `/editprofile` open My info.
 
 ## Layout
 
@@ -40,8 +43,11 @@ safe to run again.
 3. `backend/sql/roles.sql`
 4. `backend/sql/applications.sql` (the Application tracker; needs `jobs.sql` first)
 5. `backend/sql/resumes.sql` (the Resume builder)
-6. `backend/sql/student_profiles.sql` (the welcome guide, Profile, and Edit profile)
-7. `backend/sql/feed.sql` (the Feed: posts, comments, likes, and follows)
+6. `backend/sql/student_profiles.sql` (the welcome guide and My info)
+
+(There used to be a 7th, `feed.sql`, for the Feed. It was deleted with the Feed. A Supabase project
+that ran it still has its `posts`, `post_comments`, `post_likes`, and `follows` tables, which
+nothing uses anymore: drop them.)
 
 **2. Login settings.** In Supabase, go to Authentication → URL Configuration:
 - set the Site URL to `http://localhost:5173`;
@@ -74,19 +80,17 @@ The frontend's `/api/...` requests go to the backend through Vite's proxy (`vite
   best fit, deadline, company), 50 a page, and each job's best-fit score and reasons
   (`backend/src/fit.ts`, from your profile and resume). `POST /api/jobs/refresh` checks the job sites
   for new listings (the sources without a daily limit), at most once every 30 minutes for the site.
-- `/api/feed` is the Feed: posts, comments, likes, and follows. Everyone logged in sees every post;
-  only the writer can delete theirs.
 - `GET /api/jobs` lists open jobs, newest posted first (`posted_at`, the date the company's job
   site gives). It takes `type`, `level`, `setting`, `paid`, `q` (search) and `page` (50 jobs per page).
 - `GET /api/jobs/:id` returns one job.
 - `/api/applications` (GET, POST, PATCH `/:id`, DELETE `/:id`) is your Application tracker
-  (our jobs, the Feed's examples, and jobs typed in from other sites, with notes), and
+  (our jobs, and jobs typed in from other sites, with notes), and
   `/api/resumes/me` (GET, PUT) is your resume. Both need you to be logged in, and only ever
   touch your own.
 - `/api/student-profile/me` (GET, PUT) is your profile: what you fill in on the welcome guide
-  (`/welcome`) and Edit profile. New accounts are sent to the guide until they finish or skip it
-  (`onboarded_at`). It's its own table, separate from `profiles`. The Profile page shows it, plus
-  the education, experience, and projects from your resume.
+  (`/welcome`) and My info (`/my-info`). New accounts are sent to the guide until they finish or
+  skip it (`onboarded_at`). It's its own table, separate from `profiles`. Only the student sees it:
+  Opportunities uses it for "Who it's for", "For your major", and Best fit.
 - `GET /api/account/export` and `DELETE /api/account` are Settings' "Download my data" and
   "Delete my account". Deleting removes the Supabase login, and the profile, tracker, and resume
   go with it (their tables are set to `on delete cascade`).
@@ -161,9 +165,8 @@ Your profile, resume, and Application tracker are saved with your account (the
 you log in on.
 
 Your profile and resume share a few parts (name, city, first school, skills), kept in step by
-`frontend/src/data/profile-resume-sync.js`: change one in the welcome guide, Edit profile, or the
-Resume builder, and the other updates. The top bar and your Feed posts use your profile's name
-and headline.
+`frontend/src/data/profile-resume-sync.js`: change one in the welcome guide, My info, or the
+Resume builder, and the other updates. The top bar's menu uses your profile's name.
 
 Each browser also keeps its own copy (localStorage), under your account's id. That's what
 makes pages open right away, and what keeps them working when the server can't be reached:
@@ -276,8 +279,7 @@ These live in the dashboards, not in the code, so only someone with access can c
   nobody can sign up with someone else's address (an address nobody confirmed could otherwise end
   up linked to that person's Google login; the audit couldn't check how Supabase links them).
 - **Supabase → Authentication → URL Configuration:** no wildcard addresses (see above).
-- **Supabase → Project Settings → Data API:** note the **Max Rows** value (1000 by default). The
-  Feed shows at most 50 comments per post, so it stays under it.
+- **Supabase → Project Settings → Data API:** note the **Max Rows** value (1000 by default).
 - **Render:** the old `/auth/signup` and `/auth/login` are only on the Render address. They're
   limited to 2 at a time and 20 a minute now, but nothing uses them: deleting them
   (`backend/plans.md` Task S5) removes the risk.

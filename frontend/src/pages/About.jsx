@@ -171,8 +171,9 @@ const questions = [
     },
     {
         // For the adults helping high schoolers. "Employers can't see student profiles" is true
-        // today: there are no employer accounts, and each student only sees their own Profile.
-        // Check this answer again before job listers (employer accounts) are added
+        // today: there are no employer accounts, and since 2026-11 there are no public profiles
+        // or posts at all (each student's My info is private). Check this answer again before
+        // job listers (employer accounts) are added
         question: "I'm a parent or counselor. What should I know?",
         answer: "It's free, with no ads, and employers can't see student profiles. Some summer programs charge tuition, so check before applying. Students can look without an account: share the \"Browse high school opportunities\" link above.",
     },

@@ -1,5 +1,5 @@
 // Each student's own profile: what the welcome guide (frontend/src/pages/Welcome.jsx) and
-// Edit profile save, and what the Profile page shows.
+// My info (frontend/src/pages/EditProfile.jsx) save. Only that student ever sees it.
 //   GET /api/student-profile/me   your profile, or null if you haven't saved one  -> { profile: Profile | null }
 //   PUT /api/student-profile/me   save it (replaces the whole thing)               -> { profile: Profile }
 //                                 body { data: { name, level, school, ... }, finished?: true }
@@ -19,7 +19,9 @@ router.use(authenticateToken);
 
 // The boxes, and the most letters each one can hold. They match the maxLength on the
 // site's boxes (frontend/src/components/ProfileFields.jsx), so only a hand-made request hits them
-const TEXT_BOXES: Record<string, number> = { name: 100, pronouns: 40, school: 150, classYear: 20, major: 100, city: 100, headline: 150, about: 2000 };
+// (2026-11-22) pronouns, headline, and about were taken out: nothing shows or uses them now, so they
+// aren't kept. An old copy of the site that still sends them just has them left out, not refused
+const TEXT_BOXES: Record<string, number> = { name: 100, school: 150, classYear: 20, major: 100, city: 100 };
 const LOOKING_FOR_BOXES: Record<string, number> = { when: 100, where: 150 };
 // The kinds of positions, the same as the job board's tabs (Discovery)
 const KINDS = ['Internship', 'Co-op', 'Research', 'Program'];
@@ -130,7 +132,7 @@ router.put('/me', async (req, res) => {
 
   const now = new Date().toISOString();
   const row: Record<string, unknown> = { student_id: req.user!.id, data: checked.profile, updated_at: now };
-  // only when finishing the guide. Left out otherwise, so a save from Edit profile keeps the
+  // only when finishing the guide. Left out otherwise, so a save from My info keeps the
   // date that's there (an upsert only changes the columns it's given)
   if (finished) row.onboarded_at = now;
 

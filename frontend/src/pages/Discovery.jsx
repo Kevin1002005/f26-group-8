@@ -29,7 +29,7 @@
 import { useEffect, useRef, useState } from "react";
 // Link goes to another page of the site without reloading everything.
 // useSearchParams reads the extra info at the end of the address, like the
-// "?job=..." in "/discovery?job=..." (the Feed page links here that way).
+// "?job=..." in "/discovery?job=..." (a shared link to one job), or "?level=..."
 import { Link, useSearchParams } from "react-router";
 // NavBar is the bar across the top of the page. It lives in its own file
 // (components/NavBar.jsx) because every page uses it.
@@ -48,7 +48,6 @@ import { undecided } from "../data/majors.js";
 // useLoggedInId says who's logged in (null for a guest, see "Guests" below) (login-status.js)
 import { accountKey, useLoggedInId } from "../login-status.js";
 // isPastDeadline says if a job's deadline has gone by (it then says "Closed").
-// (The made-up example jobs in that file are still used by the Feed page.)
 // isDueWithin says if it's due in the next few days, and initialsOf makes the "GL" for a logo.
 import { initialsOf, isDueWithin, isPastDeadline } from "../data/opportunities.js";
 // The Application tracker's list, saved with your account (src/data/tracker.js):
@@ -508,7 +507,7 @@ function LevelPrompt(props) {
       await saveProfile({ ...latest, level: level });
       setMessage(
         (level === "high-school" ? "Saved: you're in high school." : "Saved: you're in college.") +
-          " You can change it any time on Edit profile.",
+          " You can change it any time on My info.",
       );
       // The button you pressed is gone now, so the focus goes to the message
       // instead of dropping to the top of the page (WCAG)
@@ -1031,7 +1030,7 @@ function OpportunityRow(props) {
   // A reference to this row's View button (see the useEffect below)
   const viewButtonRef = useRef(null);
 
-  // If the Feed page sent you here for THIS job ("/discovery?job=..."), open its
+  // If a link sent you here for THIS job ("/discovery?job=..."), open its
   // pop-up as soon as the row is on the screen. props.openOnArrival is true
   // only for that job. After opening, props.onOpened clears the "?job=...", so
   // the pop-up doesn't open again by itself (for example after switching tabs).
@@ -1042,7 +1041,7 @@ function OpportunityRow(props) {
     // cause an error, so only open it if it isn't open yet.
     if (openOnArrival && !dialogRef.current.open) {
       // Focus this row's View button first: closing a pop-up puts the focus
-      // back where it was before it opened. Coming from the Feed, nothing had
+      // back where it was before it opened. Coming from a link, nothing had
       // the focus yet, so keyboard users would land back at the top of the page
       viewButtonRef.current.focus();
       dialogRef.current.showModal();
@@ -1330,7 +1329,7 @@ function ResultsSection(props) {
                 <OpportunityRow
                   key={opportunity.id}
                   opportunity={opportunity}
-                  // true only for the job the Feed page linked to (see Discovery below)
+                  // true only for the job a "?job=" link points to (see Discovery below)
                   openOnArrival={opportunity.id === props.openJobId}
                   onOpened={props.onOpened}
                   onHide={props.onHide}
@@ -1397,7 +1396,7 @@ function FilterBar(props) {
             {props.forMajor && props.withRelated ? "For your major and related fields" : "For your major"} ({props.major})
           </button>
         ) : (
-          <Link to="/editprofile#basics" className="discovery-text-link">
+          <Link to="/my-info#basics" className="discovery-text-link">
             {props.majorIgnored ? "Pick your major from the list for better matches" : "Add your major to see jobs for it"}
             <ArrowIcon />
           </Link>
@@ -1559,10 +1558,10 @@ function FilterBar(props) {
 function ProfileTip() {
   return (
     <p className="discovery-tip">
-      Best fit uses your major, skills, and what you're looking for (from your profile), and your resume's
+      Best fit uses your major, skills, and what you're looking for (from My info), and your resume's
       skills and experience. The more you fill in, the better it gets.{" "}
-      <Link to="/editprofile" className="discovery-text-link">
-        Edit profile
+      <Link to="/my-info" className="discovery-text-link">
+        Go to My info
         <ArrowIcon />
       </Link>
     </p>
@@ -1731,7 +1730,7 @@ function Discovery() {
   // "Who it's for" starts at your level: a high school senior starts on what
   // high schoolers can apply to, a college student on college jobs, so nobody
   // starts on a list of jobs they can't get. Your level is what you picked on
-  // your profile ("Where are you in school?": the welcome guide, Edit profile,
+  // your profile ("Where are you in school?": the welcome guide, My info,
   // or LevelPrompt above). Before you pick, it's a guess from your school's
   // name. levelChoice is null until you pick a filter yourself; picking
   // "Anyone" shows everything.
@@ -1957,7 +1956,7 @@ function Discovery() {
 
   // Runs after that job's pop-up opens: removes "?job=..." from the address.
   // replace: true swaps the address instead of adding a new one, so the
-  // browser's Back button still goes back to the Feed page.
+  // browser's Back button still goes back to the page you came from.
   function clearOpenJob() {
     setSearchParams({}, { replace: true });
   }

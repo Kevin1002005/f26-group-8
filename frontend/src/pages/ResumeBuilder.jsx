@@ -43,7 +43,7 @@ import {
     watchOtherTabs,
 } from '../resume-storage.js';
 // Copies your name, location, first school, and skills to your profile when you
-// change them here, so the Profile page matches (data/profile-resume-sync.js).
+// change them here, so My info matches (data/profile-resume-sync.js).
 // copyProfileToResume goes the other way: "Start my resume" uses it to fill in
 // your profile's details, the same way the welcome guide does
 import { copyProfileToResume, copyResumeToProfile } from '../data/profile-resume-sync.js';

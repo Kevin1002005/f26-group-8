@@ -1,5 +1,5 @@
 // RequireLogin.jsx stands in front of every page you have to be logged in to see
-// (Feed, Profile, Messages, Settings, ...). App.jsx puts those pages inside it.
+// (My applications, Resume, My info, Settings, ...). App.jsx puts those pages inside it.
 // - Logged in: it shows the page you asked for.
 // - Not logged in: it sends you to the Log in page instead.
 // - Logged in, but you haven't finished (or skipped) the welcome guide yet:
@@ -51,7 +51,7 @@ function RequireLogin(props) {
         return <Navigate to="/welcome" replace />;
     }
 
-    // Logged in: show the page that matched (Feed, Messages, ...)
+    // Logged in: show the page that matched (My info, Settings, ...)
     return <Outlet />;
 }
 

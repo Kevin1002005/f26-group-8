@@ -16,8 +16,9 @@ create table if not exists public.applications (
   -- if that job is deleted later, the row stays (with the title saved below), just unlinked
   job_id        uuid references public.jobs(id) on delete set null,
 
-  -- the made-up example jobs in frontend/src/data/opportunities.js (numbered 1, 2, 3...),
-  -- which the Feed's listing posts can still save. null for real jobs
+  -- a made-up example job (numbered 1, 2, 3...). The site used to show a few, and students
+  -- could save them; nothing saves new ones now, and old rows keep the title and company
+  -- saved below, so their cards still show. null for real jobs
   example_id    integer check (example_id between 1 and 1000),
 
   -- what the tracker card shows, copied when the job is saved, so the card still makes

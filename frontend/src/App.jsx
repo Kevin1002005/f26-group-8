@@ -30,11 +30,8 @@ import SiteFooter from "./components/SiteFooter.jsx";
 const Login = lazy(() => import("./pages/Login.jsx"));
 const Signup = lazy(() => import("./pages/Signup.jsx"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword.jsx"));
-const Feed = lazy(() => import("./pages/Feed.jsx"));
-const Profile = lazy(() => import("./pages/Profile.jsx"));
+// The My info page (it was "Edit profile", so the file keeps that name)
 const EditProfile = lazy(() => import("./pages/EditProfile.jsx"));
-const Network = lazy(() => import("./pages/Network.jsx"));
-const Messages = lazy(() => import("./pages/Messages.jsx"));
 const Settings = lazy(() => import("./pages/Settings.jsx"));
 const Discovery = lazy(() => import("./pages/Discovery.jsx"));
 const ApplicationTracker = lazy(() => import("./pages/ApplicationTracker.jsx"));
@@ -93,6 +90,15 @@ function PageChange() {
   return null;
 }
 
+// Sends an old address (/editprofile, or the old Profile page's /profile) to
+// /my-info, keeping the "#..." part at the end, so a link like
+// "/editprofile#basics" still jumps to the Basics card. ("replace": the old
+// address doesn't stay in the browser's history, so Back skips it)
+function ToMyInfo() {
+  const location = useLocation();
+  return <Navigate to={{ pathname: "/my-info", hash: location.hash }} replace />;
+}
+
 // A "component" is a function that returns what should appear on the screen.
 function App() {
   // The current address. key={location.pathname} gives the ErrorBoundary a
@@ -148,16 +154,13 @@ function App() {
             {/* yoursite.com/welcome shows the welcome guide. New accounts are
                 sent here first (see RequireLogin.jsx) */}
             <Route path="/welcome" element={<Welcome />} />
-            {/* yoursite.com/feed shows the Feed page */}
-            <Route path="/feed" element={<Feed />} />
-            {/* yoursite.com/profile shows the Profile page */}
-            <Route path="/profile" element={<Profile />} />
-            {/* yoursite.com/editprofile shows the EditProfile page */}
-            <Route path="/editprofile" element={<EditProfile />} />
-            {/* yoursite.com/network shows the Network page */}
-            <Route path="/network" element={<Network />} />
-            {/* yoursite.com/messages shows the Messages page */}
-            <Route path="/messages" element={<Messages />} />
+            {/* yoursite.com/my-info shows the My info page (EditProfile.jsx):
+                your details, which only you see */}
+            <Route path="/my-info" element={<EditProfile />} />
+            {/* (The Feed, Network, Messages, and the public Profile page used to
+                be here. They were taken out in 2026-11: ScoutSearch is about
+                opportunities and resumes now. Their old addresses show "Page
+                not found", except /profile and /editprofile, see ToMyInfo) */}
             {/* yoursite.com/applications shows the Application tracker page */}
             <Route path="/applications" element={<ApplicationTracker />} />
             {/* yoursite.com/settings shows the Settings page */}
@@ -166,7 +169,16 @@ function App() {
             <Route path="/resume" element={<ResumeBuilder />} />
           </Route>
 
-          {/* "*" matches any address that isn't listed above (like a typo, /feeed).
+          {/* The old addresses of My info (/editprofile) and of the public
+              Profile page (/profile) go to /my-info, so old links and bookmarks
+              still work (ToMyInfo, above) */}
+          <Route path="/editprofile" element={<ToMyInfo />} />
+          <Route path="/profile" element={<ToMyInfo />} />
+          {/* The Feed was removed (2026-11-22). It was in the top bar, so some
+              students bookmarked it: send them to Opportunities instead of "Page not found" */}
+          <Route path="/feed" element={<Navigate to="/discovery" replace />} />
+
+          {/* "*" matches any address that isn't listed above (like a typo, /discovry).
               It shows the "Page not found" page (pages/NotFound.jsx) with a way
               home, instead of a blank page */}
           <Route path="*" element={<NotFound />} />

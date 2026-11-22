@@ -1,7 +1,7 @@
 // profile-resume-sync.js keeps the parts your profile and your resume share in
 // step, so you only type them once:
 //
-//   your profile (welcome guide, Edit profile)    your resume (Resume builder)
+//   your profile (welcome guide, My info)         your resume (Resume builder)
 //   name                                    <->   your name at the top
 //   city                                    <->   your location at the top
 //   school                                  <->   the first school under Education
@@ -19,7 +19,7 @@
 //     (A skill you remove IS removed from the other side: that's always on purpose.)
 //
 // Who calls what:
-//   copyProfileToResume   the welcome guide and Edit profile, after saving your profile
+//   copyProfileToResume   the welcome guide and My info, after saving your profile
 //   copyResumeToProfile   the Resume builder, on every change you make
 
 // Saving your profile, and reading the newest one (data/profile.js)

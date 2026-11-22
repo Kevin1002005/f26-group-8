@@ -1,6 +1,7 @@
 // AccountMenu.jsx is your circle in the top bar, and the dropdown that opens
-// when you click it. The dropdown has links to your profile, Edit profile,
-// Resume builder, Settings, and Log out. (To get to the About page, click the logo.)
+// when you click it. The dropdown shows your name, and has Settings and Log out.
+// (My info and the Resume builder are links in the top bar itself. To get to
+// the About page, click the logo.)
 // NavBar.jsx uses it, so it shows up on every page that has the top bar.
 // The styles are in index.css, under "Top bar: account menu".
 //
@@ -138,33 +139,19 @@ function AccountMenu() {
           your mouse. -1 means it's never a stop when you press Tab */}
       {open && (
         <div id="account-menu-list" className="account-menu-list" tabIndex={-1}>
-          {/* Your name and a link to your profile. (The Profile page itself
-              still shows the made-up example person until it's connected) */}
+          {/* Your name, so you can see which account is logged in. (A "View
+              profile" link sat under it, until the public Profile page was
+              taken out in 2026-11) */}
           <div className="account-menu-header">
             <p className="account-menu-name">{shownName}</p>
-            <Link to="/profile" className="account-menu-item account-menu-profile-link" onClick={closeMenu}>
-              View profile
-            </Link>
           </div>
 
-          {/* The items. It's a list (<ul>), so screen readers say how many there are */}
-          {/* Edit profile sits first, right under "View profile", since the two
-              go together. (A "Preferences" item used to be here too, but its
-              Settings tab only said "Coming soon", so both were taken out) */}
+          {/* The items. It's a list (<ul>), so screen readers say how many there are.
+              My info and the Resume builder used to be in here too; they're in
+              the top bar now (NavBar.jsx), so this only has the account's own
+              things. (A "Preferences" item was taken out earlier: its Settings
+              tab only said "Coming soon") */}
           <ul>
-            {/* Goes straight to Edit profile. This used to be "Profile picture",
-                which opened a Settings tab that only said "Coming soon" */}
-            <li>
-              <Link to="/editprofile" className="account-menu-item" onClick={closeMenu}>
-                Edit profile
-              </Link>
-            </li>
-            {/* The Resume builder (pages/ResumeBuilder.jsx): fill in a form, download a PDF */}
-            <li>
-              <Link to="/resume" className="account-menu-item" onClick={closeMenu}>
-                Resume builder
-              </Link>
-            </li>
             <li>
               <Link to="/settings" className="account-menu-item" onClick={closeMenu}>
                 Settings

@@ -31,7 +31,7 @@ export function canRetry(error) {
     return typeof code !== 'number' || code === 0 || code === 401 || code === 429 || code >= 500;
 }
 
-// path is the part after /api, like '/posts' or '/messages'.
+// path is the part after /api, like '/jobs' or '/applications'.
 // options is the same as fetch's, like { method: 'POST', body: ... }.
 // Leave options out to just read something (a GET).
 // One extra option: asUser. Give it an account id, and the request is only

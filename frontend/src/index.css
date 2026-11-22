@@ -6565,7 +6565,7 @@ html:has(.discovery-dialog[open]) {
 }
 
 /* ---------- Top bar: theme menu ---------- */
-/* The round sun / moon / screen button in every top bar, and the small menu
+/* The round sun / moon button in every top bar, and the small menu
    it opens with Light, Dark, and System (components/ThemeToggle.jsx).
    It's just left of Log in on the About, Log in, and Sign up pages, and just
    left of your circle on the pages with NavBar. It stays in the first row of
@@ -6579,7 +6579,7 @@ html:has(.discovery-dialog[open]) {
   flex-shrink: 0;                 /* never gets squished in a narrow bar */
 }
 
-/* The round button with the sun, moon, or screen in it */
+/* The round button with the sun (light) or crescent moon (dark) in it */
 .theme-menu-button {
   display: grid;                  /* turns on grid so the picture can be centered... */
   place-items: center;            /* ...in both directions */
@@ -6605,7 +6605,7 @@ html:has(.discovery-dialog[open]) {
   outline-offset: 2px;            /* a small gap between it and the line */
 }
 
-/* The sun, moon, or screen inside the button */
+/* The sun or moon inside the button */
 .theme-menu-button svg {
   width: 20px;
   height: 20px;

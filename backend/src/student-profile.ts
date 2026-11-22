@@ -2,7 +2,8 @@
 // Edit profile save, and what the Profile page shows.
 //   GET /api/student-profile/me   your profile, or null if you haven't saved one  -> { profile: Profile | null }
 //   PUT /api/student-profile/me   save it (replaces the whole thing)               -> { profile: Profile }
-//                                 body { data: { name, school, ... }, finished?: true }
+//                                 body { data: { name, level, school, ... }, finished?: true }
+//                                 (level: "high-school" or "college", see LEVELS below)
 // Profile = { data, onboarded_at, updated_at }. onboarded_at is when you finished (or skipped) the
 // welcome guide, or null if you haven't yet (then the site shows you the guide).
 // "me" because there's only ever your own: nobody can ask for someone else's.
@@ -25,6 +26,9 @@ const KINDS = ['Internship', 'Co-op', 'Research', 'Program'];
 const MOST_SKILLS = 30;
 const SKILL_LETTERS = 50;
 const COLUMNS = 'data, onboarded_at, updated_at';
+// Where the student is in school (the welcome guide's first question). The same two words as
+// the jobs' level and Opportunities' "Who it's for" filter, so Best fit (fit.ts) can use it as is
+const LEVELS = ['high-school', 'college'];
 
 // true for a plain { } object (not null, and not a list)
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -50,6 +54,11 @@ function cleanProfile(data: unknown): { profile: Record<string, unknown> } | { p
   const profile: Record<string, unknown> = {};
   const textProblem = copyText(data, TEXT_BOXES, profile);
   if (textProblem) return { problem: textProblem };
+
+  // High school or college: only one of LEVELS is kept. Anything else (or nothing, for
+  // someone who hasn't picked yet) is left out instead of refused, so saving the rest of a
+  // profile never fails over it
+  if (typeof data.level === 'string' && LEVELS.includes(data.level)) profile.level = data.level;
 
   // What I'm looking for
   const lookingFor = data.lookingFor ?? {};

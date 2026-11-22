@@ -158,6 +158,8 @@ router.get('/', async (req, res) => {
 // &sort=         newest (the default) | fit | deadline | company
 // &page=         1, 2, 3... (50 jobs a page)
 // -> { jobs: [each job, plus fit: { score, reasons }], total, more, major,
+//      major_ignored: true if &major= was skipped, because the major on the profile has no words
+//            we can look for (then the page suggests picking one from the list),
 //      near: where &location= was found ({ city: "Worcester, MA", within: 25 } or { state: "Massachusetts" }),
 //            or null (no location, or one we couldn't find: then it matches the words, the old way),
 //      suggestions: when fewer than 10 jobs match, ways to see more (see pickJobs) }
@@ -318,9 +320,11 @@ router.get('/for-me', authenticateToken, async (req, res) => {
   }
   if (all === null) return res.status(500).json({ error: 'Database error' });
   const student = studentFrom(profile.data?.data, resume.data?.data);
-  if (major && student.majorWords.length === 0) {
-    return res.status(400).json({ error: 'Add your major to your profile first' });
-  }
+  // "For your major" needs words to look for. A typed-in major with none we can use (like
+  // "General Studies", or a short form that isn't in MAJOR_SHORT_FORMS in fit.ts) used to get a
+  // 400 here, and Opportunities then showed no jobs at all. Now the major filter is skipped
+  // instead, and major_ignored tells the page to suggest picking a major from the list
+  const majorIgnored = Boolean(major) && student.majorWords.length === 0;
 
   // &location= on the map (places.ts). A city typed without a state ("Worcester") is their own
   // city if it has that name, or else the one in their home state (from the city on their
@@ -332,12 +336,14 @@ router.get('/for-me', authenticateToken, async (req, res) => {
 
   // filter, sort, one page of 50 (each with its fit), and the "see more" suggestions
   const picked = pickJobs(all, student, {
-    type, level, setting, paid, posted, deadline, q, location, near, within, hide, include, exclude, major, sort, page,
+    type, level, setting, paid, posted, deadline, q, location, near, within, hide, include, exclude,
+    major: majorIgnored ? undefined : major, sort, page,
   });
   // { jobs, total, more, suggestions } from pickJobs, plus your major and where it looked
   res.json({
     ...picked,
     major: student.major,
+    major_ignored: majorIgnored,
     near: near?.kind === 'city' ? { city: `${near.place.city}, ${near.place.state}`, within }
       : near?.kind === 'state' ? { state: STATES[near.state] } : null,
   });

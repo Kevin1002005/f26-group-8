@@ -1014,6 +1014,13 @@ html:has(.about-site) {
   max-width: 48ch;           /* stops lines at about 48 letters, so they're easy to read */
 }
 
+/* "Either way, you'll pick high school or college in the welcome guide ..."
+   under the two boxes */
+.about-audience-note {
+  margin-top: 20px;          /* the same space as between the boxes */
+  color: var(--about-ink-2); /* the same gray-blue as the boxes' words (the page's muted text color) */
+}
+
 /* ---------- About page: "Why use our platform?" ---------- */
 
 /* The list of 4 features, with a thin line between them */
@@ -4920,6 +4927,21 @@ textarea.feed-composer-input {
   font-weight: 700;             /* thick, so it doesn't rely on the red alone (WCAG) */
 }
 
+/* "Choose high school or college ...", under "Where are you in school?" when
+   it was left empty (the welcome guide and Edit profile both use it) */
+.edit-choice-error {
+  margin-top: 6px;              /* a little space under the choices */
+  font-size: 14px;              /* a bit smaller than the labels */
+  color: var(--signup-error);   /* the site's error red (8.6:1 on boxes) */
+  font-weight: 700;             /* thick, so it doesn't rely on the red alone (WCAG) */
+}
+
+/* ...and the two choices get a red line too (the words above say the same, so
+   it's not the only sign) */
+.edit-choice:has(input[aria-invalid="true"]) {
+  border-color: var(--signup-error);  /* the same error red as the message */
+}
+
 /* A short tip under a box, like "One line, shown under your name." */
 .edit-hint {
   font-size: 13px;              /* small text */
@@ -7361,6 +7383,76 @@ textarea.feed-composer-input {
   color: var(--muted);              /* gray-blue (7.4:1 / 10:1 on the page) */
 }
 
+/* "Summer programs, research, and internships open to high schoolers: ..."
+   (only for high schoolers). Navy and a bit bolder than the line above it */
+.discovery-head-note {
+  max-width: 60ch;                  /* short lines are easier to read */
+  font-size: 15px;                  /* the same size as the line above */
+  font-weight: 600;                 /* semi-bold, so it stands out from that line */
+  color: var(--text);               /* navy (15.5:1 / 16:1 on the page) */
+}
+
+/* ----- "Where are you in school?" (LevelPrompt, until you've picked) ----- */
+
+/* The box: the question on the left, the two buttons on the right (the
+   buttons drop under the question on a phone, since the row wraps) */
+.discovery-level {
+  display: flex;                    /* the words and the buttons side by side */
+  flex-wrap: wrap;                  /* the buttons drop under the words when there's no room */
+  align-items: center;              /* lined up in the middle */
+  justify-content: space-between;   /* words left, buttons right */
+  gap: 12px 20px;                   /* space between them: down, across */
+  padding: 14px 18px;               /* space inside: top/bottom, left/right */
+  background-color: var(--card);    /* the off-white of the other boxes */
+  border: 1px solid var(--line);    /* thin soft blue edge */
+  border-radius: var(--radius-box); /* the same rounded corners as the other boxes */
+}
+
+/* The question, and the line under it */
+.discovery-level-words {
+  display: flex;                    /* turns on flexbox... */
+  flex-direction: column;           /* ...the question above the line */
+  gap: 4px;                         /* a little space between them */
+}
+
+.discovery-level-title {
+  margin: 0;                        /* no extra space around it (the box has padding) */
+  font-size: 16px;                  /* a bit bigger than the line under it */
+  font-weight: 700;                 /* bold */
+  color: var(--text);               /* navy */
+}
+
+.discovery-level-text {
+  margin: 0;                        /* no extra space around it */
+  font-size: 14px;                  /* smaller text */
+  color: var(--muted);              /* gray-blue (7:1 or more on the box) */
+}
+
+/* "I'm in high school" and "I'm in college", side by side */
+.discovery-level-buttons {
+  display: flex;                    /* side by side */
+  flex-wrap: wrap;                  /* one under the other on a very narrow phone */
+  gap: 8px;                         /* space between them */
+}
+
+/* While the answer is saving (aria-disabled, see LevelPrompt): the mouse shows
+   the "working" pointer, so it's clear to wait */
+.discovery-level-buttons .discovery-outline-button[aria-disabled="true"] {
+  cursor: progress;                 /* mouse turns into the "working" pointer */
+}
+
+/* "Saved: you're in high school. ..." after a button was pressed */
+.discovery-level-message {
+  font-size: 14px;                  /* smaller text, like Refresh's message */
+  color: var(--muted);              /* gray-blue (7.4:1 on the page) */
+}
+
+/* Empty most of the time. It stays on the page (so screen readers hear it when
+   words arrive), but takes back the page's 24px gap, so it leaves no extra space */
+.discovery-level-message:empty {
+  margin-top: -24px;                /* the same as .discovery-page's gap */
+}
+
 /* The small "Examples" tag after the sentence (the made-up jobs are labeled, the team's rule) */
 .discovery-examples-tag {
   display: inline-flex;             /* a small pill */
@@ -8607,7 +8699,16 @@ html:has(.discovery-dialog[open]) {
   border-top: 1px solid var(--line);      /* a thin line above it */
 }
 
-/* "Applying isn't built yet." */
+/* The left side of the bottom: the message, and after Apply, "Yes, I sent it"
+   and "Not yet" next to it (or under it, when there's no room) */
+.discovery-dialog-note {
+  display: flex;                          /* the message and the buttons side by side */
+  flex-wrap: wrap;                        /* the buttons drop under the message when there's no room */
+  align-items: center;                    /* lined up in the middle */
+  gap: 8px 12px;                          /* space between rows, then side by side */
+}
+
+/* "You'll apply on Acme's own site." / "Did you send your application on Acme's site?" */
 .discovery-dialog-message {
   font-size: 14px;
   color: var(--muted);
@@ -9599,6 +9700,15 @@ html:has(.discovery-dialog[open]) {
   font-size: 12.5px;
   font-weight: 600;
   vertical-align: middle;
+}
+
+/* The words in the "This is an example" box (the form's column, while the
+   example shows) */
+.resume-example-note {
+  margin-top: 6px;
+  max-width: 60ch;                            /* short lines are easier to read */
+  font-size: 15px;
+  color: var(--muted);                        /* gray-blue (7:1 or more on the white box) */
 }
 
 /* The row of buttons (Download PDF, Start from scratch, ...) */

@@ -1,8 +1,13 @@
 // ResumeBuilder.jsx is the Resume builder (yoursite.com/resume).
 // Type your details in the form on the left, and the resume on the right
 // updates as you type. "Download PDF" saves it to your computer.
-//   - It opens with a made-up example (clearly labeled), so you can see how
-//     a finished resume looks. "Start from scratch" empties it.
+//   - Until you have a resume, it shows a made-up example (clearly labeled),
+//     so you can see how a finished resume looks. The example can't be typed
+//     in: "Start my resume" opens your own instead, with your profile's name,
+//     city, school, and skills filled in. (Before, typing one
+//     letter in the example saved ALL of it as yours, and its made-up school,
+//     jobs, and skills then showed on your Profile and counted in Best fit.)
+//   - "Start from scratch" empties your resume.
 //   - Everything saves to your account as you type, so it's there on any
 //     device. It's kept in this browser too, for when the server can't be
 //     reached (resume-storage.js).
@@ -38,8 +43,15 @@ import {
     watchOtherTabs,
 } from '../resume-storage.js';
 // Copies your name, location, first school, and skills to your profile when you
-// change them here, so the Profile page matches (data/profile-resume-sync.js)
-import { copyResumeToProfile } from '../data/profile-resume-sync.js';
+// change them here, so the Profile page matches (data/profile-resume-sync.js).
+// copyProfileToResume goes the other way: "Start my resume" uses it to fill in
+// your profile's details, the same way the welcome guide does
+import { copyProfileToResume, copyResumeToProfile } from '../data/profile-resume-sync.js';
+// Your profile (latestProfile asks the server if it hasn't answered yet), and an
+// empty one to compare it with, for "Start my resume" (data/profile.js)
+import { emptyProfile, latestProfile } from '../data/profile.js';
+// Your account's email, which also goes on a new resume, like in the welcome guide
+import { useCurrentUser } from '../use-current-user.js';
 
 // ---------- The repeating sections ----------
 // Education, Projects, and Experience all work the same way: a list of
@@ -348,8 +360,12 @@ function ResumeBuilder() {
     const [resume, setResume] = useState(() => loadResume() || exampleResume);
     // true while the made-up example is showing (it gets the "Example" tag)
     const [showingExample, setShowingExample] = useState(() => loadResume() === null);
-    // Phones: which side is showing, "edit" or "preview"
-    const [view, setView] = useState('edit');
+    // Phones: which side is showing, "edit" or "preview". While the example
+    // shows, it starts on the preview, so phone users see what a finished
+    // resume looks like (the form side only explains the example)
+    const [view, setView] = useState(() => (loadResume() === null ? 'preview' : 'edit'));
+    // Your account's email, for "Start my resume"
+    const me = useCurrentUser();
     // The short message next to the buttons ("Removed Cashier.", ...)
     const [message, setMessage] = useState('');
     // true when the last save didn't work (the browser's storage is full or
@@ -430,7 +446,7 @@ function ResumeBuilder() {
     });
 
     // Every change goes through here: it redraws the page and saves.
-    // (The example isn't saved until you change something, so it stays an example)
+    // (The example never gets here: the form only shows after "Start my resume")
     // It also sends what you changed to your profile, except for "Start from
     // scratch" (copyToProfile: false): clearing your resume shouldn't clear your profile
     function update(newResume, copyToProfile = true) {
@@ -505,6 +521,26 @@ function ResumeBuilder() {
         setMessage('Removed ' + (row.label.trim() || 'a skills line') + '.');
         // Like removeEntry: the focus goes to "+ Add skills line"
         focusNext.current = 'resume-skills-add';
+    }
+
+    // "Start my resume" (only while the example shows): your own resume, with
+    // your profile's name, city, school, and skills already in it, filled in the
+    // same way the welcome guide does it (copyProfileToResume). That saves it,
+    // with only your own details. With none of those on your profile, it starts
+    // empty, and nothing is saved until you type, like any change.
+    // Then the form shows (phones switch to Edit), and the focus goes to the
+    // first box, Full name, so you can start typing right away (the button you
+    // pressed is gone) (WCAG)
+    async function startMyResume() {
+        setMessage('Starting your resume...');
+        const profile = await latestProfile();
+        // .catch: if it can't be filled in (no internet), you still get an empty one
+        if (profile) await copyProfileToResume(emptyProfile, profile, me.email).catch(() => {});
+        setResume(loadResume() || blankResume);
+        setShowingExample(false);
+        setView('edit');
+        setMessage('');
+        focusNext.current = 'contact-name';
     }
 
     // "Start from scratch": an empty resume (after checking, since it can't be undone)
@@ -582,12 +618,24 @@ function ResumeBuilder() {
                     <div className="resume-head-actions">
                         {/* role="status" makes screen readers read the message when it changes (WCAG) */}
                         <p className="resume-status" role="status">{message}</p>
-                        <button type="button" className="resume-button" onClick={startOver}>
-                            Start from scratch
-                        </button>
-                        <button type="button" className="resume-button resume-button-main" onClick={download}>
-                            Download PDF
-                        </button>
+                        {/* While the example shows, there's nothing of yours to clear
+                            or download, so "Start my resume" is the one button. It's up
+                            here, not in the form's column, so phones (which open on
+                            Preview then) can see it too */}
+                        {showingExample ? (
+                            <button type="button" className="resume-button resume-button-main" onClick={startMyResume}>
+                                Start my resume
+                            </button>
+                        ) : (
+                            <>
+                                <button type="button" className="resume-button" onClick={startOver}>
+                                    Start from scratch
+                                </button>
+                                <button type="button" className="resume-button resume-button-main" onClick={download}>
+                                    Download PDF
+                                </button>
+                            </>
+                        )}
                     </div>
                 </header>
 
@@ -605,69 +653,84 @@ function ResumeBuilder() {
                 {/* data-view tells index.css which side to show on phones */}
                 <div className="resume-layout" data-view={view}>
                     {/* The form. Pressing Enter in a box shouldn't do anything, so
-                        it's not a <form> that would try to send itself */}
-                    <div className="resume-form">
-                        <section className="resume-section" aria-labelledby="resume-contact-title">
-                            <h2 id="resume-contact-title" className="resume-section-title">Contact</h2>
-                            <div className="resume-fields resume-entry">
-                                {contactFields.map((field) => (
-                                    <Field
-                                        key={field.key}
-                                        id={'contact-' + field.key}
-                                        label={field.label}
-                                        type={field.type}
-                                        autoComplete={field.autoComplete}
-                                        wide={field.wide}
-                                        value={resume.contact[field.key]}
-                                        onChange={(value) => changeContact(field.key, value)}
-                                    />
-                                ))}
-                            </div>
-                        </section>
+                        it's not a <form> that would try to send itself.
+                        While the example shows, this column only explains it: with
+                        no boxes, the example can't turn into your resume by accident */}
+                    {showingExample ? (
+                        <div className="resume-form">
+                            <section className="resume-section" aria-labelledby="resume-example-title">
+                                <h2 id="resume-example-title" className="resume-section-title">This is an example</h2>
+                                <p className="resume-example-note">
+                                    Jamie Rivera is made up, so you can see what a finished resume looks like.
+                                    None of it is saved, and none of it goes on your profile. Press "Start my
+                                    resume" at the top to begin yours, with your profile's details filled in.
+                                </p>
+                            </section>
+                        </div>
+                    ) : (
+                        <div className="resume-form">
+                            <section className="resume-section" aria-labelledby="resume-contact-title">
+                                <h2 id="resume-contact-title" className="resume-section-title">Contact</h2>
+                                <div className="resume-fields resume-entry">
+                                    {contactFields.map((field) => (
+                                        <Field
+                                            key={field.key}
+                                            id={'contact-' + field.key}
+                                            label={field.label}
+                                            type={field.type}
+                                            autoComplete={field.autoComplete}
+                                            wide={field.wide}
+                                            value={resume.contact[field.key]}
+                                            onChange={(value) => changeContact(field.key, value)}
+                                        />
+                                    ))}
+                                </div>
+                            </section>
 
-                        {/* Education, Projects, Experience: the same piece for each */}
-                        {sections.map((section) => (
-                            <section key={section.key} className="resume-section" aria-labelledby={'resume-' + section.key + '-title'}>
-                                <h2 id={'resume-' + section.key + '-title'} className="resume-section-title">{section.title}</h2>
-                                {resume[section.key].map((entry, index) => (
-                                    <EntryEditor
-                                        key={entry.id}
-                                        section={section}
-                                        entry={entry}
-                                        index={index}
-                                        count={resume[section.key].length}
-                                        onChange={(key, value) => changeEntry(section.key, entry.id, key, value)}
-                                        onMove={(direction) => moveEntry(section.key, index, direction)}
-                                        onRemove={() => removeEntry(section, entry)}
-                                    />
+                            {/* Education, Projects, Experience: the same piece for each */}
+                            {sections.map((section) => (
+                                <section key={section.key} className="resume-section" aria-labelledby={'resume-' + section.key + '-title'}>
+                                    <h2 id={'resume-' + section.key + '-title'} className="resume-section-title">{section.title}</h2>
+                                    {resume[section.key].map((entry, index) => (
+                                        <EntryEditor
+                                            key={entry.id}
+                                            section={section}
+                                            entry={entry}
+                                            index={index}
+                                            count={resume[section.key].length}
+                                            onChange={(key, value) => changeEntry(section.key, entry.id, key, value)}
+                                            onMove={(direction) => moveEntry(section.key, index, direction)}
+                                            onRemove={() => removeEntry(section, entry)}
+                                        />
+                                    ))}
+                                    <button type="button" id={'resume-' + section.key + '-add'} className="resume-add-button" onClick={() => addEntry(section)}>
+                                        + Add {section.singular.toLowerCase()}
+                                    </button>
+                                </section>
+                            ))}
+
+                            <section className="resume-section" aria-labelledby="resume-skills-title">
+                                <h2 id="resume-skills-title" className="resume-section-title">Skills</h2>
+                                {resume.skills.map((row, index) => (
+                                    <div key={row.id} className="resume-entry">
+                                        <div className="resume-entry-head">
+                                            <h3 className="resume-entry-title">Skills line {index + 1}</h3>
+                                            <button type="button" className="resume-icon-button" aria-label={'Remove ' + (row.label.trim() || 'skills line ' + (index + 1))} onClick={() => removeSkill(row)}>
+                                                <TrashIcon />
+                                            </button>
+                                        </div>
+                                        <div className="resume-fields">
+                                            <Field id={'skill-' + row.id + '-label'} label="Kind (like Languages)" value={row.label} onChange={(value) => changeSkill(row.id, 'label', value)} />
+                                            <Field id={'skill-' + row.id + '-items'} label="Skills, with commas" value={row.items} onChange={(value) => changeSkill(row.id, 'items', value)} />
+                                        </div>
+                                    </div>
                                 ))}
-                                <button type="button" id={'resume-' + section.key + '-add'} className="resume-add-button" onClick={() => addEntry(section)}>
-                                    + Add {section.singular.toLowerCase()}
+                                <button type="button" id="resume-skills-add" className="resume-add-button" onClick={addSkill}>
+                                    + Add skills line
                                 </button>
                             </section>
-                        ))}
-
-                        <section className="resume-section" aria-labelledby="resume-skills-title">
-                            <h2 id="resume-skills-title" className="resume-section-title">Skills</h2>
-                            {resume.skills.map((row, index) => (
-                                <div key={row.id} className="resume-entry">
-                                    <div className="resume-entry-head">
-                                        <h3 className="resume-entry-title">Skills line {index + 1}</h3>
-                                        <button type="button" className="resume-icon-button" aria-label={'Remove ' + (row.label.trim() || 'skills line ' + (index + 1))} onClick={() => removeSkill(row)}>
-                                            <TrashIcon />
-                                        </button>
-                                    </div>
-                                    <div className="resume-fields">
-                                        <Field id={'skill-' + row.id + '-label'} label="Kind (like Languages)" value={row.label} onChange={(value) => changeSkill(row.id, 'label', value)} />
-                                        <Field id={'skill-' + row.id + '-items'} label="Skills, with commas" value={row.items} onChange={(value) => changeSkill(row.id, 'items', value)} />
-                                    </div>
-                                </div>
-                            ))}
-                            <button type="button" id="resume-skills-add" className="resume-add-button" onClick={addSkill}>
-                                + Add skills line
-                            </button>
-                        </section>
-                    </div>
+                        </div>
+                    )}
 
                     {/* The preview, and the note about the template under it.
                         The note is on the website only: printing shows nothing

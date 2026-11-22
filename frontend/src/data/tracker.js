@@ -237,7 +237,8 @@ export function addToTracker(id, details = {}) {
   addItem({ ...details, id: id, stage: "saved" });
 }
 
-// Apply (Discovery's pop-up): the job goes in "Submitted", dated today, whether it
+// "Yes, I sent it" (Discovery's pop-up asks after Apply opens the posting; opening
+// it alone doesn't call this): the job goes in "Submitted", dated today, whether it
 // was on the tracker already or not. "mustBe": if the account had it in another
 // column (saved on another device, before that list arrived here), it's moved too
 export function markApplied(id, details = {}) {

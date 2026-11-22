@@ -47,7 +47,7 @@ const sections = [
         <h3>What you give us</h3>
         <ul>
           <li><strong>Your account:</strong> your email address and password. Supabase, our login service, stores your password only as a scrambled "hash" that can't be turned back into the password. If you use "Continue with Google", Google also gives us your name and profile picture.</li>
-          <li><strong>Your profile:</strong> what you fill in on the welcome guide or on Edit profile: your name, pronouns, school, class year, major, city, headline, About, what kind of position you're looking for, and your skills.</li>
+          <li><strong>Your profile:</strong> what you fill in on the welcome guide or on Edit profile: your name, pronouns, whether you're in high school or college, school, graduation year, major, city, headline, About, what kind of position you're looking for, and your skills.</li>
           <li><strong>Your Feed posts:</strong> the posts and comments you share, the posts you like, and who you follow.</li>
           <li><strong>Your Application tracker:</strong> the jobs you save, which column each one is in, your notes and details on them (a link, a short status, the date you applied), and any jobs you add from other websites.</li>
           <li><strong>Your resume:</strong> whatever you type into the Resume builder, like your name, contact details, education, experience, projects, and skills. Please don't put very sensitive information (like a Social Security number) in it: a resume never needs it.</li>

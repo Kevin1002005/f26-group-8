@@ -9,6 +9,7 @@
 //   profile    what's filled in so far (see emptyProfile in data/profile.js)
 //   onChange   called with just the part that changed, like { city: "Boston" }.
 //              The page merges it into its copy of the profile
+// (Basics also takes levelError: see BasicsFields)
 // The styles are the Edit Profile page's form styles in index.css
 // ("EditProfile Page"), so both pages look the same.
 
@@ -24,7 +25,19 @@ import { majors, undecided } from "../data/majors.js";
 // maxLength stops typing at the same limit the server checks, so you never
 // get an error for typing too much.
 
-// Basics: name, pronouns, school, class year, major, and city
+// The two answers to "Where are you in school?". The values are the same words
+// as schoolLevels in data/profile.js (and the backend's), the labels are what you see
+const levelChoices = [
+  { value: "high-school", label: "High school" },
+  { value: "college", label: "College" },
+];
+
+// Basics: where you are in school (first, since it's the one required question),
+// then name, pronouns, school, graduation year, major, and city.
+// One more prop: props.levelError is the message to show when "Where are you
+// in school?" was left empty ("" or missing when it's fine). The page sets it
+// when you press Next or Save, and moves the focus to the first choice
+// (id "profile-level-high-school")
 export function BasicsFields(props) {
   const profile = props.profile;
   // true while "Other" is picked for the major, so a box shows to type it in.
@@ -46,6 +59,44 @@ export function BasicsFields(props) {
 
   return (
     <>
+      {/* Where you are in school: the one question you have to answer, because
+          Opportunities and Best fit start with what you can apply to (most
+          college jobs don't take high schoolers, and the other way round).
+          <fieldset> + <legend> group the two choices under one question, so
+          screen readers say it before each one (WCAG). Radio buttons with the
+          same name: picking one unpicks the other. "(required)" is written out,
+          so it doesn't depend on seeing a star (WCAG).
+          When it was left empty, each choice points to the message with
+          aria-describedby, so screen readers read it when the focus lands there */}
+      <fieldset className="edit-choices">
+        <legend className="edit-label">Where are you in school? (required)</legend>
+        <div className="edit-choice-list">
+          {levelChoices.map((choice) => (
+            // The <label> wraps its radio button, so clicking the word picks it
+            <label key={choice.value} className="edit-choice">
+              <input
+                type="radio"
+                id={"profile-level-" + choice.value}
+                name="profile-level"
+                value={choice.value}
+                checked={profile.level === choice.value}
+                required
+                aria-invalid={props.levelError ? true : undefined}
+                aria-describedby={props.levelError ? "profile-level-error" : undefined}
+                onChange={() => props.onChange({ level: choice.value })}
+              />
+              {choice.label}
+            </label>
+          ))}
+        </div>
+        {/* Written in words and in bold, so it doesn't rely on the red alone (WCAG) */}
+        {props.levelError && (
+          <p id="profile-level-error" className="edit-choice-error">
+            {props.levelError}
+          </p>
+        )}
+      </fieldset>
+
       <div className="edit-row">
         <div className="edit-field">
           <label className="edit-label" htmlFor="profile-name">
@@ -103,8 +154,11 @@ export function BasicsFields(props) {
           />
         </div>
         <div className="edit-field">
+          {/* "Graduation year", not "Class year": high schoolers and college
+              students both know which year they graduate. The example is in the
+              label (not a placeholder), so it doesn't disappear while typing */}
           <label className="edit-label" htmlFor="profile-class-year">
-            Class year
+            Graduation year (e.g. 2028)
           </label>
           {/* inputMode="numeric" shows a number keyboard on phones */}
           <input
@@ -113,7 +167,6 @@ export function BasicsFields(props) {
             type="text"
             inputMode="numeric"
             maxLength={most.classYear}
-            placeholder="e.g. 2030"
             value={profile.classYear}
             onChange={(e) => props.onChange({ classYear: e.target.value })}
           />
@@ -142,8 +195,12 @@ export function BasicsFields(props) {
             <option value={undecided}>{undecided}</option>
             <option value="Other">Other (type it)</option>
           </select>
+          {/* High schoolers often don't have a major yet, so once "High school"
+              is picked above, the tip says what to do then */}
           <p className="edit-hint" id="profile-major-hint">
-            Opportunities shows jobs for it first. In high school? Pick "{undecided}".
+            {profile.level === "high-school"
+              ? 'Not sure yet? Pick "' + undecided + '".'
+              : 'Opportunities shows jobs for it first. In high school? Pick "' + undecided + '".'}
           </p>
         </div>
         <div className="edit-field">

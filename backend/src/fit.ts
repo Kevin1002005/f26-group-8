@@ -68,6 +68,30 @@ const withoutNonWords = (title: string) => title.toLowerCase().replace(/\bnon-?\
 // "Undecided / exploring": no major, so every field shows
 export const UNDECIDED = 'Undecided / exploring';
 
+// Short forms students often type after picking "Other" ("CS", "Econ"), and the major on the
+// list each one means. Without these, "CS" had no words to look for (wordsOf below skips words
+// under 3 letters), so "For your major" couldn't work for it. The keys are lower case without
+// dots, because studentFrom looks them up that way ("C.S." and "cs" both find "cs").
+// CE is read as Computer Engineering: a Civil Engineering student can pick "Civil or
+// Environmental Engineering" from the list instead
+export const MAJOR_SHORT_FORMS: Record<string, string> = {
+  cs: 'Computer Science',
+  ce: 'Computer or Electrical Engineering',
+  ece: 'Computer or Electrical Engineering',
+  ee: 'Computer or Electrical Engineering',
+  me: 'Mechanical Engineering',
+  ai: 'Computer Science',
+  ml: 'Data Science',
+  ux: 'Design',
+  it: 'Computer Science',        // information technology
+  is: 'Computer Science',        // information systems
+  econ: 'Economics',
+  bio: 'Biology',
+  chem: 'Chemistry',
+  math: 'Mathematics or Statistics',
+  stats: 'Mathematics or Statistics',
+};
+
 // The fields next to each major, for "Add jobs from related fields" on Opportunities when only
 // a few jobs fit your major (jobs.ts, &major=related). A Finance student is often a good fit for
 // an Economics or Business internship too. The names are MAJOR_WORDS' names
@@ -154,7 +178,11 @@ export function studentFrom(profileData: unknown, resumeData: unknown): Student 
   const resume = isObject(resumeData) ? resumeData : {};
   const lookingFor = isObject(profile.lookingFor) ? profile.lookingFor : {};
 
-  const major = text(profile.major) === UNDECIDED ? '' : text(profile.major);
+  // a short form ("CS", "Econ") counts as the major on the list it stands for (MAJOR_SHORT_FORMS)
+  const typed = text(profile.major);
+  const shortForm = typed.toLowerCase().replace(/\./g, '');
+  const listed = Object.hasOwn(MAJOR_SHORT_FORMS, shortForm) ? MAJOR_SHORT_FORMS[shortForm]! : typed;
+  const major = listed === UNDECIDED ? '' : listed;
   // Object.hasOwn: a typed-in major like "constructor" must not pick up a built-in function
   const majorWords = major === '' ? [] : Object.hasOwn(MAJOR_WORDS, major) ? MAJOR_WORDS[major]! : wordsOf(major, 3);
 
@@ -184,8 +212,13 @@ export function studentFrom(profileData: unknown, resumeData: unknown): Student 
   const places = [...new Set([...where.split(/,|\/|\bor\b|\band\b/), ...text(profile.city).toLowerCase().split(',')]
     .map((p) => p.replace(/\bremote\b/g, '').trim()).filter((p) => p.length >= 2))];
 
+  // High school or college: what the student picked (the welcome guide and Edit profile ask,
+  // and student-profile.ts only keeps these two). Someone who hasn't picked yet gets the old
+  // guess from their school's name, which can be wrong ("Boston Latin School" counts as college)
   const school = text(profile.school).toLowerCase();
-  const level = /high school|\bhs\b/.test(school) ? 'high-school' : 'college';
+  const level = profile.level === 'high-school' || profile.level === 'college'
+    ? profile.level
+    : /high school|\bhs\b/.test(school) ? 'high-school' : 'college';
 
   const experience: string[] = [];
   if (Array.isArray(resume.experience)) {

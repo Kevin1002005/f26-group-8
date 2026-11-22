@@ -146,3 +146,31 @@ test('"constructor" and other built-in names never crash a search', () => {
     assert.doesNotThrow(() => pick(list, odd, f));
   }
 });
+
+test('short forms like "CS" and "Econ" count as the major on the list', () => {
+  assert.equal(studentFrom({ major: 'CS' }, null).major, 'Computer Science');
+  assert.equal(studentFrom({ major: 'C.S.' }, null).major, 'Computer Science');
+  assert.equal(studentFrom({ major: 'econ' }, null).major, 'Economics');
+  // so "For your major" finds the CS jobs, and not the finance ones
+  const cs = studentFrom({ major: 'CS' }, null);
+  assert.deepEqual(titles(pick(jobs, cs, picks({ major: 'only' }))), ['Software Engineer Intern @ Worcester, MA']);
+});
+
+test('a typed-in major with no words to look for leaves the major filter nothing to match', () => {
+  // two letters we don't know, or only common words: the route (jobs.ts) skips &major= for these
+  // and sends major_ignored, instead of a 400 that left Opportunities empty
+  for (const major of ['QX', 'General Studies', 'Other']) {
+    assert.deepEqual(studentFrom({ major }, null).majorWords, [], major);
+  }
+});
+
+test('high school or college: the choice on the profile wins over the guess from the school name', () => {
+  // the guess: only a school name with "high school" in it counts as high school
+  assert.equal(studentFrom({ school: 'Boston Latin School' }, null).level, 'college');
+  assert.equal(studentFrom({ school: 'Revere High School' }, null).level, 'high-school');
+  // once they pick, the pick is used
+  assert.equal(studentFrom({ school: 'Boston Latin School', level: 'high-school' }, null).level, 'high-school');
+  assert.equal(studentFrom({ school: 'Revere High School', level: 'college' }, null).level, 'college');
+  // anything else is ignored, and the guess is used
+  assert.equal(studentFrom({ school: 'Revere High School', level: 'grad-school' }, null).level, 'high-school');
+});

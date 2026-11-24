@@ -1303,9 +1303,13 @@ function OpportunityRow(props) {
       <td data-label="Location">{opportunity.place}</td>
 
       {/* Many real jobs don't say what they pay, so this says so instead of
-          leaving the box empty ("??" = use "Not listed" if pay is null) */}
-      <td data-label="Pay" className="discovery-cell-nowrap">
-        {opportunity.pay ?? "Not listed"}
+          leaving the box empty ("??" = use "Not listed" if pay is null).
+          The words are in their own box (discovery-pay-words): short pay
+          ("$27–30/hr") stays on one line, and the long sentence some job sites
+          send wraps onto a few lines, instead of stretching the Pay column so
+          far that Save and View were cut off at the right edge */}
+      <td data-label="Pay">
+        <span className="discovery-pay-words">{opportunity.pay ?? "Not listed"}</span>
       </td>
 
       <td data-label="Apply by">

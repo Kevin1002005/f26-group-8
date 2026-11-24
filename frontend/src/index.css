@@ -5598,6 +5598,68 @@ html:has(.feed-nav) :focus {
   color: var(--signup-error);             /* red words on the light gray-blue (7.2:1 / 6.9:1) */
 }
 
+/* "Add to my prep list", under a "Not yet" thing (plan item #22): a small
+   rounded button. Pressing it puts the job in Preparing on My applications,
+   with the thing written in its notes (addToPrepList in data/tracker.js) */
+.discovery-prep-button {
+  display: flex;                    /* on its own line, under the words (not squeezed in after them) */
+  width: fit-content;               /* ...but only as wide as its own words */
+  align-items: center;
+  gap: 6px;                         /* space between the check and the words */
+  margin-top: 8px;                  /* space between it and the words above */
+  min-height: 32px;                 /* easy to tap (WCAG asks for at least 24px) */
+  padding: 0 12px;
+  border: 1px solid var(--border);  /* gray-blue edge (3.5:1 / 3.3:1) */
+  border-radius: var(--radius-pill); /* pill shape */
+  background-color: var(--card);
+  color: var(--text);               /* navy (15.5:1 / 14.2:1) */
+  font: inherit;                    /* buttons don't copy the page's font on their own */
+  font-size: 13px;
+  font-weight: 600;                 /* semi-bold */
+  cursor: pointer;                  /* mouse turns into a pointing hand */
+}
+
+/* A light box behind it when the mouse is over it */
+.discovery-prep-button:hover {
+  background-color: var(--soft);
+}
+
+/* The outline when you reach it with the Tab key (WCAG) */
+.discovery-prep-button:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Once it's on the list: "On your prep list" in green, with a check, and no
+   box, so it reads as done. It stays a button (aria-disabled, not removed),
+   so the keyboard focus doesn't jump away when it changes (WCAG) */
+.discovery-prep-button[aria-disabled="true"],
+.discovery-prep-button[aria-disabled="true"]:hover {
+  padding-left: 0;
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--tag-green-text);     /* dark green (6.9:1 / 10:1 on the box) */
+  cursor: default;                  /* nothing more to press */
+}
+
+.discovery-prep-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* "Added "SQL" to your prep list..." after pressing it. It's always on the
+   page (empty at first), so screen readers read it when the words appear (WCAG) */
+.discovery-prep-message {
+  margin: 0;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.discovery-prep-message:not(:empty) {
+  margin-top: 10px;                 /* space above it, only when it says something */
+}
+
 /* "Skills the post names", over the second list */
 .discovery-check-label {
   margin: 14px 0 8px;

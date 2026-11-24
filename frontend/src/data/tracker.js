@@ -90,7 +90,8 @@ function cleanList(list) {
 }
 
 // The outbox: this device's changes the account doesn't have yet, oldest first:
-//   { key, type: "add", id, stage, details }   put a job on the tracker
+//   { key, type: "add", id, stage, details }   put a job on the tracker (with
+//                                              prep: a prep list line, see addToPrepList)
 //   { key, type: "move", id, stage, appliedOn? }  move it to another column
 //   { key, type: "notes", id, notes }          change its notes
 //   { key, type: "details", id, details }      change its link, status, or date applied
@@ -290,6 +291,60 @@ export function saveTrackerNotes(id, notes) {
   changeItem(id, { notes: notes }, { type: "notes", notes: notes });
 }
 
+// ---------- The prep list (plan item #22) ----------
+// "Add to my prep list" sits under each "Not yet" thing in a job's "Can I apply?"
+// checklist on Opportunities (Discovery.jsx). It writes that thing into the
+// job's notes as one line, like "To prepare: SQL", and puts the job in the
+// Preparing column, so the tracker shows what to work on before applying.
+
+// The line a step becomes in the notes. Always ONE line: some posts' requirements
+// are whole paragraphs with line breaks (USAJOBS sends one of up to 1,000
+// letters), and a step that went over several lines could never be found again
+// (see isOnPrepList), so every run of spaces and line breaks becomes one space
+export function prepLine(step) {
+  return "To prepare: " + String(step).replace(/\s+/g, " ").trim();
+}
+
+// true if this step's line is in these notes already (one line each). Spaces at
+// the ends of a line don't count, so a line edited by hand on the tracker (with a
+// space typed at the end) is still found
+export function isOnPrepList(notes, step) {
+  const line = prepLine(step);
+  return typeof notes === "string" && notes.split("\n").some((each) => each.trim() === line);
+}
+
+// The most letters a job's notes can have (the backend refuses more:
+// readText(body.notes, 5000) in backend/src/applications.ts)
+const mostNoteLetters = 5000;
+
+// Adds one step to a job's prep list. id and details are the same as Save's
+// (addToTracker): details is { title, organization, deadline, initials, link }.
+// - not on the tracker yet: it goes in Preparing, with the step in its notes
+// - in Saved: it moves to Preparing, and the step is added to its notes
+// - in Preparing: the step is added to its notes
+// - in Submitted: it stays there (you've applied already), and the step is added
+// Gives back what happened: { result: "added" | "already" | "full", stage }.
+// "full" means the notes would be longer than the backend keeps, so nothing changed
+export function addToPrepList(id, details, step) {
+  const line = prepLine(step);
+  const item = currentItems().find((each) => each.id === id);
+  if (!item) {
+    // prep: the account may have this job already (saved on another device since
+    // this one last heard from it). Then the server keeps its row as it was, so
+    // sendChange adds the line to that row's notes afterward (see there)
+    addItem({ ...details, id: id, stage: "preparing", notes: line }, { prep: line });
+    return { result: "added", stage: "preparing" };
+  }
+  const notes = item.notes ?? "";
+  if (isOnPrepList(notes, step)) return { result: "already", stage: item.stage };
+  // a new line under the notes that are there (or the first line, if there are none)
+  const newNotes = notes.trim() === "" ? line : notes.replace(/\s+$/, "") + "\n" + line;
+  if (newNotes.length > mostNoteLetters) return { result: "full", stage: item.stage };
+  if (item.stage === "saved") moveOnTracker(id, "preparing");
+  saveTrackerNotes(id, newNotes);
+  return { result: "added", stage: item.stage === "saved" ? "preparing" : item.stage };
+}
+
 // The card's details: { link, statusDetail, appliedOn } (the Details form on the
 // tracker). Empty ones are saved as nothing
 export function saveTrackerDetails(id, details) {
@@ -339,6 +394,17 @@ async function sendChange(account, change) {
     // wins (your other device chose it), but Apply means "it's submitted"
     if (change.mustBe && application.status !== change.stage) {
       await send("/applications/" + application.id, "PATCH", { status: change.stage, applied_on: details.appliedOn ?? null });
+    }
+    // "Add to my prep list" on a job the account had already (saved on another
+    // device): the server gave back that row as it was, without the prep line.
+    // Add the line to its notes now (if it still fits), and move it from Saved
+    // to Preparing, the same as if this device had known about it
+    const oldNotes = application.notes ?? "";
+    if (change.prep && !oldNotes.split("\n").some((each) => each.trim() === change.prep)) {
+      const newNotes = oldNotes.trim() === "" ? change.prep : oldNotes.replace(/\s+$/, "") + "\n" + change.prep;
+      if (newNotes.length <= mostNoteLetters) {
+        await send("/applications/" + application.id, "PATCH", { notes: newNotes, ...(application.status === "saved" ? { status: "preparing" } : {}) });
+      }
     }
     return;
   }

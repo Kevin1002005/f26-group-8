@@ -27,7 +27,8 @@
 // useRef keeps a reference to something on the screen (here: each row's pop-up,
 // so its buttons can open it).
 // useEffect runs code after the page is drawn (here: getting the jobs, and opening a pop-up).
-import { useEffect, useRef, useState } from "react";
+// useId makes an id no other part of the page has (the "Can I apply?" lists use it).
+import { useEffect, useId, useRef, useState } from "react";
 // Link goes to another page of the site without reloading everything.
 // useSearchParams reads the extra info at the end of the address, like the
 // "?job=..." in "/discovery?job=..." (a shared link to one job), or "?level=..."
@@ -55,7 +56,8 @@ import { initialsOf, isDueWithin, isPastDeadline } from "../data/opportunities.j
 // the helpers that add a job to it (or take it off, or mark it applied), useTrackerItems (the list,
 // redrawing the page when it changes), useTrackerSync (syncs with your account
 // when the page opens), and trackerJob, which finds the job behind each saved item.
-import { addToTracker, markApplied, removeFromTracker, trackerJob, useTrackerItems, useTrackerSync } from "../data/tracker.js";
+// addToPrepList and isOnPrepList are the prep list ("Add to my prep list" in "Can I apply?")
+import { addToPrepList, addToTracker, isOnPrepList, markApplied, removeFromTracker, trackerJob, useTrackerItems, useTrackerSync } from "../data/tracker.js";
 
 // The tabs across the page. "All" shows everything; the rest match the
 // "type" of each opportunity (the same four types the database allows).
@@ -780,10 +782,54 @@ function verdictFor(items) {
   return { words: "A stretch: you have " + have + " of " + checked + ". You can still apply.", more };
 }
 
-// One list of marked items (see ApplyChecklist below).
+// True if an item can go on the prep list: a "Not yet" skill or line of the
+// post (plan item #22). Not "who it's for": being in college isn't something
+// to prepare, so that one has no button
+function canPrep(item) {
+  return item.status === "missing" && item.kind !== "level";
+}
+
+// "Add to my prep list" under one item. props.onList is true once it's on the
+// prep list: then it says "On your prep list" with a check, and pressing it
+// does nothing (aria-disabled). It stays the same button either way, so the
+// keyboard focus stays on it when it changes (WCAG).
+// Its name is the words on it, and aria-describedby adds the item's words
+// (props.describedBy is their id), so screen readers hear "Add to my prep
+// list, button, Tableau": the buttons don't all sound the same, and a long
+// requirement (some are whole paragraphs) doesn't become the button's name (WCAG)
+function PrepButton(props) {
+  return (
+    <button
+      type="button"
+      className="discovery-prep-button"
+      aria-disabled={props.onList ? "true" : undefined}
+      aria-describedby={props.describedBy}
+      onClick={() => {
+        if (!props.onList) props.onAdd(props.step);
+      }}
+    >
+      {props.onList ? (
+        <>
+          <MarkIcon status="have" />
+          On your prep list
+        </>
+      ) : (
+        "Add to my prep list"
+      )}
+    </button>
+  );
+}
+
+// One list of marked items (see ApplyChecklist below). props.onAdd is what
+// "Add to my prep list" runs, and props.trackerNotes the job's notes on the
+// tracker (to tell which items are on the prep list already). Without onAdd
+// (it's always there for logged-in students), there are no buttons.
 // Real posts sometimes say the same thing twice, so the key adds the item's
 // place in the list (index) to its words, to keep every key different
 function CheckList(props) {
+  // A start for this list's ids that no other list on the page has (each pop-up
+  // has its own lists), so each item's words can have an id for its prep button
+  const idStart = useId();
   return (
     <ul className="discovery-check-list">
       {props.items.map((item, index) => (
@@ -793,8 +839,18 @@ function CheckList(props) {
             <MarkIcon status={item.status} />
           </span>
           <span>
-            <span className="discovery-check-text">{item.text}</span>
+            <span className="discovery-check-text" id={idStart + "-" + index}>
+              {item.text}
+            </span>
             {item.note && <span className="discovery-check-note">{item.note}</span>}
+            {props.onAdd && canPrep(item) && (
+              <PrepButton
+                step={item.text}
+                onList={isOnPrepList(props.trackerNotes, item.text)}
+                onAdd={props.onAdd}
+                describedBy={idStart + "-" + index}
+              />
+            )}
           </span>
           <span className="discovery-check-status">{checkWords[item.status]}</span>
         </li>
@@ -805,9 +861,36 @@ function CheckList(props) {
 
 // "Can I apply?": the verdict, then who it's for and the post's own lines,
 // then the skills the post names, then where the marks come from.
-// props.items is the job's checklist (see above)
+// props.items is the job's checklist (see above). props.onAddToPrep and
+// props.trackerNotes are for "Add to my prep list" (see PrepButton above)
 function ApplyChecklist(props) {
   const items = props.items;
+  // The last "Add to my prep list": { step, result } ("added" or "full", see
+  // addToPrepList in data/tracker.js), or null before the first one
+  const [lastPrep, setLastPrep] = useState(null);
+
+  // "Add to my prep list": adds the step, and remembers what happened, for the line below
+  function addStep(step) {
+    const { result } = props.onAddToPrep(step);
+    if (result === "added" || result === "full") setLastPrep({ step: step, result: result });
+  }
+
+  // The words of the line under the lists, worked out from the tracker as it is
+  // NOW (not when the button was pressed), so they're never out of date: once
+  // the job is taken off the tracker (Saved pressed again) or moved, the line
+  // changes with it. "" when there's nothing to say
+  const columnNames = { saved: "Saved", preparing: "Preparing", submitted: "Submitted" };
+  // the step in quotes, on one line, and cut short if it's a long requirement
+  const quoted = (step) => {
+    const words = step.replace(/\s+/g, " ").trim();
+    return "“" + (words.length > 80 ? words.slice(0, 80) + "…" : words) + "”";
+  };
+  let prepWords = "";
+  if (lastPrep?.result === "added" && isOnPrepList(props.trackerNotes, lastPrep.step) && columnNames[props.trackerStage]) {
+    prepWords = "Added " + quoted(lastPrep.step) + " to your prep list. The job is in " + columnNames[props.trackerStage] + " on My applications.";
+  } else if (lastPrep?.result === "full" && !isOnPrepList(props.trackerNotes, lastPrep.step)) {
+    prepWords = "Couldn't add " + quoted(lastPrep.step) + ": this job's notes are full (5,000 letters). Make room in its notes on My applications.";
+  }
   // the skills get their own list, under "Skills the post names"
   const main = items.filter((item) => item.kind !== "skill");
   const skills = items.filter((item) => item.kind === "skill");
@@ -825,13 +908,27 @@ function ApplyChecklist(props) {
           {verdict.more && <span className="discovery-check-verdict-more"> {verdict.more}</span>}
         </p>
       )}
-      <CheckList items={main} />
+      <CheckList items={main} onAdd={props.onAddToPrep && addStep} trackerNotes={props.trackerNotes} />
       {skills.length > 0 && (
         <>
           <h4 className="discovery-check-label">Skills the post names</h4>
-          <CheckList items={skills} />
+          <CheckList items={skills} onAdd={props.onAddToPrep && addStep} trackerNotes={props.trackerNotes} />
         </>
       )}
+      {/* What happened after "Add to my prep list", with a link to the tracker.
+          role="status" reads it out when it appears; it's always on the page
+          (empty at first), so screen readers notice the words arriving (WCAG) */}
+      <p className="discovery-prep-message" role="status">
+        {prepWords && (
+          <>
+            {prepWords}{" "}
+            <Link to="/applications" className="discovery-text-link">
+              Open My applications
+              <ArrowIcon />
+            </Link>
+          </>
+        )}
+      </p>
       <p className="discovery-check-footnote">
         {onlyLevel
           ? "The post doesn't list skills or requirements that can be checked, so read it to be sure. "
@@ -872,13 +969,18 @@ function ApplyChecklist(props) {
 //   isGuest            true when nobody is logged in (see "Guests" above): no
 //                      "Hide jobs from ...", and Save isn't an on/off
 //   askedToSignUp      true once a guest pressed Save: the note says to sign up
+//   trackerNotes       this job's notes on the tracker ("" if it isn't on it)
+//   trackerStage       its column on the tracker ("saved", "preparing",
+//                      "submitted"), or null if it isn't on it
+//   onAddToPrep        what "Add to my prep list" runs, with the step (see
+//                      addStepToPrepList in OpportunityRow); undefined for guests
 //
 // { opportunity, ref, saved, ... } below "unpacks" the props: it's a
 // shorter way of writing props.opportunity, props.ref, and so on. It's
 // needed here because React's rules check that a ref is never read while
 // the page is being drawn, and keeping it separate from the other props
 // makes that clear.
-function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onApply, onConfirmApplied, onNotYet, onHide, idPrefix, isGuest, askedToSignUp }) {
+function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onApply, onConfirmApplied, onNotYet, onHide, idPrefix, isGuest, askedToSignUp, trackerNotes, trackerStage, onAddToPrep }) {
   // A unique id for the title, so the dialog can be named by it (WCAG). idPrefix keeps it unique
   // when the same job is in two tables (the main list and "Found on the web")
   const titleId = (idPrefix ?? "discovery-dialog-title-") + opportunity.id;
@@ -986,7 +1088,9 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onA
         {/* "Can I apply?": each thing the job asks for, marked from your
             profile and resume (only on your own list: guests, and a job opened
             from a link, don't have one, so they get "What they're looking for" below) */}
-        {opportunity.checklist && <ApplyChecklist items={opportunity.checklist} />}
+        {opportunity.checklist && (
+          <ApplyChecklist items={opportunity.checklist} trackerNotes={trackerNotes} trackerStage={trackerStage} onAddToPrep={onAddToPrep} />
+        )}
 
         {/* How well it fits you, and why (only if your profile says enough) */}
         {opportunity.fit?.score != null && (
@@ -1164,6 +1268,12 @@ function OpportunityRow(props) {
   // The pop-up uses the same one, so saving in either place saves both.
   const trackerItems = useTrackerItems();
   const saved = trackerItems.some((item) => item.id === opportunity.id);
+  // This job on the tracker (undefined if it isn't on it): its notes ("" if
+  // none), so "Can I apply?" can show which things are on your prep list
+  // already, and its column, for the line that says where the job is
+  const trackerItem = trackerItems.find((item) => item.id === opportunity.id);
+  const trackerNotes = trackerItem?.notes ?? "";
+  const trackerStage = trackerItem?.stage ?? null;
   // What screen readers hear after Save is pressed (see the end of the row)
   const [announcement, setAnnouncement] = useState("");
   // true when nobody is logged in (see "Guests" near the top of this file)
@@ -1234,6 +1344,13 @@ function OpportunityRow(props) {
     // (No more to do: the list changed, so this button and "On your tracker"
     // at the top redraw by themselves)
   }
+  // "Add to my prep list" (in the pop-up's "Can I apply?"): the job goes in
+  // Preparing on the tracker, with this step in its notes. Gives back what
+  // happened, for the line that says so (see addToPrepList in data/tracker.js)
+  function addStepToPrepList(step) {
+    return addToPrepList(opportunity.id, trackerDetails, step);
+  }
+
   // A reference to this row's pop-up, so "View" can open it
   const dialogRef = useRef(null);
   // A reference to this row's View button (see the useEffect below)
@@ -1396,6 +1513,12 @@ function OpportunityRow(props) {
           idPrefix={props.idPrefix}
           isGuest={isGuest}
           askedToSignUp={askedToSignUp}
+          trackerNotes={trackerNotes}
+          trackerStage={trackerStage}
+          // not for guests (no tracker), the same as Save and Apply. A guest
+          // never gets a checklist, but a list from before logging out in
+          // another tab can still be on the screen for a moment
+          onAddToPrep={isGuest ? undefined : addStepToPrepList}
         />
       </td>
     </tr>

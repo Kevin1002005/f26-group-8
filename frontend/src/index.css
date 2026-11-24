@@ -4667,8 +4667,11 @@ html:has(.feed-nav) :focus {
   border: 1px solid var(--line);
   border-radius: var(--radius-box);
   box-shadow: var(--shadow-card);
-  overflow: hidden;                 /* keeps the table inside the rounded corners
-                                       (the pop-ups open above the page, so they aren't cut off) */
+  overflow-x: auto;                 /* keeps the table inside the rounded corners. If the table
+                                       ever gets wider than the box anyway (very long words,
+                                       a zoomed-in screen), the box scrolls sideways instead of
+                                       cutting off the right side, where Save and View are (WCAG).
+                                       (The pop-ups open above the page, so they aren't cut off) */
 }
 
 .discovery-table {
@@ -4827,9 +4830,15 @@ html:has(.feed-nav) :focus {
   color: var(--subtle);                /* small gray text: 6:1 on boxes */
 }
 
-/* A cell that should stay on one line ($27–30/hr) */
-.discovery-cell-nowrap {
-  white-space: nowrap;
+/* The pay words in each row. Short pay ("$27–30/hr", "$31,103–$68,549 per year")
+   fits on one line. Some job sites send a whole sentence (up to 200 letters):
+   that wraps onto a few lines, at most this wide, instead of stretching the Pay
+   column. (It used to stay on one line, and one long sentence made the table so
+   wide that Save and View were cut off on every row) */
+.discovery-pay-words {
+  display: inline-block;            /* a box of its own, so it can have a width */
+  max-width: 26ch;                  /* about 26 letters wide at most */
+  overflow-wrap: break-word;        /* a very long word with no spaces still wraps */
 }
 
 /* The date and the "Due soon" tag */
@@ -5819,11 +5828,15 @@ html:has(.feed-nav) :focus {
   50% { opacity: 0.4; }
 }
 
-/* ----- Phones ----- */
-/* The table is too wide for a phone, so each row turns into a small box:
-   the role across the top, the facts two by two under it (each with its
-   column name above it, from data-label), and the buttons at the bottom */
-@media (max-width: 760px) {
+/* ----- Phones, tablets, and narrow windows ----- */
+/* The table is too wide for a narrow screen, so each row turns into a small
+   box: the role across the top, the facts two by two under it (each with its
+   column name above it, from data-label), and the buttons at the bottom.
+   The table needs about 830px for its six columns, so this starts at 920px
+   (with the page's edges), not at the phone size (760px) like the rest of the
+   page: between the two, the table stuck out of its box and Save and View
+   were cut off at the right edge */
+@media (max-width: 920px) {
   /* The column names are hidden on screen (each piece shows its own name
      instead), but kept for screen readers */
   .discovery-table thead {
@@ -5889,7 +5902,7 @@ html:has(.feed-nav) :focus {
     text-align: left;
   }
 
-  /* No hover color on phones (there's no mouse) */
+  /* No hover color in the box layout (on phones and tablets there's no mouse) */
   .discovery-row:hover td {
     background-color: transparent;
   }

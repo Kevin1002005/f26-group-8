@@ -9,7 +9,7 @@
 import express from 'express';
 import { supabase } from './db.js';
 import { authenticateToken } from './middleware.js';
-import { fitFor, fitsMajor, mentions, studentFrom, RELATED_MAJORS, type Student } from './fit.js';
+import { checklistFor, fitFor, fitsMajor, mentions, studentFrom, RELATED_MAJORS, type Student } from './fit.js';
 import { refreshSources, runImport } from './import-runner.js';
 import { closestMiles, findPlace, nameKey, placesIn, statesIn, STATES, type Place, type Where } from './places.js';
 import { buildIndex, jobsMentioning, type WordIndex } from './word-index.js';
@@ -157,7 +157,8 @@ router.get('/', async (req, res) => {
 //       =related your major, or a field next to it (RELATED_MAJORS in fit.ts)
 // &sort=         newest (the default) | fit | deadline | company
 // &page=         1, 2, 3... (50 jobs a page)
-// -> { jobs: [each job, plus fit: { score, reasons }], total, more, major,
+// -> { jobs: [each job, plus fit: { score, reasons } and checklist: "Can I apply?" (checklistFor
+//      in fit.ts: [{ kind, text, status, note }])], total, more, major,
 //      major_ignored: true if &major= was skipped, because the major on the profile has no words
 //            we can look for (then the page suggests picking one from the list),
 //      near: where &location= was found ({ city: "Worcester, MA", within: 25 } or { state: "Massachusetts" }),
@@ -484,11 +485,12 @@ export function pickJobs(open: OpenJobs, student: Student, f: Picks, useIndex = 
   if (f.sort === 'deadline') scored.sort((a, b) => (a.job.deadline ?? '9999-12-31').localeCompare(b.job.deadline ?? '9999-12-31'));
   if (f.sort === 'company') scored.sort((a, b) => a.job.organization.localeCompare(b.job.organization) || a.job.title.localeCompare(b.job.title));
 
-  // one page of 50, each with its fit: { score, reasons }
+  // one page of 50, each with its fit: { score, reasons }, and its "Can I apply?" checklist
+  // (checklistFor in fit.ts; only for the 50 on the page, so it costs almost nothing)
   const from = ((f.page ?? 1) - 1) * PAGE_SIZE;
   const jobs = scored.slice(from, from + PAGE_SIZE).map((k) => {
     const fit = 'fit' in k ? (k.fit as ReturnType<typeof fitFor>) : fitFor(k.job, k.text, student, k.has);
-    return { ...k.job, fit: { score: fit.score, reasons: fit.reasons } };
+    return { ...k.job, fit: { score: fit.score, reasons: fit.reasons }, checklist: checklistFor(k.job, student, k.has) };
   });
   return { jobs, total: kept.length, more: from + PAGE_SIZE < kept.length, suggestions };
 }

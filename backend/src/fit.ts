@@ -164,6 +164,8 @@ export type Student = {
   skills: string[];        // from the profile and the resume, each once
   kinds: string[];         // the kinds of positions they want: 'internship', 'co-op', 'research', 'program'
   level: 'high-school' | 'college';
+  levelPicked: boolean;    // true if they picked high school or college themselves (false: level is
+                           // only a guess from their school's name, see studentFrom)
   places: string[];        // where they want to be (their city, and "Where" on their profile)
   wantsRemote: boolean;
   paidOnly: boolean;
@@ -227,6 +229,7 @@ export function studentFrom(profileData: unknown, resumeData: unknown): Student 
 
   return {
     major, majorWords, skills, kinds, level, places, wantsRemote, paidOnly: lookingFor.paidOnly === true,
+    levelPicked: profile.level === 'high-school' || profile.level === 'college',
     experience: [...new Set(experience)].slice(0, MOST_EXPERIENCE_WORDS),
     home: text(profile.city).slice(0, 100),
   };
@@ -376,4 +379,235 @@ export function fitFor(job: FitJob, jobText: string, student: Student, has = (w:
   if (possible <= 10) return { score: null, reasons: [], majorMatch };
   reasons.sort((a, b) => b[0] - a[0]);
   return { score: Math.round((earned / possible) * 100), reasons: reasons.slice(0, 4).map(([, reason]) => reason), majorMatch };
+}
+
+// ---------- "Can I apply?" ----------
+// The checklist in a job's pop-up on Opportunities (plan item #21): each thing the job asks for
+// that we can compare with the student's profile and resume, marked one of four ways:
+//   have     "You have this"
+//   missing  "Not yet": a skill the post names that isn't on their profile or resume yet, or a
+//            college job for a high schooler (one they can get later)
+//   no       "Not for you": a high school job, for a college student
+//   check    "Check yourself": something we can't honestly compare ("U.S. citizens only", "Strong
+//            communication skills"), or a skill when the student hasn't listed any skills yet
+// kind says which part of the list it goes in:
+//   level    who the job is for (high school or college students). Always there
+//   line     one line from "What they're looking for" (the job's requirements), when the post has
+//            them. Most of our job sites don't send these (only Lever, JSearch, NSF, USAJOBS, and
+//            the pre-college programs do), which is why the skills below matter
+//   skill    a skill the post names: its AI tags (ai-tags.ts, which only keeps skills the post
+//            really names), plus the student's own skills that the post mentions. A skill a line
+//            already covers isn't repeated
+// It never says "you can't apply": the page reminds students it only knows their profile and
+// resume, and a stretch is still worth applying to.
+export type CheckStatus = 'have' | 'missing' | 'no' | 'check';
+export type CheckItem = { kind: 'level' | 'line' | 'skill'; text: string; status: CheckStatus; note?: string };
+// the parts of a job the checklist reads: fitFor's, plus the lines under "What they're looking for"
+// and the description (as the post wrote them, upper/lower case and all)
+export type CheckJob = FitJob & { requirements?: string[] | null; description?: string | null };
+// at most this many lines: the most a job can have (MOST_REQUIREMENTS in job-sources/shared.ts),
+// so no line of the post goes missing from the pop-up. And at most 8 skills (the AI gives up to 8),
+// so the list stays readable
+const MOST_CHECK_LINES = 50;
+const MOST_CHECK_SKILLS = 8;
+// A line about what you study: "a degree in ...", "majoring in ...", "major in ...", a bachelor's, a
+// B.S. or B.A., or "pursuing a degree". Only these are checked against the major. The same words
+// in their everyday meaning don't count: "major cloud platforms", "a high degree of accuracy",
+// "pursuing higher education"
+const DEGREE_LINE = /\b(degrees?|majors?|majoring|concentration)\s+in\b|\bbachelor'?s?\b|\bb\.\s?[sa]\.|\bbs\/ba\b|\bpursuing\s+(a\s+|an\s+)?(degree|major|bachelor)/i;
+// The names each major goes by on a degree line. Only these count, NOT MAJOR_WORDS above: those are
+// words a job TITLE uses ("programming", "data", "cloud"), and on a degree line they made "Pursuing
+// a degree in Mechanical Engineering; programming experience a plus" count for Computer Science.
+// A major that isn't here (one typed after "Other") uses its own name
+const DEGREE_NAMES: Record<string, string[]> = {
+  'Computer Science': ['computer science'],
+  'Data Science': ['data science'],
+  'Computer or Electrical Engineering': ['computer engineering', 'electrical engineering', 'electrical and computer engineering'],
+  'Mechanical Engineering': ['mechanical engineering'],
+  'Civil or Environmental Engineering': ['civil engineering', 'environmental engineering'],
+  'Biology': ['biology', 'biological sciences', 'life sciences'],
+  'Chemistry': ['chemistry'],
+  'Health Sciences or Nursing': ['health science', 'health sciences', 'nursing', 'public health'],
+  'Psychology': ['psychology'],
+  'Business': ['business', 'business administration'],
+  'Finance or Accounting': ['finance', 'accounting'],
+  'Economics': ['economics'],
+  'Marketing or Communications': ['marketing', 'communications'],
+  'Design': ['design', 'graphic design', 'industrial design'],
+  'Mathematics or Statistics': ['mathematics', 'math', 'statistics'],
+  'Political Science or Public Policy': ['political science', 'public policy'],
+  'Environmental Science': ['environmental science', 'environmental studies'],
+  'Education': ['education'],
+};
+// Words that make a line a choice ("one of Python, Java, or C++", "a language such as Python or R"):
+// then having one of its skills may be all it asks for
+const CHOICE_WORDS = /\b(or|one of|any of|either|such as|e\.g\.|for example)\b/i;
+// Skills that are also everyday words. In a post they only count written as a name, with a capital
+// letter: "Excel" is the program, "excel in a fast-paced team" isn't; "Go" is the language, "go
+// above and beyond" isn't (see namesSkill)
+const EVERYDAY_WORD_SKILLS = new Set([
+  'excel', 'word', 'access', 'office', 'teams', 'go', 'swift', 'rust', 'ruby', 'spark', 'chef', 'puppet', 'express',
+  'flask', 'react', 'unity', 'dart', 'julia', 'elm', 'crystal', 'notion', 'slack', 'sketch', 'maya', 'shell',
+]);
+const LEVEL_WORDS: Record<string, string> = { 'high-school': 'high school students', college: 'college students' };
+
+// Does this text name a skill? Stricter than mentions() above, because a skill is a NAME:
+//  - not as part of something else: "C" isn't in "C++", "C#", or "Washington, D.C.", and "R" isn't in
+//    "R&D" (mentions() splits words at + # & and dots, so it would find them)
+//  - a short skill (1 or 2 letters, like "C", "R", "AI") or one that's also an everyday word
+//    (EVERYDAY_WORD_SKILLS) has to start with a capital letter, like a name
+// The other letters can be either case ("PYTHON" and "Javascript" count). text is as the post wrote
+// it (not in lower case). The regular expressions are kept, like mentions()'s
+const skillPatterns = new Map<string, RegExp>();
+export function namesSkill(text: string, skill: string): boolean {
+  const s = skill.trim();
+  if (s === '') return false;
+  const key = s.toLowerCase();
+  let pattern = skillPatterns.get(key);
+  if (!pattern) {
+    if (skillPatterns.size >= MOST_PATTERNS) skillPatterns.clear();
+    // escapes the characters regular expressions treat specially (like the + in "C++")
+    const escape = (c: string) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const capitalFirst = Array.from(key).length <= 2 || EVERYDAY_WORD_SKILLS.has(key);
+    // each letter in either case ("[pP]"), except a first letter that has to be a capital
+    const body = Array.from(key).map((c, i) => {
+      const upper = c.toUpperCase();
+      if (upper === c) return escape(c);                         // not a letter: a digit, +, #, or .
+      if (i === 0 && capitalFirst) return escape(upper);
+      return upper.length === 1 ? `[${escape(upper)}${escape(c)}]` : `(?:${escape(upper)}|${escape(c)})`;
+    }).join('');
+    // (?<!...) = not right after a letter, digit, dot, dash, slash, + or #;
+    // (?!...) = not right before a letter, digit, + # &, or a dot and more letters (".js", ".C.")
+    pattern = new RegExp(`(?<![\\p{L}\\p{N}.\\-/+#])${body}(?![\\p{L}\\p{N}+#&]|\\.[\\p{L}\\p{N}])`, 'u');
+    skillPatterns.set(key, pattern);
+  }
+  return pattern.test(text);
+}
+
+// has(word) says if the job's post mentions a word, like fitFor's (it's used as a quick first check)
+export function checklistFor(job: CheckJob, student: Student, has: (w: string) => boolean): CheckItem[] {
+  const items: CheckItem[] = [];
+
+  // 1. who it's for
+  const forWhom = LEVEL_WORDS[job.level] ?? 'students';
+  if (job.level === 'both') {
+    items.push({ kind: 'level', text: 'Open to high school and college students', status: 'have' });
+  } else if (!student.levelPicked) {
+    items.push({ kind: 'level', text: `For ${forWhom}`, status: 'check', note: 'Pick high school or college on My info, and this gets checked for you' });
+  } else if (job.level === student.level) {
+    items.push({ kind: 'level', text: `For ${forWhom}, like you`, status: 'have' });
+  } else if (job.level === 'college') {
+    items.push({ kind: 'level', text: 'For college students', status: 'missing', note: "You're in high school now, so this one is for later" });
+  } else {
+    items.push({ kind: 'level', text: 'For high school students', status: 'no', note: "You're in college" });
+  }
+
+  // ----- the skills -----
+  const noSkillsYet = student.skills.length === 0;
+  const mine = new Set(student.skills.map((s) => s.toLowerCase()));
+  // How a skill the post names compares with the student's:
+  //   'have'  the same skill (whatever its upper/lower case)
+  //   'near'  one of theirs is a word inside it, or it's a word inside one of theirs: "Excel" and
+  //           "Microsoft Excel". Probably the same, but not for sure, so the student checks it
+  //   'lack'  not on their profile or resume
+  // (near needs 3 letters or more, so "C" isn't near "Objective C")
+  const nearTo = (skill: string) => student.skills.find((m) => m.length >= 3 && skill.length >= 3
+    && (mentions(skill.toLowerCase(), m.toLowerCase()) || mentions(m.toLowerCase(), skill.toLowerCase())));
+  const compare = (skill: string): 'have' | 'near' | 'lack' => mine.has(skill.toLowerCase()) ? 'have' : nearTo(skill) ? 'near' : 'lack';
+
+  // The skills the post names: its AI tags first (the AI only keeps skills the post really names),
+  // then the student's own skills the post names (namesSkill), each once whatever its case.
+  // For theirs, only the title, description, and requirements count, not the company's name:
+  // "Swift Transportation" doesn't name the skill Swift. A short one (1 or 2 letters, like "C" or
+  // "R") only counts when the AI tagged it too: alone, it's too easy to find by accident. And one
+  // that's a word inside a tagged skill ("Excel" in "Microsoft Excel") isn't listed again
+  const postSkills: string[] = [];
+  const seenSkills = new Set<string>();
+  const addPostSkill = (skill: unknown) => {
+    if (typeof skill !== 'string') return;
+    const s = skill.trim();
+    if (s === '' || seenSkills.has(s.toLowerCase())) return;
+    seenSkills.add(s.toLowerCase());
+    postSkills.push(s);
+  };
+  for (const s of job.ai_skills ?? []) addPostSkill(s);
+  const postText = [job.title, job.description ?? '', ...(job.requirements ?? []).filter((r) => typeof r === 'string')].join('\n');
+  for (const s of student.skills) {
+    if (Array.from(s.trim()).length <= 2) continue;
+    if (postSkills.some((p) => mentions(p.toLowerCase(), s.toLowerCase()))) continue;
+    // has() first: a quick check with the word index, so the slower namesSkill only runs for the
+    // few skills the post might name
+    if (has(s) && namesSkill(postText, s)) addPostSkill(s);
+  }
+
+  // what you study: the names the student's major goes by on a degree line (DEGREE_NAMES)
+  const degreeNames = student.major === '' ? []
+    : Object.hasOwn(DEGREE_NAMES, student.major) ? DEGREE_NAMES[student.major]!
+    : student.major.length >= 3 ? [student.major.toLowerCase()] : [];
+
+  // 2. each line of "What they're looking for"
+  const covered = new Set<string>();   // skills a line named (lower case), so they aren't listed twice
+  const lines = (job.requirements ?? []).filter((l): l is string => typeof l === 'string' && l.trim() !== '').slice(0, MOST_CHECK_LINES);
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    // a line about what you study, and whether it names the student's major
+    const degreeLine = DEGREE_LINE.test(line);
+    const yourMajor = degreeLine && degreeNames.some((name) => mentions(lower, name));
+    // the skills this line names
+    const named = postSkills.filter((s) => namesSkill(line, s));
+    for (const s of named) covered.add(s.toLowerCase());
+
+    if (named.length > 0) {
+      if (noSkillsYet) {
+        items.push({ kind: 'line', text: line, status: 'check', note: 'Add your skills on My info, and this gets checked for you' });
+        continue;
+      }
+      const lacking = named.filter((s) => compare(s) === 'lack');
+      const had = named.filter((s) => compare(s) === 'have');
+      const near = named.filter((s) => compare(s) === 'near');
+      if (lacking.length === 0 && near.length === 0) {
+        // every skill it names is theirs. But a line that also asks for a field of study they
+        // aren't in ("a bachelor's in Computer Science with Python experience", for a Biology major)
+        // can't be "You have this"
+        items.push(degreeLine && !yourMajor
+          ? { kind: 'line', text: line, status: 'check', note: `You have ${had.join(', ')}. Check the field of study it asks for` }
+          : { kind: 'line', text: line, status: 'have', ...(yourMajor ? { note: `Your major: ${student.major}` } : {}) });
+      } else if (lacking.length === 0) {
+        // only "near" ones left: probably theirs, written another way
+        items.push({ kind: 'line', text: line, status: 'check', note: `Close to ${near.map((s) => `"${nearTo(s)}"`).join(', ')} on your profile or resume` });
+      } else if ((had.length > 0 || near.length > 0) && CHOICE_WORDS.test(line)) {
+        // a choice ("one of Python, Java, or C++"), and they have one of them: it may be enough
+        items.push({ kind: 'line', text: line, status: 'check', note: `You have ${[...had, ...near.map((s) => nearTo(s)!)].join(', ')}. It may only need one of these` });
+      } else {
+        items.push({ kind: 'line', text: line, status: 'missing', note: `Not on your profile or resume yet: ${lacking.join(', ')}` });
+      }
+      continue;
+    }
+    // a line about what you study that names the student's major ("Pursuing a degree in Computer Science")
+    if (yourMajor) {
+      items.push({ kind: 'line', text: line, status: 'have', note: `Your major: ${student.major}` });
+      continue;
+    }
+    // anything else (citizenship, age, grades, "strong communication skills", another major):
+    // we can't compare it honestly, so the student checks it
+    items.push({ kind: 'line', text: line, status: 'check' });
+  }
+
+  // 3. the skills the post names that no line covered. The ones they have go first, BEFORE the
+  // list is cut to 8, so their own skills are never the ones left out
+  const order = { have: 0, near: 1, lack: 2 };
+  const skillItems: CheckItem[] = postSkills
+    .filter((s) => !covered.has(s.toLowerCase()))
+    // .sort keeps the post's order among the ones that compare the same
+    .sort((a, b) => order[compare(a)] - order[compare(b)])
+    .slice(0, MOST_CHECK_SKILLS)
+    .map((s): CheckItem => {
+      if (noSkillsYet) return { kind: 'skill', text: s, status: 'check' };
+      const how = compare(s);
+      if (how === 'have') return { kind: 'skill', text: s, status: 'have' };
+      if (how === 'near') return { kind: 'skill', text: s, status: 'check', note: `Close to "${nearTo(s)}" on your profile or resume` };
+      return { kind: 'skill', text: s, status: 'missing' };
+    });
+  items.push(...skillItems);
+  return items;
 }

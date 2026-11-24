@@ -126,7 +126,22 @@ function toOpportunity(job) {
     // How well it fits you: { score (0-100, or null if your profile doesn't say
     // enough yet), reasons ["Fits your major...", ...] } (backend/src/fit.ts)
     fit: job.fit ?? null,
+    // "Can I apply?": each thing the job asks for, marked from your profile and
+    // resume (checklistFor in backend/src/fit.ts, shown by ApplyChecklist).
+    // Only items with words and one of the four known marks are kept, so an odd
+    // answer can't break the pop-up. null when there isn't one: guests, and a
+    // job opened from a link (see checklistOf below)
+    checklist: checklistOf(job),
   };
+}
+
+// The checklist of a job from the backend, keeping only items with words and
+// one of the four known marks (checkWords, under "Can I apply?" below), or null
+// if there's nothing to show
+function checklistOf(job) {
+  if (!Array.isArray(job.checklist)) return null;
+  const kept = job.checklist.filter((item) => item && typeof item.text === "string" && Object.hasOwn(checkWords, item.status));
+  return kept.length > 0 ? kept : null;
 }
 
 // Asks the backend for one page (50) of the jobs that pass the filters, and
@@ -692,6 +707,145 @@ function CloseIcon() {
   );
 }
 
+// ---------- "Can I apply?" ----------
+// The checklist in the pop-up (plan item #21). The backend marks each thing the
+// job asks for against your profile and resume (checklistFor in
+// backend/src/fit.ts), and this shows it. Each item is
+// { kind, text, status, note }:
+//   kind    "level" (who it's for), "line" (a line from the post), or "skill"
+//   status  one of the four marks below
+//   note    a short extra line, like "Not on your profile or resume yet: SQL"
+
+// The words for each mark
+const checkWords = { have: "You have this", missing: "Not yet", no: "Not for you", check: "Check yourself" };
+
+// The little picture for each mark: a check, an empty circle (not yet), an X,
+// or a question mark. The mark is written in words next to it, so screen
+// readers skip the picture (WCAG)
+function MarkIcon(props) {
+  const drawings = {
+    have: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+    missing: <circle cx="12" cy="12" r="7.5" />,
+    no: <path d="M7 7l10 10M17 7L7 17" />,
+    check: (
+      <>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M9.7 9.6a2.4 2.4 0 1 1 3.3 2.2c-.6.3-1 .8-1 1.4v.4" />
+        <path d="M12 16.8h.01" />
+      </>
+    ),
+  };
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      {drawings[props.status] ?? drawings.check}
+    </svg>
+  );
+}
+
+// The verdict over the checklist: how many of the things that could be checked
+// you have. "Check yourself" ones don't count either way (they can't be told
+// from your profile), so they're mentioned after it instead.
+// Gives back { words, more }, like { words: "Within reach: you have 3 of 5.",
+// more: "2 more to check yourself." }
+function verdictFor(items) {
+  // Who it's for decides first:
+  // - a high school job, for a college student ("Not for you")
+  const level = items.find((item) => item.kind === "level");
+  if (level?.status === "no") return { words: "Probably not for you: it's for high school students.", more: "" };
+  // - a college job, for a high schooler ("Not yet"): for later, whatever the
+  //   rest says, so the rest is counted on its own
+  const forLater = level?.status === "missing";
+  const rest = forLater ? items.filter((item) => item !== level) : items;
+
+  // how many of the items have this mark
+  const count = (status) => rest.filter((item) => item.status === status).length;
+  const have = count("have");
+  const missing = count("missing");
+  const toCheck = count("check");
+  const checked = have + missing;
+  const more = toCheck === 0 ? "" : toCheck === 1 ? "1 more to check yourself." : toCheck + " more to check yourself.";
+
+  if (forLater) {
+    return {
+      words: checked === 0 ? "For later: it's for college students." : "For later: it's for college students, but you have " + have + " of " + checked + " of the rest.",
+      more,
+    };
+  }
+  if (checked === 0) return { words: "These couldn't be checked against your profile, so read them and decide.", more: "" };
+  if (missing === 0) {
+    return { words: checked === 1 ? "You have the one thing that could be checked." : "You have all " + checked + " things that could be checked.", more };
+  }
+  // at least half: worth a try. Fewer: still worth applying (many students do)
+  if (have >= missing) return { words: "Within reach: you have " + have + " of " + checked + ".", more };
+  return { words: "A stretch: you have " + have + " of " + checked + ". You can still apply.", more };
+}
+
+// One list of marked items (see ApplyChecklist below).
+// Real posts sometimes say the same thing twice, so the key adds the item's
+// place in the list (index) to its words, to keep every key different
+function CheckList(props) {
+  return (
+    <ul className="discovery-check-list">
+      {props.items.map((item, index) => (
+        // the mark's class picks its colors (index.css, "Can I apply?")
+        <li key={index + item.text} className={"discovery-check-item discovery-check-" + item.status}>
+          <span className="discovery-check-icon">
+            <MarkIcon status={item.status} />
+          </span>
+          <span>
+            <span className="discovery-check-text">{item.text}</span>
+            {item.note && <span className="discovery-check-note">{item.note}</span>}
+          </span>
+          <span className="discovery-check-status">{checkWords[item.status]}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// "Can I apply?": the verdict, then who it's for and the post's own lines,
+// then the skills the post names, then where the marks come from.
+// props.items is the job's checklist (see above)
+function ApplyChecklist(props) {
+  const items = props.items;
+  // the skills get their own list, under "Skills the post names"
+  const main = items.filter((item) => item.kind !== "skill");
+  const skills = items.filter((item) => item.kind === "skill");
+  // Only "who it's for" (the post lists no skills or requirements): a verdict
+  // like "You have the one thing" would promise too much, so there's none
+  const onlyLevel = skills.length === 0 && main.every((item) => item.kind === "level");
+  const verdict = verdictFor(items);
+
+  return (
+    <>
+      <h3 className="discovery-dialog-heading">Can I apply?</h3>
+      {!onlyLevel && (
+        <p className="discovery-check-verdict">
+          {verdict.words}
+          {verdict.more && <span className="discovery-check-verdict-more"> {verdict.more}</span>}
+        </p>
+      )}
+      <CheckList items={main} />
+      {skills.length > 0 && (
+        <>
+          <h4 className="discovery-check-label">Skills the post names</h4>
+          <CheckList items={skills} />
+        </>
+      )}
+      <p className="discovery-check-footnote">
+        {onlyLevel
+          ? "The post doesn't list skills or requirements that can be checked, so read it to be sure. "
+          : "Checked against your profile and resume, so read the post too. "}
+        Have something marked Not yet?{" "}
+        <Link to="/my-info#skills" className="discovery-text-link">
+          Add it on My info
+          <ArrowIcon />
+        </Link>
+      </p>
+    </>
+  );
+}
+
 // The pop-up with everything about one opportunity. It opens when you press
 // "View" or the job's title.
 //
@@ -829,6 +983,11 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onA
           </dl>
         )}
 
+        {/* "Can I apply?": each thing the job asks for, marked from your
+            profile and resume (only on your own list: guests, and a job opened
+            from a link, don't have one, so they get "What they're looking for" below) */}
+        {opportunity.checklist && <ApplyChecklist items={opportunity.checklist} />}
+
         {/* How well it fits you, and why (only if your profile says enough) */}
         {opportunity.fit?.score != null && (
           <>
@@ -854,11 +1013,12 @@ function OpportunityDialog({ opportunity, ref, saved, toggleSave, applyStep, onA
           </>
         )}
 
-        {/* Only if the job lists what they're looking for.
+        {/* Only if the job lists what they're looking for, and there's no
+            "Can I apply?" checklist above (that one already has every line).
             .map() makes one <li> per item, in order. Real posts sometimes say
             the same thing twice, so the key adds the item's place in the list
             (index) to its words, to keep every key different. */}
-        {opportunity.requirements.length > 0 && (
+        {!opportunity.checklist && opportunity.requirements.length > 0 && (
           <>
             <h3 className="discovery-dialog-heading">What they're looking for</h3>
             <ul className="discovery-dialog-list">

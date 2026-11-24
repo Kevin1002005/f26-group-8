@@ -5477,6 +5477,146 @@ html:has(.feed-nav) :focus {
   line-height: 1.5;
 }
 
+/* ----- "Can I apply?" (the checklist in the pop-up) ----- */
+/* Each thing the job asks for, marked "You have this", "Not yet", "Not for
+   you", or "Check yourself" from the student's profile and resume, with one
+   plain verdict on top ("Within reach: you have 3 of 5"). The mark is always
+   in words AND a little picture, never color alone (WCAG). It's drawn by
+   ApplyChecklist in Discovery.jsx; the marks come from checklistFor in
+   backend/src/fit.ts */
+
+/* The verdict: a light blue box with bold navy words */
+.discovery-check-verdict {
+  margin: 0 0 10px;
+  padding: 10px 12px;               /* space inside: top/bottom, left/right */
+  border-radius: 10px;              /* rounded corners */
+  background-color: var(--accent-soft); /* light blue (a deep blue in dark mode) */
+  color: var(--text);               /* 12.9:1 / 11.7:1 */
+  font-size: 14.5px;
+  font-weight: 700;                 /* bold */
+  line-height: 1.45;
+}
+
+/* "2 more to check yourself" after the verdict: not bold, so the verdict stands out */
+.discovery-check-verdict-more {
+  font-weight: 400;
+}
+
+/* The list: one box per thing, with a little space between them */
+.discovery-check-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;                 /* no dots: each line has its own picture */
+}
+
+/* One thing: the picture on the left, the words in the middle, the mark on
+   the right */
+.discovery-check-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto; /* picture, words (can shrink), mark */
+  align-items: start;               /* lined up at the top, for long words */
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);    /* a thin line around it */
+  border-radius: 10px;
+}
+
+/* The little picture: a check, a circle, an X, or a question mark. Its color
+   matches the mark (pictures need 3:1, WCAG) */
+.discovery-check-icon {
+  display: flex;
+  padding-top: 1px;                 /* lines it up with the first line of words */
+  color: var(--subtle);             /* "Check yourself": gray-blue (5.8:1 / 7.3:1) */
+}
+
+.discovery-check-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.discovery-check-have .discovery-check-icon {
+  color: var(--tracker-sent);       /* green (4.4:1 / 7.2:1) */
+}
+
+.discovery-check-missing .discovery-check-icon {
+  color: var(--tag-amber-text);     /* amber (6.6:1 / 8.7:1 on its own tag color; more on the box) */
+}
+
+.discovery-check-no .discovery-check-icon {
+  color: var(--signup-error);       /* red (8.2:1 / 8.2:1) */
+}
+
+/* What the job asks for, in the post's own words */
+.discovery-check-text {
+  color: var(--text);               /* navy (15.5:1 / 14.2:1) */
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;          /* a very long word (a web address) wraps instead of spilling out */
+}
+
+/* The small line under it, like "Not on your profile or resume yet: SQL" */
+.discovery-check-note {
+  display: block;                   /* on its own line */
+  margin-top: 2px;
+  color: var(--muted);              /* 7.8:1 / 9.1:1 */
+  font-size: 13px;
+}
+
+/* The mark, in words: a small rounded tag */
+.discovery-check-status {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill); /* pill shape */
+  background-color: var(--soft);    /* "Check yourself": light gray-blue */
+  color: var(--muted);              /* 6.9:1 / 7.7:1 on --soft */
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;              /* "You have this" never splits */
+}
+
+.discovery-check-have .discovery-check-status {
+  background-color: var(--tag-green-bg);  /* light green */
+  color: var(--tag-green-text);           /* dark green (5.7:1 / 8.6:1) */
+}
+
+.discovery-check-missing .discovery-check-status {
+  background-color: var(--tag-amber-bg);  /* light amber */
+  color: var(--tag-amber-text);           /* dark amber (6.6:1 / 8.7:1) */
+}
+
+.discovery-check-no .discovery-check-status {
+  color: var(--signup-error);             /* red words on the light gray-blue (7.2:1 / 6.9:1) */
+}
+
+/* "Skills the post names", over the second list */
+.discovery-check-label {
+  margin: 14px 0 8px;
+  color: var(--subtle);             /* 5.8:1 / 7.3:1 */
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* The note under the checklist: where the marks come from, and a link to My info */
+.discovery-check-footnote {
+  margin: 10px 0 0;
+  color: var(--muted);              /* 7.8:1 / 9.1:1 */
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* On a phone, the mark goes under the words, so the words have room */
+@media (max-width: 640px) {
+  .discovery-check-item {
+    grid-template-columns: 20px minmax(0, 1fr); /* picture, words */
+  }
+
+  .discovery-check-status {
+    grid-column: 2;                 /* under the words, not under the picture */
+    justify-self: start;            /* only as wide as its words */
+  }
+}
+
 /* "Hide jobs from Acme" at the bottom of a job's pop-up: looks like a link */
 .discovery-hide-company {
   margin-top: 18px;
